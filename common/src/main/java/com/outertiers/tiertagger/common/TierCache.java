@@ -1,4 +1,4 @@
-package com.outertiers.tiertagger;
+package com.outertiers.tiertagger.common;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -85,7 +85,7 @@ public class TierCache {
                 return;
             }
             if (res.statusCode() / 100 != 2) {
-                TierTagger.LOGGER.debug("[TierTagger] HTTP {} for {}", res.statusCode(), username);
+                TierTaggerCore.LOGGER.debug("[TierTagger] HTTP {} for {}", res.statusCode(), username);
                 return;
             }
             JsonObject root = JsonParser.parseString(res.body()).getAsJsonObject();
@@ -110,7 +110,7 @@ public class TierCache {
             String region = optStr(player, "region");
             entries.put(key, new Entry(tiers, peak, region, System.currentTimeMillis(), tiers.isEmpty() && peak == null));
         } catch (Exception e) {
-            TierTagger.LOGGER.debug("[TierTagger] fetch failed for {}: {}", username, e.getMessage());
+            TierTaggerCore.LOGGER.debug("[TierTagger] fetch failed for {}: {}", username, e.getMessage());
         } finally {
             inflight.remove(key);
         }

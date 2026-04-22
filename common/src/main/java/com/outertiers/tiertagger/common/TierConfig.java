@@ -1,4 +1,4 @@
-package com.outertiers.tiertagger;
+package com.outertiers.tiertagger.common;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -33,7 +33,7 @@ public class TierConfig {
                 TierConfig cfg = GSON.fromJson(json, TierConfig.class);
                 if (cfg != null) return cfg.normalise();
             } catch (Exception e) {
-                TierTagger.LOGGER.warn("[TierTagger] could not read config, using defaults: {}", e.getMessage());
+                TierTaggerCore.LOGGER.warn("[TierTagger] could not read config, using defaults: {}", e.getMessage());
             }
         }
         TierConfig cfg = new TierConfig();
@@ -52,7 +52,7 @@ public class TierConfig {
         try {
             Files.writeString(path(), GSON.toJson(this));
         } catch (IOException e) {
-            TierTagger.LOGGER.warn("[TierTagger] could not save config: {}", e.getMessage());
+            TierTaggerCore.LOGGER.warn("[TierTagger] could not save config: {}", e.getMessage());
         }
     }
 

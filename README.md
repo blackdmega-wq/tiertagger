@@ -25,45 +25,73 @@ When you open the player list (`Tab` by default), each player gets a coloured `[
 
 Config is persisted in `.minecraft/config/tiertagger.json`.
 
-## Supported Minecraft versions
+## Project layout
 
-The mod is a Fabric client mod targeting Java 21. It is built per Minecraft version by editing `gradle.properties`. Tested combinations:
+```
+tiertagger/
+├── common/        — pure-Java logic shared by both loaders (config, cache, scoring)
+├── fabric/        — Fabric Loader entry + mixin
+└── neoforge/      — NeoForge entry + mixin
+```
 
-| MC version | Loader   | Yarn               | Fabric API           |
-| ---------- | -------- | ------------------ | -------------------- |
-| 1.21.1     | 0.16.5   | 1.21.1+build.3     | 0.105.0+1.21.1       |
-| 1.20.4     | 0.16.5   | 1.20.4+build.3     | 0.97.2+1.20.4        |
-| 1.20.1     | 0.16.5   | 1.20.1+build.10    | 0.92.2+1.20.1        |
+## Supported loaders & versions
 
-To build for a different version: edit the four `*_version` lines in `gradle.properties` and rerun the build.
+The project is a multi-loader Gradle build. Pick the right toolchain & version pins in `gradle.properties`, then build the loader you want.
 
-> Note: this is a Fabric mod. Forge / NeoForge / Bedrock are not currently supported.
+### Fabric
+
+| MC version | Loader   | Yarn               | Fabric API           | Java |
+| ---------- | -------- | ------------------ | -------------------- | ---- |
+| 1.21.1     | 0.16.5   | 1.21.1+build.3     | 0.105.0+1.21.1       | 21   |
+| 1.20.6     | 0.16.5   | 1.20.6+build.3     | 0.100.4+1.20.6       | 21   |
+| 1.20.4     | 0.16.5   | 1.20.4+build.3     | 0.97.2+1.20.4        | 17   |
+| 1.20.1     | 0.16.5   | 1.20.1+build.10    | 0.92.2+1.20.1        | 17   |
+| 1.19.4     | 0.16.5   | 1.19.4+build.2     | 0.87.2+1.19.4        | 17   |
+| 1.19.2     | 0.16.5   | 1.19.2+build.28    | 0.77.0+1.19.2        | 17   |
+| 1.18.2     | 0.16.5   | 1.18.2+build.4     | 0.77.0+1.18.2        | 17   |
+
+### NeoForge
+
+| MC version | NeoForge version | Java |
+| ---------- | ---------------- | ---- |
+| 1.21.1     | 21.1.95          | 21   |
+| 1.21.0     | 21.0.167         | 21   |
+| 1.20.6     | 20.6.137         | 21   |
+| 1.20.4     | 20.4.248         | 17   |
+
+To switch versions: edit `gradle.properties` (`minecraft_version`, `yarn_mappings`, `loader_version`, `fabric_version`, `neoforge_version`, `java_version`) and rerun the build.
+
+> Forge (legacy, pre-NeoForge fork) and Bedrock are not supported. NeoForge covers the modern Forge ecosystem from MC 1.20.4 onwards.
 
 ## Building
 
-Requirements: JDK 21 and either Gradle 8.10+ or the Gradle wrapper.
+Requirements: JDK 17 or 21 (matching `java_version`) and Gradle 8.10+ (or generate the wrapper via `gradle wrapper`).
 
 ```bash
-# Generate the wrapper once (only needed if gradle-wrapper.jar is missing):
-gradle wrapper --gradle-version 8.10
-
+# Build everything for the version pinned in gradle.properties:
 ./gradlew build
+
+# Build only one loader:
+./gradlew :fabric:build
+./gradlew :neoforge:build
+
+# Run a dev client:
+./gradlew :fabric:runClient
+./gradlew :neoforge:runClient
 ```
 
-The compiled mod jar lands in `build/libs/tiertagger-<version>.jar`.
+The compiled jars land in `fabric/build/libs/` and `neoforge/build/libs/`.
 
 ## Installing
 
+### Fabric
 1. Install [Fabric Loader](https://fabricmc.net/use/) for your Minecraft version.
 2. Install [Fabric API](https://modrinth.com/mod/fabric-api).
-3. Drop `tiertagger-<version>.jar` into your `.minecraft/mods/` folder.
-4. Launch Minecraft, open the tab list, enjoy.
+3. Drop `tiertagger-fabric-<version>.jar` into your `.minecraft/mods/` folder.
 
-## Development run
-
-```bash
-./gradlew runClient
-```
+### NeoForge
+1. Install [NeoForge](https://neoforged.net/) for your Minecraft version.
+2. Drop `tiertagger-neoforge-<version>.jar` into your `.minecraft/mods/` folder.
 
 ## License
 

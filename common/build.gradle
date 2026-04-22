@@ -1,0 +1,27 @@
+plugins {
+    id 'java-library'
+}
+
+group   = project.maven_group
+version = project.mod_version
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    api 'com.google.code.gson:gson:2.10.1'
+    api 'org.slf4j:slf4j-api:2.0.13'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(project.java_version as int)
+    }
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = 'UTF-8'
+    it.options.release = project.java_version as int
+}

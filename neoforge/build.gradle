@@ -1,0 +1,56 @@
+plugins {
+    id 'net.neoforged.moddev' version '1.0.21'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group   = project.maven_group
+
+base {
+    archivesName = "${project.archives_base_name}-neoforge"
+}
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.neoforged.net/releases' }
+}
+
+neoForge {
+    version = project.neoforge_version
+    runs {
+        client { client() }
+    }
+    mods {
+        tiertagger {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+dependencies {
+    implementation project(':common')
+    jarJar        project(':common')
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("META-INF/neoforge.mods.toml") {
+        expand "version": project.version
+    }
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(project.java_version as int)
+    }
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = 'UTF-8'
+    it.options.release = project.java_version as int
+}
+
+jar {
+    from(rootProject.file("LICENSE")) { rename { "${it}_${project.archives_base_name}-neoforge" } }
+}
