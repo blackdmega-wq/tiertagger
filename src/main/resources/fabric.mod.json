@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "tiertagger",
+  "version": "${version}",
+  "name": "TierTagger",
+  "description": "Displays OuterTiers tiers next to player names in the tab list.",
+  "authors": ["OuterTiers"],
+  "contact": {
+    "homepage": "https://outertiers.com",
+    "sources":  "https://github.com/blackdmega-wq/tiertagger",
+    "issues":   "https://github.com/blackdmega-wq/tiertagger/issues"
+  },
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["com.outertiers.tiertagger.TierTagger"]
+  },
+  "mixins": [
+    "tiertagger.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "fabric-api":   "*",
+    "minecraft":    ">=1.20",
+    "java":         ">=21"
+  }
+}
