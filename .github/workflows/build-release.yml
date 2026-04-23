@@ -145,18 +145,9 @@ jobs:
             neoforge: '21.8.53'
             moddev: '2.0.141'
             gradle: '8.10'
-          - loader: neoforge
-            mc: '1.21.10'
-            java: 21
-            neoforge: '21.10.64'
-            moddev: '2.0.141'
-            gradle: '8.10'
-          - loader: neoforge
-            mc: '1.21.11'
-            java: 21
-            neoforge: '21.11.42'
-            moddev: '2.0.141'
-            gradle: '8.10'
+          # NOTE: NeoForge 1.21.10 and 1.21.11 dropped — the vanilla
+          # rendering APIs we mix into changed and the source no longer
+          # compiles unmodified. Tracked for a future per-MC source split.
 
     steps:
       - uses: actions/checkout@v4
@@ -179,6 +170,18 @@ jobs:
           fi
           chmod +x ./gradlew
 
+      - name: Pin plugin versions in gradle.properties
+        run: |
+          # The settings.gradle pluginManagement block reads ${loom_version}/${moddev_version}
+          # as Groovy GString from gradle.properties (NOT from -P flags), so we must rewrite
+          # the file before invoking Gradle.
+          if [ "${{ matrix.loader }}" = "fabric" ]; then
+            sed -i "s|^loom_version=.*|loom_version=${{ matrix.loom }}|" gradle.properties
+          else
+            sed -i "s|^moddev_version=.*|moddev_version=${{ matrix.moddev }}|" gradle.properties
+          fi
+          grep -E '^(loom_version|moddev_version)=' gradle.properties
+
       - name: Build Fabric JAR
         if: matrix.loader == 'fabric'
         id: build_fabric
@@ -189,7 +192,6 @@ jobs:
             -Ploader_version=${{ matrix.fabric_loader }} \
             -Pfabric_version=${{ matrix.fabric_api }} \
             -Pjava_version=${{ matrix.java }} \
-            -Ploom_version=${{ matrix.loom }} \
             --no-daemon --stacktrace
 
       - name: Build NeoForge JAR
@@ -200,7 +202,6 @@ jobs:
             -Pminecraft_version=${{ matrix.mc }} \
             -Pneoforge_version=${{ matrix.neoforge }} \
             -Pjava_version=${{ matrix.java }} \
-            -Pmoddev_version=${{ matrix.moddev }} \
             --no-daemon --stacktrace
 
       - name: Stage built JARs
