@@ -32,6 +32,7 @@ jobs:
             fabric_loader: '0.16.5'
             fabric_api: '0.116.11+1.21.1'
             loom: '1.7-SNAPSHOT'
+            gradle: '8.10'
           - loader: fabric
             mc: '1.21.2'
             java: 21
@@ -39,6 +40,7 @@ jobs:
             fabric_loader: '0.16.7'
             fabric_api: '0.106.1+1.21.2'
             loom: '1.7-SNAPSHOT'
+            gradle: '8.10'
           - loader: fabric
             mc: '1.21.3'
             java: 21
@@ -46,6 +48,7 @@ jobs:
             fabric_loader: '0.16.9'
             fabric_api: '0.114.1+1.21.3'
             loom: '1.7-SNAPSHOT'
+            gradle: '8.10'
           - loader: fabric
             mc: '1.21.4'
             java: 21
@@ -53,6 +56,7 @@ jobs:
             fabric_loader: '0.16.10'
             fabric_api: '0.119.4+1.21.4'
             loom: '1.8-SNAPSHOT'
+            gradle: '8.10'
           - loader: fabric
             mc: '1.21.5'
             java: 21
@@ -60,6 +64,7 @@ jobs:
             fabric_loader: '0.16.14'
             fabric_api: '0.128.2+1.21.5'
             loom: '1.9-SNAPSHOT'
+            gradle: '8.11'
           - loader: fabric
             mc: '1.21.6'
             java: 21
@@ -67,6 +72,7 @@ jobs:
             fabric_loader: '0.16.14'
             fabric_api: '0.128.2+1.21.6'
             loom: '1.10-SNAPSHOT'
+            gradle: '8.12'
           - loader: fabric
             mc: '1.21.7'
             java: 21
@@ -74,6 +80,7 @@ jobs:
             fabric_loader: '0.16.14'
             fabric_api: '0.129.0+1.21.7'
             loom: '1.10-SNAPSHOT'
+            gradle: '8.12'
           - loader: fabric
             mc: '1.21.8'
             java: 21
@@ -81,6 +88,7 @@ jobs:
             fabric_loader: '0.16.14'
             fabric_api: '0.136.1+1.21.8'
             loom: '1.11-SNAPSHOT'
+            gradle: '8.14'
           - loader: fabric
             mc: '1.21.9'
             java: 21
@@ -88,6 +96,7 @@ jobs:
             fabric_loader: '0.16.14'
             fabric_api: '0.134.1+1.21.9'
             loom: '1.11-SNAPSHOT'
+            gradle: '8.14'
           - loader: fabric
             mc: '1.21.10'
             java: 21
@@ -95,6 +104,7 @@ jobs:
             fabric_loader: '0.16.14'
             fabric_api: '0.138.4+1.21.10'
             loom: '1.11-SNAPSHOT'
+            gradle: '8.14'
           - loader: fabric
             mc: '1.21.11'
             java: 21
@@ -102,6 +112,7 @@ jobs:
             fabric_loader: '0.16.14'
             fabric_api: '0.141.3+1.21.11'
             loom: '1.11-SNAPSHOT'
+            gradle: '8.14'
 
           # ────────────── NeoForge ──────────────
           - loader: neoforge
@@ -109,36 +120,43 @@ jobs:
             java: 21
             neoforge: '21.1.95'
             moddev: '1.0.24'
+            gradle: '8.10'
           - loader: neoforge
             mc: '1.21.3'
             java: 21
             neoforge: '21.3.96'
             moddev: '1.0.24'
+            gradle: '8.10'
           - loader: neoforge
             mc: '1.21.4'
             java: 21
             neoforge: '21.4.157'
             moddev: '2.0.78'
+            gradle: '8.10'
           - loader: neoforge
             mc: '1.21.5'
             java: 21
             neoforge: '21.5.97'
             moddev: '2.0.78'
+            gradle: '8.10'
           - loader: neoforge
             mc: '1.21.8'
             java: 21
             neoforge: '21.8.53'
             moddev: '2.0.141'
+            gradle: '8.10'
           - loader: neoforge
             mc: '1.21.10'
             java: 21
             neoforge: '21.10.64'
             moddev: '2.0.141'
+            gradle: '8.10'
           - loader: neoforge
             mc: '1.21.11'
             java: 21
             neoforge: '21.11.42'
             moddev: '2.0.141'
+            gradle: '8.10'
 
     steps:
       - uses: actions/checkout@v4
@@ -152,12 +170,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.14'
+          gradle-version: ${{ matrix.gradle }}
 
       - name: Bootstrap Gradle wrapper if missing
         run: |
           if [ ! -f ./gradlew ]; then
-            gradle wrapper --gradle-version 8.14 --no-daemon
+            gradle wrapper --gradle-version ${{ matrix.gradle }} --no-daemon
           fi
           chmod +x ./gradlew
 
