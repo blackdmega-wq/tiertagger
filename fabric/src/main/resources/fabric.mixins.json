@@ -3,7 +3,8 @@
   "package": "com.outertiers.tiertagger.fabric.mixin",
   "compatibilityLevel": "JAVA_17",
   "client": [
-    "PlayerListHudMixin"
+    "PlayerListHudMixin",
+    "PlayerEntityRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1
