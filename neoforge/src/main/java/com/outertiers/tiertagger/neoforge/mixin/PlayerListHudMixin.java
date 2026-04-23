@@ -26,17 +26,7 @@ public class PlayerListHudMixin {
 
         Optional<TierCache.Entry> opt = TierTaggerCore.cache().peek(name);
         if (opt.isEmpty()) return;
-        TierCache.Entry e = opt.get();
-        if (e.missing) return;
-
-        String mode = TierTaggerCore.config().gamemode;
-        String tier = "overall".equalsIgnoreCase(mode)
-                ? TierTaggerCore.pickHighest(e)
-                : e.tiers.get(mode.toLowerCase());
-
-        if (TierTaggerCore.config().showPeak && e.peakTier != null && !e.peakTier.isBlank()) {
-            tier = e.peakTier.toUpperCase();
-        }
+        String tier = TierTaggerCore.chooseTier(opt.get());
         if (tier == null || tier.isBlank()) return;
 
         ChatFormatting colour = ChatFormatting.getByCode(TierTaggerCore.colourCodeFor(tier));
