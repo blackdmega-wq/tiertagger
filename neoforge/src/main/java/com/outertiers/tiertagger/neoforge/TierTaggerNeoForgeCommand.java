@@ -103,6 +103,15 @@ public class TierTaggerNeoForgeCommand {
                             "§r, peak: §6" + peak + "§r, region: §b" + region + "§r, modes: §f" + n), false);
                         return 1;
                     })))
+            .then(Commands.literal("compare")
+                .then(Commands.argument("player1", StringArgumentType.word())
+                    .then(Commands.argument("player2", StringArgumentType.word())
+                        .executes(c -> {
+                            String n1 = StringArgumentType.getString(c, "player1");
+                            String n2 = StringArgumentType.getString(c, "player2");
+                            sendCompare(c.getSource(), n1, n2);
+                            return 1;
+                        }))))
             .then(Commands.literal("clear")
                 .then(Commands.argument("player", StringArgumentType.word())
                     .executes(c -> {
@@ -193,6 +202,42 @@ public class TierTaggerNeoForgeCommand {
         );
     }
 
+    private static void sendCompare(CommandSourceStack src, String n1, String n2) {
+        Optional<TierCache.Entry> e1 = TierTaggerCore.cache().peek(n1);
+        Optional<TierCache.Entry> e2 = TierTaggerCore.cache().peek(n2);
+        if (e1.isEmpty() || e2.isEmpty()) {
+            src.sendSuccess(() -> Component.literal("§7[TierTagger] §rFetching tiers — try again in a moment…"), false);
+            return;
+        }
+        TierCache.Entry a = e1.get();
+        TierCache.Entry b = e2.get();
+        if (a.missing && b.missing) {
+            src.sendSuccess(() -> Component.literal("§c[TierTagger] §rNo data for §e" + n1 + " §ror §e" + n2), false);
+            return;
+        }
+        src.sendSuccess(() -> Component.literal("§a===== §fCompare: §e" + n1 + " §7vs §e" + n2 + " §a====="), false);
+        for (String mode : TierConfig.GAMEMODES) {
+            if ("overall".equals(mode)) continue;
+            String t1 = a.missing || a.tiers == null ? null : a.tiers.get(mode);
+            String t2 = b.missing || b.tiers == null ? null : b.tiers.get(mode);
+            int s1 = TierTaggerCore.score(t1);
+            int s2 = TierTaggerCore.score(t2);
+            String marker;
+            if (t1 == null && t2 == null) marker = "§8=";
+            else if (s1 > s2) marker = "§a<";
+            else if (s2 > s1) marker = "§a>";
+            else marker = "§e=";
+            String c1 = t1 == null ? "§8unranked" : "§" + TierTaggerCore.colourCodeFor(t1) + "§l" + t1.toUpperCase();
+            String c2 = t2 == null ? "§8unranked" : "§" + TierTaggerCore.colourCodeFor(t2) + "§l" + t2.toUpperCase();
+            final String row = String.format("§7%-10s §r%s §r%s %s §r", mode, c1, marker, c2);
+            src.sendSuccess(() -> Component.literal(row), false);
+        }
+        String top1 = TierTaggerCore.pickHighest(a);
+        String top2 = TierTaggerCore.pickHighest(b);
+        src.sendSuccess(() -> Component.literal("§7Highest: §f" + n1 + " §8→ §f" + (top1 == null ? "—" : top1) +
+            "§r, §f" + n2 + " §8→ §f" + (top2 == null ? "—" : top2)), false);
+    }
+
     private static void sendStatus(CommandSourceStack src) {
         TierConfig c = TierTaggerCore.config();
         src.sendSuccess(() -> Component.literal(
@@ -219,6 +264,7 @@ public class TierTaggerNeoForgeCommand {
             {"/tiertagger config",           "Open the GUI settings screen"},
             {"/tiertagger profile <player>", "Open a player's tier breakdown"},
             {"/tiertagger lookup <player>",  "Print a player's tiers in chat"},
+            {"/tiertagger compare <a> <b>",  "Side-by-side tier comparison"},
             {"/tiertagger clear <player>",   "Forget a single player from cache"},
             {"/tiertagger mode <gamemode>",  "Switch active gamemode"},
             {"/tiertagger toggle",           "Toggle tab list badges"},

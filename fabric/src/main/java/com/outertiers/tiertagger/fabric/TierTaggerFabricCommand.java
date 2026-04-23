@@ -106,6 +106,15 @@ public class TierTaggerFabricCommand {
                                 "§r, peak: §6" + peak + "§r, region: §b" + region + "§r, modes: §f" + n));
                             return 1;
                         })))
+                .then(ClientCommandManager.literal("compare")
+                    .then(ClientCommandManager.argument("player1", StringArgumentType.word())
+                        .then(ClientCommandManager.argument("player2", StringArgumentType.word())
+                            .executes(c -> {
+                                String n1 = StringArgumentType.getString(c, "player1");
+                                String n2 = StringArgumentType.getString(c, "player2");
+                                sendCompare(c.getSource(), n1, n2);
+                                return 1;
+                            }))))
                 .then(ClientCommandManager.literal("clear")
                     .then(ClientCommandManager.argument("player", StringArgumentType.word())
                         .executes(c -> {
@@ -198,6 +207,42 @@ public class TierTaggerFabricCommand {
         });
     }
 
+    private static void sendCompare(net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource src,
+                                    String n1, String n2) {
+        Optional<TierCache.Entry> e1 = TierTaggerCore.cache().peek(n1);
+        Optional<TierCache.Entry> e2 = TierTaggerCore.cache().peek(n2);
+        if (e1.isEmpty() || e2.isEmpty()) {
+            src.sendFeedback(Text.literal("§7[TierTagger] §rFetching tiers — try again in a moment…"));
+            return;
+        }
+        TierCache.Entry a = e1.get();
+        TierCache.Entry b = e2.get();
+        if (a.missing && b.missing) {
+            src.sendFeedback(Text.literal("§c[TierTagger] §rNo data for §e" + n1 + " §ror §e" + n2));
+            return;
+        }
+        src.sendFeedback(Text.literal("§a===== §fCompare: §e" + n1 + " §7vs §e" + n2 + " §a====="));
+        for (String mode : TierConfig.GAMEMODES) {
+            if ("overall".equals(mode)) continue;
+            String t1 = a.missing || a.tiers == null ? null : a.tiers.get(mode);
+            String t2 = b.missing || b.tiers == null ? null : b.tiers.get(mode);
+            int s1 = TierTaggerCore.score(t1);
+            int s2 = TierTaggerCore.score(t2);
+            String marker;
+            if (t1 == null && t2 == null) marker = "§8=";
+            else if (s1 > s2) marker = "§a<";
+            else if (s2 > s1) marker = "§a>";
+            else marker = "§e=";
+            String c1 = t1 == null ? "§8unranked" : "§" + TierTaggerCore.colourCodeFor(t1) + "§l" + t1.toUpperCase();
+            String c2 = t2 == null ? "§8unranked" : "§" + TierTaggerCore.colourCodeFor(t2) + "§l" + t2.toUpperCase();
+            src.sendFeedback(Text.literal(String.format("§7%-10s §r%s §r%s %s §r", mode, c1, marker, c2)));
+        }
+        String top1 = TierTaggerCore.pickHighest(a);
+        String top2 = TierTaggerCore.pickHighest(b);
+        src.sendFeedback(Text.literal("§7Highest: §f" + n1 + " §8→ §f" + (top1 == null ? "—" : top1) +
+            "§r, §f" + n2 + " §8→ §f" + (top2 == null ? "—" : top2)));
+    }
+
     private static void sendStatus(net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource src) {
         TierConfig c = TierTaggerCore.config();
         src.sendFeedback(Text.literal(
@@ -224,6 +269,7 @@ public class TierTaggerFabricCommand {
             {"/tiertagger config",           "Open the GUI settings screen"},
             {"/tiertagger profile <player>", "Open a player's tier breakdown"},
             {"/tiertagger lookup <player>",  "Print a player's tiers in chat"},
+            {"/tiertagger compare <a> <b>",  "Side-by-side tier comparison"},
             {"/tiertagger clear <player>",   "Forget a single player from cache"},
             {"/tiertagger mode <gamemode>",  "Switch active gamemode"},
             {"/tiertagger toggle",           "Toggle tab list badges"},
