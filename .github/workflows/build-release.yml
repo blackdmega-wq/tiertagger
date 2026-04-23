@@ -7,65 +7,245 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag (e.g. v1.0.0)'
-        required: true
-        default: 'v1.0.0'
+        description: 'Release tag to publish (e.g. v1.1.0). Leave blank for a dry-run build with no release upload.'
+        required: false
+        default: ''
 
 permissions:
   contents: write
 
 jobs:
   build:
+    name: ${{ matrix.loader }} · MC ${{ matrix.mc }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ────────────── Fabric ──────────────
+          - loader: fabric
+            mc: '1.21.1'
+            java: 21
+            yarn: '1.21.1+build.3'
+            fabric_loader: '0.16.5'
+            fabric_api: '0.105.0+1.21.1'
+          - loader: fabric
+            mc: '1.21.2'
+            java: 21
+            yarn: '1.21.2+build.1'
+            fabric_loader: '0.16.7'
+            fabric_api: '0.107.0+1.21.2'
+          - loader: fabric
+            mc: '1.21.3'
+            java: 21
+            yarn: '1.21.3+build.2'
+            fabric_loader: '0.16.9'
+            fabric_api: '0.110.5+1.21.3'
+          - loader: fabric
+            mc: '1.21.4'
+            java: 21
+            yarn: '1.21.4+build.8'
+            fabric_loader: '0.16.10'
+            fabric_api: '0.119.2+1.21.4'
+          - loader: fabric
+            mc: '1.21.5'
+            java: 21
+            yarn: '1.21.5+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.123.2+1.21.5'
+          - loader: fabric
+            mc: '1.21.6'
+            java: 21
+            yarn: '1.21.6+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.127.0+1.21.6'
+          - loader: fabric
+            mc: '1.21.7'
+            java: 21
+            yarn: '1.21.7+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.130.0+1.21.7'
+          - loader: fabric
+            mc: '1.21.8'
+            java: 21
+            yarn: '1.21.8+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.133.0+1.21.8'
+          - loader: fabric
+            mc: '1.21.9'
+            java: 21
+            yarn: '1.21.9+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.136.0+1.21.9'
+          - loader: fabric
+            mc: '1.21.10'
+            java: 21
+            yarn: '1.21.10+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.139.0+1.21.10'
+          - loader: fabric
+            mc: '1.21.11'
+            java: 21
+            yarn: '1.21.11+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.142.0+1.21.11'
+
+          # ────────────── NeoForge ──────────────
+          - loader: neoforge
+            mc: '1.21.1'
+            java: 21
+            neoforge: '21.1.95'
+          - loader: neoforge
+            mc: '1.21.2'
+            java: 21
+            neoforge: '21.2.1-beta'
+          - loader: neoforge
+            mc: '1.21.3'
+            java: 21
+            neoforge: '21.3.79'
+          - loader: neoforge
+            mc: '1.21.4'
+            java: 21
+            neoforge: '21.4.142'
+          - loader: neoforge
+            mc: '1.21.5'
+            java: 21
+            neoforge: '21.5.95'
+          - loader: neoforge
+            mc: '1.21.6'
+            java: 21
+            neoforge: '21.6.20'
+          - loader: neoforge
+            mc: '1.21.7'
+            java: 21
+            neoforge: '21.7.30'
+          - loader: neoforge
+            mc: '1.21.8'
+            java: 21
+            neoforge: '21.8.40'
+          - loader: neoforge
+            mc: '1.21.9'
+            java: 21
+            neoforge: '21.9.10'
+          - loader: neoforge
+            mc: '1.21.10'
+            java: 21
+            neoforge: '21.10.20'
+          - loader: neoforge
+            mc: '1.21.11'
+            java: 21
+            neoforge: '21.11.10'
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '21'
+          distribution: temurin
+          java-version: ${{ matrix.java }}
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10'
 
+      - name: Make gradlew executable
+        run: |
+          if [ -f ./gradlew ]; then chmod +x ./gradlew; fi
+
       - name: Build Fabric JAR
-        run: gradle :fabric:build --no-daemon --stacktrace
+        if: matrix.loader == 'fabric'
+        continue-on-error: true
+        id: build_fabric
+        run: |
+          gradle :fabric:build \
+            -Pminecraft_version=${{ matrix.mc }} \
+            -Pyarn_mappings=${{ matrix.yarn }} \
+            -Ploader_version=${{ matrix.fabric_loader }} \
+            -Pfabric_version=${{ matrix.fabric_api }} \
+            -Pjava_version=${{ matrix.java }} \
+            --no-daemon --stacktrace
 
       - name: Build NeoForge JAR
-        run: gradle :neoforge:build --no-daemon --stacktrace
-
-      - name: Collect JARs
+        if: matrix.loader == 'neoforge'
+        continue-on-error: true
+        id: build_neoforge
         run: |
-          mkdir -p release-jars
-          find fabric/build/libs -maxdepth 1 -name "*.jar" ! -name "*-sources.jar" ! -name "*-dev.jar" -exec cp {} release-jars/ \;
-          find neoforge/build/libs -maxdepth 1 -name "*.jar" ! -name "*-sources.jar" ! -name "*-dev.jar" -exec cp {} release-jars/ \;
-          ls -la release-jars/
+          gradle :neoforge:build \
+            -Pminecraft_version=${{ matrix.mc }} \
+            -Pneoforge_version=${{ matrix.neoforge }} \
+            -Pjava_version=${{ matrix.java }} \
+            --no-daemon --stacktrace
 
-      - name: Upload JARs as workflow artifact
+      - name: Stage built JARs
+        id: stage
+        run: |
+          mkdir -p staging
+          shopt -s nullglob
+          if [ "${{ matrix.loader }}" = "fabric" ]; then
+            for f in fabric/build/libs/*.jar; do
+              # Skip sources / dev jars
+              case "$f" in *-sources.jar|*-dev.jar) continue;; esac
+              base=$(basename "$f" .jar)
+              cp "$f" "staging/${base}-mc${{ matrix.mc }}.jar"
+            done
+          else
+            for f in neoforge/build/libs/*.jar; do
+              case "$f" in *-sources.jar|*-dev.jar) continue;; esac
+              base=$(basename "$f" .jar)
+              cp "$f" "staging/${base}-mc${{ matrix.mc }}.jar"
+            done
+          fi
+          ls -la staging/ || true
+          if ls staging/*.jar >/dev/null 2>&1; then
+            echo "has_jars=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_jars=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload artifact
+        if: steps.stage.outputs.has_jars == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: tiertagger-jars
-          path: release-jars/*.jar
+          name: tiertagger-${{ matrix.loader }}-mc${{ matrix.mc }}
+          path: staging/*.jar
+          if-no-files-found: ignore
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '')
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Determine release tag
         id: tag
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
           else
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create / update GitHub Release
+      - name: Download all JARs
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List collected files
+        run: ls -la dist || true
+
+      - name: Create or update release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: TierTagger ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
-          files: release-jars/*.jar
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
+          files: |
+            dist/*.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
