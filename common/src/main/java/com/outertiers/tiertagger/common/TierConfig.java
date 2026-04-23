@@ -16,7 +16,9 @@ public class TierConfig {
     public String  apiBase    = "https://outertiers-api.onrender.com";
     public String  gamemode   = "overall";
     public boolean showInTab  = true;
+    public boolean showNametag = true;
     public boolean showPeak   = false;
+    public boolean fallthroughToHighest = true;
     public int     cacheTtlSeconds = 300;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
