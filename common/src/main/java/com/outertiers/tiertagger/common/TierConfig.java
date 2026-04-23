@@ -2,7 +2,6 @@ package com.outertiers.tiertagger.common;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -21,8 +20,14 @@ public class TierConfig {
     public int     cacheTtlSeconds = 300;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static Path configDir = Path.of(".");
+
+    public static void setConfigDir(Path dir) {
+        if (dir != null) configDir = dir;
+    }
+
     private static Path path() {
-        return FabricLoader.getInstance().getConfigDir().resolve("tiertagger.json");
+        return configDir.resolve("tiertagger.json");
     }
 
     public static TierConfig load() {
