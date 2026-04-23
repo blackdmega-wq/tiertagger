@@ -1,6 +1,7 @@
 package com.outertiers.tiertagger.fabric.mixin;
 
 import com.outertiers.tiertagger.common.TierCache;
+import com.outertiers.tiertagger.common.TierFormat;
 import com.outertiers.tiertagger.common.TierTaggerCore;
 import net.minecraft.client.gui.hud.PlayerListHud;
 import net.minecraft.client.network.PlayerListEntry;
@@ -19,26 +20,40 @@ public class PlayerListHudMixin {
 
     @Inject(method = "getPlayerName", at = @At("RETURN"), cancellable = true)
     private void tiertagger$appendTier(PlayerListEntry entry, CallbackInfoReturnable<Text> cir) {
-        if (TierTaggerCore.config() == null || !TierTaggerCore.config().showInTab) return;
-        if (entry == null || entry.getProfile() == null) return;
-        String name = entry.getProfile().getName();
-        if (name == null || name.isBlank()) return;
+        try {
+            if (TierTaggerCore.config() == null || !TierTaggerCore.config().showInTab) return;
+            if (entry == null || entry.getProfile() == null) return;
+            String name = entry.getProfile().getName();
+            if (name == null || name.isBlank()) return;
 
-        Optional<TierCache.Entry> opt = TierTaggerCore.cache().peek(name);
-        if (opt.isEmpty()) return;
-        String tier = TierTaggerCore.chooseTier(opt.get());
-        if (tier == null || tier.isBlank()) return;
+            Optional<TierCache.Entry> opt = TierTaggerCore.cache().peek(name);
+            if (opt.isEmpty()) return;
+            String tier = TierTaggerCore.chooseTier(opt.get());
+            if (tier == null || tier.isBlank()) return;
 
-        Formatting colour = Formatting.byCode(TierTaggerCore.colourCodeFor(tier));
-        if (colour == null) colour = Formatting.GRAY;
+            Formatting colour = TierFormat.colored()
+                ? Formatting.byCode(TierTaggerCore.colourCodeFor(tier))
+                : Formatting.GRAY;
+            if (colour == null) colour = Formatting.GRAY;
 
-        MutableText badge = Text.literal(" [")
-                .append(Text.literal(tier).formatted(colour, Formatting.BOLD))
-                .append(Text.literal("]"))
-                .formatted(Formatting.GRAY);
+            String label = TierFormat.label(tier);
+            MutableText badge;
+            if (TierFormat.useBrackets()) {
+                badge = Text.literal(" [")
+                        .append(Text.literal(label).formatted(colour, Formatting.BOLD))
+                        .append(Text.literal("]"))
+                        .formatted(Formatting.GRAY);
+            } else {
+                badge = Text.literal(" ")
+                        .append(Text.literal(label).formatted(colour, Formatting.BOLD));
+            }
 
-        Text original = cir.getReturnValue();
-        MutableText combined = (original == null ? Text.empty() : original.copy()).append(badge);
-        cir.setReturnValue(combined);
+            Text original = cir.getReturnValue();
+            MutableText combined = (original == null ? Text.empty() : original.copy()).append(badge);
+            cir.setReturnValue(combined);
+        } catch (Throwable t) {
+            // Never crash the game from this mixin — TierTagger is purely cosmetic.
+            TierTaggerCore.LOGGER.debug("[TierTagger] tab badge mixin failed: {}", t.toString());
+        }
     }
 }

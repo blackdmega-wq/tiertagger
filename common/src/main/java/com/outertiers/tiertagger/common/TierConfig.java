@@ -13,12 +13,16 @@ public class TierConfig {
         "nethop", "smp", "sword", "axe", "mace", "speed"
     };
 
+    public static final String[] BADGE_FORMATS = { "bracket", "plain", "short" };
+
     public String  apiBase    = "https://outertiers-api.onrender.com";
     public String  gamemode   = "overall";
     public boolean showInTab  = true;
     public boolean showNametag = true;
     public boolean showPeak   = false;
     public boolean fallthroughToHighest = true;
+    public boolean coloredBadges = true;
+    public String  badgeFormat = "bracket";
     public int     cacheTtlSeconds = 300;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -52,6 +56,7 @@ public class TierConfig {
         if (gamemode == null) gamemode = "overall";
         if (apiBase  == null || apiBase.isBlank()) apiBase = "https://outertiers-api.onrender.com";
         if (cacheTtlSeconds <= 0) cacheTtlSeconds = 300;
+        if (badgeFormat == null || !isValidBadgeFormat(badgeFormat)) badgeFormat = "bracket";
         return this;
     }
 
@@ -67,5 +72,24 @@ public class TierConfig {
         if (g == null) return false;
         for (String m : GAMEMODES) if (m.equalsIgnoreCase(g)) return true;
         return false;
+    }
+
+    public static boolean isValidBadgeFormat(String f) {
+        if (f == null) return false;
+        for (String x : BADGE_FORMATS) if (x.equalsIgnoreCase(f)) return true;
+        return false;
+    }
+
+    public void resetToDefaults() {
+        TierConfig def = new TierConfig();
+        this.apiBase = def.apiBase;
+        this.gamemode = def.gamemode;
+        this.showInTab = def.showInTab;
+        this.showNametag = def.showNametag;
+        this.showPeak = def.showPeak;
+        this.fallthroughToHighest = def.fallthroughToHighest;
+        this.coloredBadges = def.coloredBadges;
+        this.badgeFormat = def.badgeFormat;
+        this.cacheTtlSeconds = def.cacheTtlSeconds;
     }
 }

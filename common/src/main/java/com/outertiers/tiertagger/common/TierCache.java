@@ -62,6 +62,15 @@ public class TierCache {
 
     public void invalidate() { entries.clear(); inflight.clear(); }
 
+    public void invalidatePlayer(String username) {
+        if (username == null) return;
+        String key = username.toLowerCase(Locale.ROOT);
+        entries.remove(key);
+        inflight.remove(key);
+    }
+
+    public int size() { return entries.size(); }
+
     private void requestAsync(String username) {
         String key = username.toLowerCase(Locale.ROOT);
         long now   = System.currentTimeMillis();
