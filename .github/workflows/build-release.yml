@@ -158,6 +158,19 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.java }}
 
+      - name: Pin plugin versions in gradle.properties
+        run: |
+          # settings.gradle's pluginManagement block reads ${loom_version} /
+          # ${moddev_version} as a Groovy GString from gradle.properties.
+          # Must run BEFORE setup-gradle/wrapper bootstrap because those also
+          # trigger settings evaluation and would fail with the wrong plugin version.
+          if [ "${{ matrix.loader }}" = "fabric" ]; then
+            sed -i "s|^loom_version=.*|loom_version=${{ matrix.loom }}|" gradle.properties
+          else
+            sed -i "s|^moddev_version=.*|moddev_version=${{ matrix.moddev }}|" gradle.properties
+          fi
+          grep -E '^(loom_version|moddev_version)=' gradle.properties
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -169,18 +182,6 @@ jobs:
             gradle wrapper --gradle-version ${{ matrix.gradle }} --no-daemon
           fi
           chmod +x ./gradlew
-
-      - name: Pin plugin versions in gradle.properties
-        run: |
-          # The settings.gradle pluginManagement block reads ${loom_version}/${moddev_version}
-          # as Groovy GString from gradle.properties (NOT from -P flags), so we must rewrite
-          # the file before invoking Gradle.
-          if [ "${{ matrix.loader }}" = "fabric" ]; then
-            sed -i "s|^loom_version=.*|loom_version=${{ matrix.loom }}|" gradle.properties
-          else
-            sed -i "s|^moddev_version=.*|moddev_version=${{ matrix.moddev }}|" gradle.properties
-          fi
-          grep -E '^(loom_version|moddev_version)=' gradle.properties
 
       - name: Build Fabric JAR
         if: matrix.loader == 'fabric'
