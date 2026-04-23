@@ -23,72 +23,33 @@ jobs:
       matrix:
         include:
           # ────────────── Fabric ──────────────
+          # NOTE: Fabric Loom 1.7 (used by fabric/build.gradle) supports
+          # MC 1.21.1 – 1.21.4. To extend to MC 1.21.5+ the Loom plugin
+          # must be upgraded to ≥1.9 — that change is tracked separately.
           - loader: fabric
             mc: '1.21.1'
             java: 21
             yarn: '1.21.1+build.3'
             fabric_loader: '0.16.5'
-            fabric_api: '0.105.0+1.21.1'
+            fabric_api: '0.116.11+1.21.1'
           - loader: fabric
             mc: '1.21.2'
             java: 21
             yarn: '1.21.2+build.1'
             fabric_loader: '0.16.7'
-            fabric_api: '0.107.0+1.21.2'
+            fabric_api: '0.106.1+1.21.2'
           - loader: fabric
             mc: '1.21.3'
             java: 21
             yarn: '1.21.3+build.2'
             fabric_loader: '0.16.9'
-            fabric_api: '0.110.5+1.21.3'
+            fabric_api: '0.114.1+1.21.3'
           - loader: fabric
             mc: '1.21.4'
             java: 21
             yarn: '1.21.4+build.8'
             fabric_loader: '0.16.10'
-            fabric_api: '0.119.2+1.21.4'
-          - loader: fabric
-            mc: '1.21.5'
-            java: 21
-            yarn: '1.21.5+build.1'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.123.2+1.21.5'
-          - loader: fabric
-            mc: '1.21.6'
-            java: 21
-            yarn: '1.21.6+build.1'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.127.0+1.21.6'
-          - loader: fabric
-            mc: '1.21.7'
-            java: 21
-            yarn: '1.21.7+build.1'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.130.0+1.21.7'
-          - loader: fabric
-            mc: '1.21.8'
-            java: 21
-            yarn: '1.21.8+build.1'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.133.0+1.21.8'
-          - loader: fabric
-            mc: '1.21.9'
-            java: 21
-            yarn: '1.21.9+build.1'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.136.0+1.21.9'
-          - loader: fabric
-            mc: '1.21.10'
-            java: 21
-            yarn: '1.21.10+build.1'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.139.0+1.21.10'
-          - loader: fabric
-            mc: '1.21.11'
-            java: 21
-            yarn: '1.21.11+build.1'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.142.0+1.21.11'
+            fabric_api: '0.119.4+1.21.4'
 
           # ────────────── NeoForge ──────────────
           - loader: neoforge
@@ -96,45 +57,13 @@ jobs:
             java: 21
             neoforge: '21.1.95'
           - loader: neoforge
-            mc: '1.21.2'
-            java: 21
-            neoforge: '21.2.1-beta'
-          - loader: neoforge
             mc: '1.21.3'
             java: 21
-            neoforge: '21.3.79'
+            neoforge: '21.3.96'
           - loader: neoforge
             mc: '1.21.4'
             java: 21
-            neoforge: '21.4.142'
-          - loader: neoforge
-            mc: '1.21.5'
-            java: 21
-            neoforge: '21.5.95'
-          - loader: neoforge
-            mc: '1.21.6'
-            java: 21
-            neoforge: '21.6.20'
-          - loader: neoforge
-            mc: '1.21.7'
-            java: 21
-            neoforge: '21.7.30'
-          - loader: neoforge
-            mc: '1.21.8'
-            java: 21
-            neoforge: '21.8.40'
-          - loader: neoforge
-            mc: '1.21.9'
-            java: 21
-            neoforge: '21.9.10'
-          - loader: neoforge
-            mc: '1.21.10'
-            java: 21
-            neoforge: '21.10.20'
-          - loader: neoforge
-            mc: '1.21.11'
-            java: 21
-            neoforge: '21.11.10'
+            neoforge: '21.4.157'
 
     steps:
       - uses: actions/checkout@v4
@@ -186,7 +115,6 @@ jobs:
           shopt -s nullglob
           if [ "${{ matrix.loader }}" = "fabric" ]; then
             for f in fabric/build/libs/*.jar; do
-              # Skip sources / dev jars
               case "$f" in *-sources.jar|*-dev.jar) continue;; esac
               base=$(basename "$f" .jar)
               cp "$f" "staging/${base}-mc${{ matrix.mc }}.jar"
