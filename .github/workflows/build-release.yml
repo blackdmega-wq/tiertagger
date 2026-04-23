@@ -108,37 +108,37 @@ jobs:
             mc: '1.21.1'
             java: 21
             neoforge: '21.1.95'
-            moddev: '1.0.21'
+            moddev: '1.0.24'
           - loader: neoforge
             mc: '1.21.3'
             java: 21
             neoforge: '21.3.96'
-            moddev: '1.0.21'
+            moddev: '1.0.24'
           - loader: neoforge
             mc: '1.21.4'
             java: 21
             neoforge: '21.4.157'
-            moddev: '2.0.41'
+            moddev: '2.0.78'
           - loader: neoforge
             mc: '1.21.5'
             java: 21
             neoforge: '21.5.97'
-            moddev: '2.0.41'
+            moddev: '2.0.78'
           - loader: neoforge
             mc: '1.21.8'
             java: 21
             neoforge: '21.8.53'
-            moddev: '2.0.78'
+            moddev: '2.0.141'
           - loader: neoforge
             mc: '1.21.10'
             java: 21
             neoforge: '21.10.64'
-            moddev: '2.0.78'
+            moddev: '2.0.141'
           - loader: neoforge
             mc: '1.21.11'
             java: 21
             neoforge: '21.11.42'
-            moddev: '2.0.78'
+            moddev: '2.0.141'
 
     steps:
       - uses: actions/checkout@v4
@@ -152,12 +152,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.10'
+          gradle-version: '8.14'
 
       - name: Bootstrap Gradle wrapper if missing
         run: |
           if [ ! -f ./gradlew ]; then
-            gradle wrapper --gradle-version 8.10 --no-daemon
+            gradle wrapper --gradle-version 8.14 --no-daemon
           fi
           chmod +x ./gradlew
 
