@@ -150,16 +150,18 @@ jobs:
         with:
           gradle-version: '8.10'
 
-      - name: Make gradlew executable
+      - name: Bootstrap Gradle wrapper if missing
         run: |
-          if [ -f ./gradlew ]; then chmod +x ./gradlew; fi
+          if [ ! -f ./gradlew ]; then
+            gradle wrapper --gradle-version 8.10 --no-daemon
+          fi
+          chmod +x ./gradlew
 
       - name: Build Fabric JAR
         if: matrix.loader == 'fabric'
-        continue-on-error: true
         id: build_fabric
         run: |
-          gradle :fabric:build \
+          ./gradlew :fabric:build \
             -Pminecraft_version=${{ matrix.mc }} \
             -Pyarn_mappings=${{ matrix.yarn }} \
             -Ploader_version=${{ matrix.fabric_loader }} \
@@ -169,10 +171,9 @@ jobs:
 
       - name: Build NeoForge JAR
         if: matrix.loader == 'neoforge'
-        continue-on-error: true
         id: build_neoforge
         run: |
-          gradle :neoforge:build \
+          ./gradlew :neoforge:build \
             -Pminecraft_version=${{ matrix.mc }} \
             -Pneoforge_version=${{ matrix.neoforge }} \
             -Pjava_version=${{ matrix.java }} \
