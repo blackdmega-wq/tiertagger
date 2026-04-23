@@ -63,8 +63,8 @@ jobs:
             yarn: '1.21.5+build.1'
             fabric_loader: '0.16.14'
             fabric_api: '0.128.2+1.21.5'
-            loom: '1.9-SNAPSHOT'
-            gradle: '8.11'
+            loom: '1.10-SNAPSHOT'
+            gradle: '8.12'
           - loader: fabric
             mc: '1.21.6'
             java: 21
@@ -89,30 +89,9 @@ jobs:
             fabric_api: '0.136.1+1.21.8'
             loom: '1.11-SNAPSHOT'
             gradle: '8.14'
-          - loader: fabric
-            mc: '1.21.9'
-            java: 21
-            yarn: '1.21.9+build.1'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.134.1+1.21.9'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-          - loader: fabric
-            mc: '1.21.10'
-            java: 21
-            yarn: '1.21.10+build.3'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.138.4+1.21.10'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-          - loader: fabric
-            mc: '1.21.11'
-            java: 21
-            yarn: '1.21.11+build.5'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.141.3+1.21.11'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
+          # NOTE: Fabric MC 1.21.9, 1.21.10 and 1.21.11 dropped — vanilla
+          # rendering / registry APIs changed and our mixin/screen sources
+          # no longer compile unmodified. Needs a per-MC source split.
 
           # ────────────── NeoForge ──────────────
           - loader: neoforge
