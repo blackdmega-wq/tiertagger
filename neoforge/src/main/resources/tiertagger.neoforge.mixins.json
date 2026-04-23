@@ -3,7 +3,8 @@
   "package": "com.outertiers.tiertagger.neoforge.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "PlayerListHudMixin"
+    "PlayerListHudMixin",
+    "PlayerEntityRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1
