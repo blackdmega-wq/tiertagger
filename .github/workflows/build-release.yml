@@ -23,47 +23,122 @@ jobs:
       matrix:
         include:
           # ────────────── Fabric ──────────────
-          # NOTE: Fabric Loom 1.7 (used by fabric/build.gradle) supports
-          # MC 1.21.1 – 1.21.4. To extend to MC 1.21.5+ the Loom plugin
-          # must be upgraded to ≥1.9 — that change is tracked separately.
+          # Loom plugin version is selected per-MC because Loom 1.7 only
+          # supports up to MC 1.21.4. Newer MC versions need Loom 1.8+.
           - loader: fabric
             mc: '1.21.1'
             java: 21
             yarn: '1.21.1+build.3'
             fabric_loader: '0.16.5'
             fabric_api: '0.116.11+1.21.1'
+            loom: '1.7-SNAPSHOT'
           - loader: fabric
             mc: '1.21.2'
             java: 21
             yarn: '1.21.2+build.1'
             fabric_loader: '0.16.7'
             fabric_api: '0.106.1+1.21.2'
+            loom: '1.7-SNAPSHOT'
           - loader: fabric
             mc: '1.21.3'
             java: 21
             yarn: '1.21.3+build.2'
             fabric_loader: '0.16.9'
             fabric_api: '0.114.1+1.21.3'
+            loom: '1.7-SNAPSHOT'
           - loader: fabric
             mc: '1.21.4'
             java: 21
             yarn: '1.21.4+build.8'
             fabric_loader: '0.16.10'
             fabric_api: '0.119.4+1.21.4'
+            loom: '1.8-SNAPSHOT'
+          - loader: fabric
+            mc: '1.21.5'
+            java: 21
+            yarn: '1.21.5+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.128.2+1.21.5'
+            loom: '1.9-SNAPSHOT'
+          - loader: fabric
+            mc: '1.21.6'
+            java: 21
+            yarn: '1.21.6+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.128.2+1.21.6'
+            loom: '1.10-SNAPSHOT'
+          - loader: fabric
+            mc: '1.21.7'
+            java: 21
+            yarn: '1.21.7+build.8'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.129.0+1.21.7'
+            loom: '1.10-SNAPSHOT'
+          - loader: fabric
+            mc: '1.21.8'
+            java: 21
+            yarn: '1.21.8+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.136.1+1.21.8'
+            loom: '1.11-SNAPSHOT'
+          - loader: fabric
+            mc: '1.21.9'
+            java: 21
+            yarn: '1.21.9+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.134.1+1.21.9'
+            loom: '1.11-SNAPSHOT'
+          - loader: fabric
+            mc: '1.21.10'
+            java: 21
+            yarn: '1.21.10+build.3'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.138.4+1.21.10'
+            loom: '1.11-SNAPSHOT'
+          - loader: fabric
+            mc: '1.21.11'
+            java: 21
+            yarn: '1.21.11+build.5'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.141.3+1.21.11'
+            loom: '1.11-SNAPSHOT'
 
           # ────────────── NeoForge ──────────────
           - loader: neoforge
             mc: '1.21.1'
             java: 21
             neoforge: '21.1.95'
+            moddev: '1.0.21'
           - loader: neoforge
             mc: '1.21.3'
             java: 21
             neoforge: '21.3.96'
+            moddev: '1.0.21'
           - loader: neoforge
             mc: '1.21.4'
             java: 21
             neoforge: '21.4.157'
+            moddev: '2.0.41'
+          - loader: neoforge
+            mc: '1.21.5'
+            java: 21
+            neoforge: '21.5.97'
+            moddev: '2.0.41'
+          - loader: neoforge
+            mc: '1.21.8'
+            java: 21
+            neoforge: '21.8.53'
+            moddev: '2.0.78'
+          - loader: neoforge
+            mc: '1.21.10'
+            java: 21
+            neoforge: '21.10.64'
+            moddev: '2.0.78'
+          - loader: neoforge
+            mc: '1.21.11'
+            java: 21
+            neoforge: '21.11.42'
+            moddev: '2.0.78'
 
     steps:
       - uses: actions/checkout@v4
@@ -96,6 +171,7 @@ jobs:
             -Ploader_version=${{ matrix.fabric_loader }} \
             -Pfabric_version=${{ matrix.fabric_api }} \
             -Pjava_version=${{ matrix.java }} \
+            -Ploom_version=${{ matrix.loom }} \
             --no-daemon --stacktrace
 
       - name: Build NeoForge JAR
@@ -106,6 +182,7 @@ jobs:
             -Pminecraft_version=${{ matrix.mc }} \
             -Pneoforge_version=${{ matrix.neoforge }} \
             -Pjava_version=${{ matrix.java }} \
+            -Pmoddev_version=${{ matrix.moddev }} \
             --no-daemon --stacktrace
 
       - name: Stage built JARs
@@ -145,7 +222,7 @@ jobs:
     name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '')
+    if: always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''))
     steps:
       - uses: actions/checkout@v4
 

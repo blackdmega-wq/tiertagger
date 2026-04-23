@@ -5,6 +5,12 @@ pluginManagement {
         gradlePluginPortal()
         mavenCentral()
     }
+    plugins {
+        // Loom version is selected per-MC by build-release.yml via -Ploom_version=...
+        // Default for local dev is taken from gradle.properties (loom_version).
+        id 'fabric-loom' version "${loom_version}"
+        id 'net.neoforged.moddev' version "${moddev_version}"
+    }
 }
 
 rootProject.name = 'tiertagger'
