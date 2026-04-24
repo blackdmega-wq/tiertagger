@@ -6,6 +6,7 @@ import com.outertiers.tiertagger.common.ServiceData;
 import com.outertiers.tiertagger.common.TierIcons;
 import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
+import com.outertiers.tiertagger.fabric.SkinFetcher;
 import com.outertiers.tiertagger.fabric.compat.Compat;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -25,39 +26,47 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Side-by-side comparison: each tier-list is its own card, and within the
- * card every mode shows BOTH players' tiers next to each other so you can
- * read across the row "vanilla — A:HT2 vs B:HT3" without scanning.
+ * Side-by-side player comparison.
  *
  *   ┌─────────────── opaque panel ──────────────┐
- *   │   [head]  PlayerA          [head]  PlayerB │
- *   │   ──────────────────────────────────────── │
+ *   │  [head] PlayerA              PlayerB [head]│
+ *   │   HT2 on Vanilla       HT3 on Sword        │
+ *   │                ┌──────────┐                │
+ *   │                │    vs    │                │
+ *   │                └──────────┘                │
  *   │   ▍ MCTiers                                │
- *   │     🗡 Vanilla   HT2   ◀     HT3           │
- *   │     ⚒ Sword     LT3   =     LT3           │
+ *   │     [icon] Vanilla    HT2  ◀   HT3         │
+ *   │     [icon] Sword      LT3  =   LT3         │
  *   │   ▍ OuterTiers                             │
  *   │     ...                                    │
- *   │   ──────────────────────────────────────── │
  *   │   Wins: A 4   B 6   ties 2                 │
  *   │   [↻ A]                            [↻ B]   │
  *   └────────────────────────────────────────────┘
+ *
+ * Heads use {@link SkinFetcher} so offline players still get a real face,
+ * and mode icons use the OuterTiers website PNGs from {@link ModeIcons}.
  */
 public class TierCompareScreen extends Screen {
 
     private static final Identifier STEVE = Identifier.ofVanilla("textures/entity/player/wide/steve.png");
 
-    private static final int PANEL_W_MAX = 560;
+    private static final int PANEL_W_MAX = 580;
     private static final int CARD_GAP    = 6;
     private static final int CARD_PAD    = 8;
     private static final int ROW_H       = 14;
+    private static final int ICON_SIZE   = 16;
+    /** Extra horizontal breathing room between the right player's name and head. */
+    private static final int RIGHT_NAME_GAP = 18;
 
-    private static final int BG_PANEL    = 0xF20E1116;
+    private static final int BG_PANEL        = 0xF20E1116;
     private static final int BG_PANEL_BORDER = 0xFF2A2F38;
-    private static final int BG_HEADER   = 0xFF181C24;
-    private static final int BG_CARD     = 0xFF15191F;
-    private static final int BG_CARD_BAR = 0xFF1E232C;
-    private static final int FG_FAINT    = 0x9AA0AA;
-    private static final int FG_TEXT     = 0xE6E8EC;
+    private static final int BG_HEADER       = 0xFF181C24;
+    private static final int BG_CARD         = 0xFF15191F;
+    private static final int BG_CARD_BAR     = 0xFF1E232C;
+    private static final int FG_FAINT        = 0x9AA0AA;
+    private static final int FG_TEXT         = 0xE6E8EC;
+    private static final int VS_BG           = 0xFF222631;
+    private static final int VS_BORDER       = 0xFF3A4150;
 
     private final Screen parent;
     private final String nameA;
@@ -77,6 +86,8 @@ public class TierCompareScreen extends Screen {
     protected void init() {
         try { TierTaggerCore.cache().peekData(nameA); } catch (Throwable ignored) {}
         try { TierTaggerCore.cache().peekData(nameB); } catch (Throwable ignored) {}
+        // Pre-warm offline avatar downloads.
+        try { SkinFetcher.headFor(nameA); SkinFetcher.headFor(nameB); } catch (Throwable ignored) {}
         scrollY = 0;
 
         int panelW = Math.min(PANEL_W_MAX, this.width - 40);
@@ -87,7 +98,7 @@ public class TierCompareScreen extends Screen {
                 try { TierTaggerCore.cache().invalidatePlayer(nameA);
                       TierTaggerCore.cache().peekData(nameA); } catch (Throwable ignored) {}
             })
-            .dimensions(panelX + CARD_PAD, btnY, 90, 20).build());
+            .dimensions(panelX + CARD_PAD, btnY, 100, 20).build());
 
         this.addDrawableChild(ButtonWidget.builder(Text.literal("Close"), btn -> closeSafely())
             .dimensions(this.width / 2 - 40, btnY, 80, 20).build());
@@ -96,7 +107,7 @@ public class TierCompareScreen extends Screen {
                 try { TierTaggerCore.cache().invalidatePlayer(nameB);
                       TierTaggerCore.cache().peekData(nameB); } catch (Throwable ignored) {}
             })
-            .dimensions(panelX + panelW - CARD_PAD - 90, btnY, 90, 20).build());
+            .dimensions(panelX + panelW - CARD_PAD - 100, btnY, 100, 20).build());
     }
 
     @Override
@@ -131,7 +142,7 @@ public class TierCompareScreen extends Screen {
             PlayerData dA = optA.orElse(null);
             PlayerData dB = optB.orElse(null);
 
-            int headerH = 50;
+            int headerH = 64;
             renderHeader(ctx, dA, dB, panelX + CARD_PAD, panelTop + CARD_PAD,
                          panelW - CARD_PAD * 2, headerH);
 
@@ -155,48 +166,75 @@ public class TierCompareScreen extends Screen {
                               int x, int y, int w, int h) {
         fillRect(ctx, x, y, x + w, y + h, BG_HEADER);
 
-        int headSize = h - 12;
-        int leftHeadX  = x + 8;
-        int rightHeadX = x + w - 8 - headSize;
+        int headSize = h - 16;
+        int leftHeadX  = x + 10;
+        int rightHeadX = x + w - 10 - headSize;
         int headY      = y + (h - headSize) / 2;
         drawHead(ctx, nameA, leftHeadX,  headY, headSize);
         drawHead(ctx, nameB, rightHeadX, headY, headSize);
 
-        // Names + highest tier under name
+        // ── Left side text block ──
+        int leftTextX = leftHeadX + headSize + 10;
         ctx.drawTextWithShadow(this.textRenderer,
             Text.literal(nameA).formatted(Formatting.WHITE, Formatting.BOLD),
-            leftHeadX + headSize + 8, y + 8, 0xFFFFFFFF);
-        ctx.drawTextWithShadow(this.textRenderer,
-            Text.literal(nameB).formatted(Formatting.WHITE, Formatting.BOLD),
-            rightHeadX - 8 - this.textRenderer.getWidth(nameB), y + 8, 0xFFFFFFFF);
+            leftTextX, y + 10, 0xFFFFFFFF);
 
         Ranking bestA = highestOverall(dA);
-        Ranking bestB = highestOverall(dB);
+        TierService bestSvcA = highestOverallSvc(dA);
         if (bestA != null) {
-            String s = bestA.label();
-            int c = TierTaggerCore.argbFor(s) & 0xFFFFFF;
-            ctx.drawTextWithShadow(this.textRenderer, Text.literal(s).withColor(c).copy().formatted(Formatting.BOLD),
-                leftHeadX + headSize + 8, y + 22, c);
-        } else if (dA == null) {
-            ctx.drawTextWithShadow(this.textRenderer, Text.literal("loading…").withColor(FG_FAINT),
-                leftHeadX + headSize + 8, y + 22, FG_FAINT);
+            int c = TierTaggerCore.argbFor(bestA.label()) & 0xFFFFFF;
+            MutableText t = Text.literal(bestA.label()).withColor(c).copy().formatted(Formatting.BOLD)
+                .append(Text.literal(" on ").formatted(Formatting.GRAY))
+                .append(Text.literal(bestSvcA == null ? "" : bestSvcA.shortLabel).withColor(FG_TEXT));
+            ctx.drawTextWithShadow(this.textRenderer, t, leftTextX, y + 24, c);
+        } else {
+            ctx.drawTextWithShadow(this.textRenderer,
+                Text.literal(dA == null ? "loading\u2026" : "no tiers").withColor(FG_FAINT),
+                leftTextX, y + 24, FG_FAINT);
         }
-        if (bestB != null) {
-            String s = bestB.label();
-            int c = TierTaggerCore.argbFor(s) & 0xFFFFFF;
-            int sw = this.textRenderer.getWidth(s);
-            ctx.drawTextWithShadow(this.textRenderer, Text.literal(s).withColor(c).copy().formatted(Formatting.BOLD),
-                rightHeadX - 8 - sw, y + 22, c);
-        } else if (dB == null) {
-            int sw = this.textRenderer.getWidth("loading…");
-            ctx.drawTextWithShadow(this.textRenderer, Text.literal("loading…").withColor(FG_FAINT),
-                rightHeadX - 8 - sw, y + 22, FG_FAINT);
-        }
+        // Per-player loaded count
+        ctx.drawTextWithShadow(this.textRenderer,
+            Text.literal(loadedCount(dA)).withColor(FG_FAINT),
+            leftTextX, y + 38, FG_FAINT);
 
-        // Centred "vs"
+        // ── Right side text block (right-aligned, with extra gap from head) ──
+        int rightTextRight = rightHeadX - RIGHT_NAME_GAP;
+        int wName = this.textRenderer.getWidth(nameB);
+        ctx.drawTextWithShadow(this.textRenderer,
+            Text.literal(nameB).formatted(Formatting.WHITE, Formatting.BOLD),
+            rightTextRight - wName, y + 10, 0xFFFFFFFF);
+
+        Ranking bestB = highestOverall(dB);
+        TierService bestSvcB = highestOverallSvc(dB);
+        if (bestB != null) {
+            int c = TierTaggerCore.argbFor(bestB.label()) & 0xFFFFFF;
+            MutableText t = Text.literal(bestB.label()).withColor(c).copy().formatted(Formatting.BOLD)
+                .append(Text.literal(" on ").formatted(Formatting.GRAY))
+                .append(Text.literal(bestSvcB == null ? "" : bestSvcB.shortLabel).withColor(FG_TEXT));
+            int wt = this.textRenderer.getWidth(t);
+            ctx.drawTextWithShadow(this.textRenderer, t, rightTextRight - wt, y + 24, c);
+        } else {
+            String s = dB == null ? "loading\u2026" : "no tiers";
+            int sw = this.textRenderer.getWidth(s);
+            ctx.drawTextWithShadow(this.textRenderer,
+                Text.literal(s).withColor(FG_FAINT), rightTextRight - sw, y + 24, FG_FAINT);
+        }
+        String lc = loadedCount(dB);
+        int lcw = this.textRenderer.getWidth(lc);
+        ctx.drawTextWithShadow(this.textRenderer,
+            Text.literal(lc).withColor(FG_FAINT), rightTextRight - lcw, y + 38, FG_FAINT);
+
+        // ── Centred "vs" pill ──
+        String vs = "vs";
+        int pillW = 28;
+        int pillH = 18;
+        int pillX = x + (w - pillW) / 2;
+        int pillY = y + (h - pillH) / 2;
+        fillRect(ctx, pillX, pillY, pillX + pillW, pillY + pillH, VS_BG);
+        outlineRect(ctx, pillX, pillY, pillW, pillH, VS_BORDER);
         ctx.drawCenteredTextWithShadow(this.textRenderer,
-            Text.literal("vs").formatted(Formatting.GRAY, Formatting.BOLD),
-            x + w / 2, y + h / 2 - 4, 0xCCCCCC);
+            Text.literal(vs).formatted(Formatting.GRAY, Formatting.BOLD),
+            pillX + pillW / 2, pillY + 5, 0xCCCCCC);
     }
 
     private static Ranking highestOverall(PlayerData d) {
@@ -210,6 +248,29 @@ public class TierCompareScreen extends Screen {
         return best;
     }
 
+    private static TierService highestOverallSvc(PlayerData d) {
+        if (d == null) return null;
+        Ranking best = null;
+        TierService bestSvc = null;
+        for (TierService s : TierService.values()) {
+            Ranking r = d.get(s).highest();
+            if (r == null) continue;
+            if (best == null || r.score() > best.score()) { best = r; bestSvc = s; }
+        }
+        return bestSvc;
+    }
+
+    private static String loadedCount(PlayerData d) {
+        if (d == null) return "loading\u2026";
+        int loaded = 0, ranked = 0;
+        for (TierService s : TierService.values()) {
+            ServiceData sd = d.get(s);
+            if (sd.fetchedAt > 0) loaded++;
+            if (sd.rankedCount() > 0) ranked++;
+        }
+        return ranked + " / " + TierService.values().length + " ranked";
+    }
+
     // ── cards ───────────────────────────────────────────────────────────────
 
     private int renderCards(DrawContext ctx, PlayerData dA, PlayerData dB, int x, int y, int w) {
@@ -219,12 +280,10 @@ public class TierCompareScreen extends Screen {
             ServiceData sdA = dA == null ? null : dA.get(svc);
             ServiceData sdB = dB == null ? null : dB.get(svc);
 
-            // Union of modes from this service plus any modes either player actually has
             Set<String> allModes = new LinkedHashSet<>(svc.modes);
             if (sdA != null) allModes.addAll(sdA.rankings.keySet());
             if (sdB != null) allModes.addAll(sdB.rankings.keySet());
 
-            // Only show modes where at least one player has data (keeps the card compact)
             int rowsToDraw = 0;
             for (String m : allModes) {
                 Ranking rA = sdA == null ? null : sdA.rankings.get(m);
@@ -233,13 +292,11 @@ public class TierCompareScreen extends Screen {
             }
             int cardH = 22 + Math.max(1, rowsToDraw) * ROW_H + 6;
 
-            // Card chrome
             fillRect(ctx, x, y, x + w, y + cardH, BG_CARD);
             outlineRect(ctx, x, y, w, cardH, 0xFF2A2F38);
             fillRect(ctx, x, y, x + 3, y + cardH, svc.accentArgb);
             fillRect(ctx, x + 3, y, x + w, y + 22, BG_CARD_BAR);
 
-            // Header text
             ctx.drawTextWithShadow(this.textRenderer,
                 Text.literal(svc.shortLabel).withColor(svc.accentArgb & 0xFFFFFF).copy().formatted(Formatting.BOLD),
                 x + 10, y + 7, svc.accentArgb & 0xFFFFFF);
@@ -247,7 +304,6 @@ public class TierCompareScreen extends Screen {
                 Text.literal(svc.displayName).formatted(Formatting.WHITE),
                 x + 10 + this.textRenderer.getWidth(svc.shortLabel) + 6, y + 7, FG_TEXT);
 
-            // Right side: per-player region pill
             String regs = regionPair(sdA, sdB);
             int rsw = this.textRenderer.getWidth(regs);
             ctx.drawTextWithShadow(this.textRenderer, Text.literal(regs).withColor(FG_FAINT),
@@ -256,7 +312,7 @@ public class TierCompareScreen extends Screen {
             int rowY = y + 24;
             if (rowsToDraw == 0) {
                 String msg = (sdA != null && sdA.fetchedAt == 0) || (sdB != null && sdB.fetchedAt == 0)
-                    ? "loading…" : "neither player ranked here";
+                    ? "loading\u2026" : "neither player ranked here";
                 ctx.drawTextWithShadow(this.textRenderer,
                     Text.literal(msg).formatted(Formatting.DARK_GRAY),
                     x + 10, rowY + 2, 0x808080);
@@ -304,19 +360,29 @@ public class TierCompareScreen extends Screen {
         if (alt) fillRect(ctx, x - 4, y, x + w + 4, y + ROW_H, 0x14FFFFFF);
 
         int textX = x;
-        try {
-            Identifier id = Identifier.tryParse(TierIcons.iconFor(mode));
-            if (id != null) {
-                Item item = Compat.lookupItem(id);
-                ItemStack stack = item == null ? ItemStack.EMPTY : new ItemStack(item);
-                if (!stack.isEmpty()) {
-                    ctx.drawItem(stack, x, y - 1);
-                    textX = x + 20;
+        boolean drewIcon = false;
+        Identifier tex = ModeIcons.textureFor(mode);
+        if (tex != null) {
+            try {
+                ctx.drawTexture(tex, x, y - 1, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
+                drewIcon = true;
+            } catch (Throwable ignored) {}
+        }
+        if (!drewIcon) {
+            try {
+                Identifier id = Identifier.tryParse(TierIcons.iconFor(mode));
+                if (id != null) {
+                    Item item = Compat.lookupItem(id);
+                    ItemStack stack = item == null ? ItemStack.EMPTY : new ItemStack(item);
+                    if (!stack.isEmpty()) {
+                        ctx.drawItem(stack, x, y - 1);
+                        drewIcon = true;
+                    }
                 }
-            }
-        } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {}
+        }
+        if (drewIcon) textX = x + ICON_SIZE + 4;
 
-        // Mode label (left)
         String label = TierIcons.labelFor(mode);
         ctx.drawTextWithShadow(this.textRenderer,
             Text.literal(label).withColor(FG_TEXT),
@@ -324,11 +390,10 @@ public class TierCompareScreen extends Screen {
 
         // Three columns inside the right portion of the row:
         //   [tierA]  [winner]  [tierB]
-        int rightStart = x + (w * 50 / 100);   // start of tier columns at ~50% of row width
+        int rightStart = x + (w * 50 / 100);
         int rightEnd   = x + w;
         int colW       = (rightEnd - rightStart) / 3;
 
-        // tier A
         Text tA = tierComp(rA);
         int wA = this.textRenderer.getWidth(tA);
         int aCx = rightStart + colW / 2;
@@ -336,7 +401,6 @@ public class TierCompareScreen extends Screen {
         if (winner == 'A') fillRect(ctx, aCx - wA / 2 - 3, y + 1, aCx + wA / 2 + 3, y + ROW_H - 1, 0x3000FF66);
         ctx.drawTextWithShadow(this.textRenderer, tA, aCx - wA / 2, y + 3, aColor);
 
-        // winner glyph
         Text wsym;
         switch (winner) {
             case 'A': wsym = Text.literal("\u25C0").formatted(Formatting.GREEN, Formatting.BOLD); break;
@@ -345,7 +409,6 @@ public class TierCompareScreen extends Screen {
         }
         ctx.drawCenteredTextWithShadow(this.textRenderer, wsym, rightStart + colW + colW / 2, y + 3, 0xFFFFFF);
 
-        // tier B
         Text tB = tierComp(rB);
         int wB = this.textRenderer.getWidth(tB);
         int bCx = rightStart + colW * 2 + colW / 2;
@@ -355,19 +418,22 @@ public class TierCompareScreen extends Screen {
     }
 
     private static Text tierComp(Ranking r) {
-        if (r == null || r.tierLevel <= 0) return Text.literal("—").formatted(Formatting.DARK_GRAY);
+        if (r == null || r.tierLevel <= 0) return Text.literal("\u2014").formatted(Formatting.DARK_GRAY);
         return Text.literal(r.label()).formatted(Formatting.BOLD);
     }
 
     private static String regionPair(ServiceData a, ServiceData b) {
-        String ra = (a == null || a.region == null || a.region.isBlank()) ? "—" : a.region;
-        String rb = (b == null || b.region == null || b.region.isBlank()) ? "—" : b.region;
+        String ra = (a == null || a.region == null || a.region.isBlank()) ? "\u2014" : a.region;
+        String rb = (b == null || b.region == null || b.region.isBlank()) ? "\u2014" : b.region;
         return ra + "  vs  " + rb;
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────
 
     private void drawHead(DrawContext ctx, String name, int x, int y, int size) {
+        ctx.fill(x - 2, y - 2, x + size + 2, y + size + 2, 0xFF1A1A1A);
+
+        // 1) Live skin from the local player tab list (online only).
         SkinTextures st = null;
         try {
             MinecraftClient mc = MinecraftClient.getInstance();
@@ -376,9 +442,26 @@ public class TierCompareScreen extends Screen {
                 if (e != null) st = e.getSkinTextures();
             }
         } catch (Throwable ignored) {}
+        if (st != null) {
+            try {
+                Compat.drawPlayerFace(ctx, st, STEVE, x, y, size);
+                return;
+            } catch (Throwable ignored) {}
+        }
+
+        // 2) Fetched offline avatar (mc-heads.net).
+        Optional<Identifier> fetched = Optional.empty();
+        try { fetched = SkinFetcher.headFor(name); } catch (Throwable ignored) {}
+        if (fetched.isPresent()) {
+            try {
+                ctx.drawTexture(fetched.get(), x, y, 0, 0, size, size, size, size);
+                return;
+            } catch (Throwable ignored) {}
+        }
+
+        // 3) Steve fallback.
         try {
-            ctx.fill(x - 2, y - 2, x + size + 2, y + size + 2, 0xFF1A1A1A);
-            Compat.drawPlayerFace(ctx, st, STEVE, x, y, size);
+            Compat.drawPlayerFace(ctx, null, STEVE, x, y, size);
         } catch (Throwable t) {
             ctx.fill(x, y, x + size, y + size, 0xFF6E4A2A);
         }

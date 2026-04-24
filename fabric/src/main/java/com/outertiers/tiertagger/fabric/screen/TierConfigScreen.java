@@ -17,16 +17,16 @@ import java.util.List;
 /**
  * TierTagger settings screen.
  *
- * Crash fix in v1.6.0:
- *   {@code Style.withColor(int)} was tightened in MC 1.21.5+ to validate that
- *   the value is a pure RGB triplet (0..0xFFFFFF). The previous version
- *   passed {@code TierService.accentArgb} (e.g. {@code 0xFFE53935}, alpha
- *   byte set) directly and the screen crashed on init. Every {@code .withColor}
- *   call now masks with {@code & 0xFFFFFF}.
+ * v1.7 redesign:
+ *   - Solid panel background so the widgets are always legible regardless of
+ *     what's behind the GUI.
+ *   - Compact 2-column layout that always fits in 480p.
+ *   - Per-service toggles live in their own clearly-labelled section.
+ *   - Defensive {@code init()} so a single bad widget can't crash the screen.
  *
- * Defensive: {@code init()} is wrapped so a single bad widget can't bring the
- * whole screen down — the user just sees a fallback "Done" button instead of
- * a hard client crash.
+ * Crash fix in v1.6.0 (preserved): {@code Style.withColor(int)} now requires a
+ * pure RGB triplet (0..0xFFFFFF). Every {@code .withColor} call masks the
+ * accent argb with {@code & 0xFFFFFF} so 1.21.5+ doesn't reject it.
  */
 public class TierConfigScreen extends Screen {
 
@@ -35,11 +35,20 @@ public class TierConfigScreen extends Screen {
     private static final int BTN_GAP = 6;
     private static final int ROW_H   = BTN_H + 4;
 
+    private static final int PANEL_W_MAX     = 360;
+    private static final int BG_PANEL        = 0xF20E1116;
+    private static final int BG_PANEL_BORDER = 0xFF2A2F38;
+    private static final int BG_HEADER       = 0xFF181C24;
+    private static final int FG_FAINT        = 0x9AA0AA;
+
     private final Screen parent;
     private boolean bgApplied = false;
 
+    /** y position where the per-service section starts (used by render()). */
+    private int servicesHeaderY = -1;
+
     public TierConfigScreen(Screen parent) {
-        super(Text.literal("TierTagger — Settings"));
+        super(Text.literal("TierTagger \u2014 Settings"));
         this.parent = parent;
     }
 
@@ -50,7 +59,7 @@ public class TierConfigScreen extends Screen {
     }
 
     private int rowY(int row) {
-        return Math.max(36, this.height / 6) + row * ROW_H;
+        return Math.max(40, this.height / 8) + row * ROW_H;
     }
 
     private static int rgb(int argb) { return argb & 0xFFFFFF; }
@@ -61,7 +70,7 @@ public class TierConfigScreen extends Screen {
             TierTaggerCore.LOGGER.warn("[TierTagger] config screen init failed: {}", t.toString());
             this.clearChildren();
             this.addDrawableChild(ButtonWidget.builder(
-                    Text.literal("Done (init error — see log)"), b -> closeSafely())
+                    Text.literal("Done (init error \u2014 see log)"), b -> closeSafely())
                 .dimensions(this.width / 2 - 110, this.height / 2, 220, BTN_H).build());
         }
     }
@@ -134,15 +143,20 @@ public class TierConfigScreen extends Screen {
                 .build(colX(1), rowY(r), BTN_W, BTN_H,
                     Text.literal("Badge Format"),
                     (b, v) -> { cfg.badgeFormat = v; cfg.save(); }));
-        r += 2;  // gap before services section
+        r++;
+
+        // Section break before per-service toggles
+        servicesHeaderY = rowY(r) + 6;
+        r++;
 
         // ── Per-service enable toggles (2 per row) ──
         TierService[] svcs = TierService.values();
+        int bottomLimit = this.height - 32 - ROW_H;  // leave room for the bottom buttons
         for (int i = 0; i < svcs.length; i++) {
             TierService svc = svcs[i];
             int col = i % 2;
             if (col == 0 && i > 0) r++;
-            if (rowY(r) + BTN_H > this.height - 32) break;
+            if (rowY(r) + BTN_H > bottomLimit) break;
             this.addDrawableChild(
                 CyclingButtonWidget.onOffBuilder(cfg.isServiceEnabled(svc))
                     .build(colX(col), rowY(r), BTN_W, BTN_H,
@@ -153,10 +167,8 @@ public class TierConfigScreen extends Screen {
                             try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
                         }));
         }
-        if (svcs.length % 2 == 1) r++;
-        r++;
 
-        // ── Bottom buttons ──
+        // ── Bottom buttons (always anchored to the bottom of the screen) ──
         int bottomY = this.height - 27;
         this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("Refresh Cache"),
@@ -178,18 +190,50 @@ public class TierConfigScreen extends Screen {
         bgApplied = false;
         try {
             this.renderBackground(ctx, mouseX, mouseY, delta);
+
+            // Solid centred backdrop so widgets stay legible.
+            int totalW = BTN_W * 2 + BTN_GAP;
+            int panelW = Math.min(PANEL_W_MAX, this.width - 24);
+            panelW = Math.max(panelW, totalW + 24);
+            int panelX = (this.width - panelW) / 2;
+            int panelTop = 8;
+            int panelBottom = this.height - 8;
+            fillRect(ctx, panelX, panelTop, panelX + panelW, panelBottom, BG_PANEL);
+            outlineRect(ctx, panelX, panelTop, panelW, panelBottom - panelTop, BG_PANEL_BORDER);
+
+            // Title strip
+            fillRect(ctx, panelX + 1, panelTop + 1, panelX + panelW - 1, panelTop + 26, BG_HEADER);
+            ctx.drawCenteredTextWithShadow(this.textRenderer,
+                this.title.copy().formatted(Formatting.WHITE, Formatting.BOLD),
+                this.width / 2, panelTop + 10, 0xFFFFFFFF);
+            ctx.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal("v" + TierTaggerCore.MOD_VERSION + "  \u00B7  /tiertagger help for chat commands")
+                    .withColor(FG_FAINT),
+                this.width / 2, panelTop + 18, FG_FAINT);
+
             super.render(ctx, mouseX, mouseY, delta);
 
-            ctx.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 14, 0xFFFFFF);
-            int svcHeaderY = rowY(5) + 3;
-            if (svcHeaderY < this.height - 40) {
+            if (servicesHeaderY > 0 && servicesHeaderY < this.height - 40) {
                 ctx.drawCenteredTextWithShadow(this.textRenderer,
-                    Text.literal("— Enabled Services —").formatted(Formatting.YELLOW),
-                    this.width / 2, svcHeaderY, 0xFFAA00);
+                    Text.literal("\u2014 Enabled Services \u2014").formatted(Formatting.YELLOW),
+                    this.width / 2, servicesHeaderY, 0xFFAA00);
             }
         } catch (Throwable t) {
             TierTaggerCore.LOGGER.warn("[TierTagger] config screen render: {}", t.toString());
         }
+    }
+
+    private static void fillRect(DrawContext ctx, int x1, int y1, int x2, int y2, int argb) {
+        try { ctx.fill(x1, y1, x2, y2, argb); } catch (Throwable ignored) {}
+    }
+
+    private static void outlineRect(DrawContext ctx, int x, int y, int w, int h, int argb) {
+        try {
+            ctx.fill(x,         y,         x + w,     y + 1,     argb);
+            ctx.fill(x,         y + h - 1, x + w,     y + h,     argb);
+            ctx.fill(x,         y,         x + 1,     y + h,     argb);
+            ctx.fill(x + w - 1, y,         x + w,     y + h,     argb);
+        } catch (Throwable ignored) {}
     }
 
     private void closeSafely() {

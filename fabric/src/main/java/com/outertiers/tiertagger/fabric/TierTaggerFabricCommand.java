@@ -11,7 +11,6 @@ import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
 import com.outertiers.tiertagger.fabric.screen.TierConfigScreen;
 import com.outertiers.tiertagger.fabric.screen.TierCompareScreen;
-import com.outertiers.tiertagger.fabric.screen.TierLookupScreen;
 import com.outertiers.tiertagger.fabric.screen.TierProfileScreen;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -78,15 +77,6 @@ public class TierTaggerFabricCommand {
                             c.getSource().sendFeedback(Text.literal("§a[TierTagger] §rBadge format: §e" + f));
                             return 1;
                         })))
-                .then(ClientCommandManager.literal("lookup")
-                .then(ClientCommandManager.argument("player", StringArgumentType.word())
-                    .executes(c -> {
-                        String name = StringArgumentType.getString(c, "player");
-                        try { TierTaggerCore.cache().peekData(name); } catch (Throwable ignored) {}
-                        PendingScreen.open(new TierLookupScreen(null, name));
-                        c.getSource().sendFeedback(Text.literal("§7[TierTagger] §rLooking up §e" + name + "§r…"));
-                        return 1;
-                    })))
                 .then(ClientCommandManager.literal("compare")
                     .then(ClientCommandManager.argument("player1", StringArgumentType.word())
                         .then(ClientCommandManager.argument("player2", StringArgumentType.word())
@@ -332,7 +322,6 @@ public class TierTaggerFabricCommand {
             {"/tiertagger",                  "Show current settings"},
             {"/tiertagger config",           "Open the GUI settings screen"},
             {"/tiertagger profile <player>", "Open the four-service tier breakdown"},
-            {"/tiertagger lookup <player>",  "Print all-service tiers in chat"},
             {"/tiertagger compare <a> <b> [list]", "Side-by-side comparison (mctiers|outertiers|pvptiers|subtiers|all)"},
             {"/tiertagger service left <s>", "Set the LEFT badge service"},
             {"/tiertagger service right <s>","Set the RIGHT badge service"},
