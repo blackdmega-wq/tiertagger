@@ -10,6 +10,7 @@ import com.outertiers.tiertagger.common.TierConfig;
 import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
 import com.outertiers.tiertagger.fabric.screen.TierConfigScreen;
+import com.outertiers.tiertagger.fabric.screen.TierCompareScreen;
 import com.outertiers.tiertagger.fabric.screen.TierProfileScreen;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -87,10 +88,11 @@ public class TierTaggerFabricCommand {
                     .then(ClientCommandManager.argument("player1", StringArgumentType.word())
                         .then(ClientCommandManager.argument("player2", StringArgumentType.word())
                             .executes(c -> {
-                                sendCompare(c.getSource(),
-                                    StringArgumentType.getString(c, "player1"),
-                                    StringArgumentType.getString(c, "player2"),
-                                    "all");
+                                String n1 = StringArgumentType.getString(c, "player1");
+                                String n2 = StringArgumentType.getString(c, "player2");
+                                try { TierTaggerCore.cache().peekData(n1); TierTaggerCore.cache().peekData(n2); } catch (Throwable ignored) {}
+                                PendingScreen.open(new TierCompareScreen(null, n1, n2));
+                                c.getSource().sendFeedback(Text.literal("§7[TierTagger] §rComparing §e" + n1 + " §rvs §e" + n2 + "§r…"));
                                 return 1;
                             })
                             .then(ClientCommandManager.argument("tierlist", StringArgumentType.word())
@@ -100,10 +102,11 @@ public class TierTaggerFabricCommand {
                                     return b.buildFuture();
                                 })
                                 .executes(c -> {
-                                    sendCompare(c.getSource(),
-                                        StringArgumentType.getString(c, "player1"),
-                                        StringArgumentType.getString(c, "player2"),
-                                        StringArgumentType.getString(c, "tierlist"));
+                                    String cn1 = StringArgumentType.getString(c, "player1");
+                                    String cn2 = StringArgumentType.getString(c, "player2");
+                                    try { TierTaggerCore.cache().peekData(cn1); TierTaggerCore.cache().peekData(cn2); } catch (Throwable ignored) {}
+                                    PendingScreen.open(new TierCompareScreen(null, cn1, cn2));
+                                    c.getSource().sendFeedback(Text.literal("§7[TierTagger] §rComparing §e" + cn1 + " §rvs §e" + cn2 + "§r…"));
                                     return 1;
                                 })))))
                 .then(ClientCommandManager.literal("clear")

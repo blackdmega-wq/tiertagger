@@ -10,6 +10,7 @@ import com.outertiers.tiertagger.common.TierConfig;
 import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
 import com.outertiers.tiertagger.neoforge.screen.TierConfigScreen;
+import com.outertiers.tiertagger.neoforge.screen.TierCompareScreen;
 import com.outertiers.tiertagger.neoforge.screen.TierProfileScreen;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -83,12 +84,13 @@ public class TierTaggerNeoForgeCommand {
                 .then(Commands.argument("player1", StringArgumentType.word())
                     .then(Commands.argument("player2", StringArgumentType.word())
                         .executes(c -> {
-                            sendCompare(c.getSource(),
-                                StringArgumentType.getString(c, "player1"),
-                                StringArgumentType.getString(c, "player2"),
-                                "all");
-                            return 1;
-                        })
+                                String n1 = StringArgumentType.getString(c, "player1");
+                                String n2 = StringArgumentType.getString(c, "player2");
+                                try { TierTaggerCore.cache().peekData(n1); TierTaggerCore.cache().peekData(n2); } catch (Throwable ignored) {}
+                                PendingScreen.open(new TierCompareScreen(null, n1, n2));
+                                c.getSource().sendSuccess(() -> Component.literal("§7[TierTagger] §rComparing §e" + n1 + " §rvs §e" + n2 + "§r…"), false);
+                                return 1;
+                            })
                         .then(Commands.argument("tierlist", StringArgumentType.word())
                             .suggests((ctx, b) -> {
                                 for (TierService s : TierService.values()) b.suggest(s.id);
@@ -96,12 +98,13 @@ public class TierTaggerNeoForgeCommand {
                                 return b.buildFuture();
                             })
                             .executes(c -> {
-                                sendCompare(c.getSource(),
-                                    StringArgumentType.getString(c, "player1"),
-                                    StringArgumentType.getString(c, "player2"),
-                                    StringArgumentType.getString(c, "tierlist"));
-                                return 1;
-                            })))))
+                                    String cn1 = StringArgumentType.getString(c, "player1");
+                                    String cn2 = StringArgumentType.getString(c, "player2");
+                                    try { TierTaggerCore.cache().peekData(cn1); TierTaggerCore.cache().peekData(cn2); } catch (Throwable ignored) {}
+                                    PendingScreen.open(new TierCompareScreen(null, cn1, cn2));
+                                    c.getSource().sendSuccess(() -> Component.literal("§7[TierTagger] §rComparing §e" + cn1 + " §rvs §e" + cn2 + "§r…"), false);
+                                    return 1;
+                                })))))
             .then(Commands.literal("clear")
                 .then(Commands.argument("player", StringArgumentType.word())
                     .executes(c -> {
