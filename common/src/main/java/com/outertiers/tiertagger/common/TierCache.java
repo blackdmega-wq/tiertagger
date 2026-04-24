@@ -132,6 +132,127 @@ public class TierCache {
 
     public int size() { return entries.size(); }
 
+    // ---------- doctor / one-shot diagnostic ----------
+
+    /** Per-service result of a single synchronous fetch attempt. */
+    public static final class ServiceReport {
+        public final TierService service;
+        public final String      url;
+        /** HTTP status code, or -1 if the request threw before getting a response. */
+        public final int         httpStatus;
+        /** Best parsed tier label like "HT3", or {@code null} when unranked / not available. */
+        public final String      parsedTier;
+        /** True when the upstream returned 404 (player definitively not on this list). */
+        public final boolean     missing;
+        /** Human-readable failure reason; {@code null} on success. */
+        public final String      errorMessage;
+        public final long        elapsedMs;
+
+        public ServiceReport(TierService service, String url, int httpStatus,
+                             String parsedTier, boolean missing,
+                             String errorMessage, long elapsedMs) {
+            this.service      = service;
+            this.url          = url;
+            this.httpStatus   = httpStatus;
+            this.parsedTier   = parsedTier;
+            this.missing      = missing;
+            this.errorMessage = errorMessage;
+            this.elapsedMs    = elapsedMs;
+        }
+    }
+
+    /** Aggregate result of {@link #diagnoseBlocking(String)}. */
+    public static final class DoctorReport {
+        public final String username;
+        /** Resolved 32-hex UUID, or {@code null} if resolution failed. */
+        public final String uuidNoDash;
+        /** Where the UUID came from: {@code "cache"} / {@code "resolved"} / {@code null} on failure. */
+        public final String uuidSource;
+        public final java.util.EnumMap<TierService, ServiceReport> services =
+                new java.util.EnumMap<>(TierService.class);
+
+        public DoctorReport(String username, String uuidNoDash, String uuidSource) {
+            this.username   = username;
+            this.uuidNoDash = uuidNoDash;
+            this.uuidSource = uuidSource;
+        }
+    }
+
+    /**
+     * Synchronous one-shot diagnosis. Resolves the player's UUID and then
+     * issues a single request to every {@link TierService}, bypassing the
+     * background fetch pool, the in-flight throttle, and the TTL cache.
+     *
+     * <p>This is intended to be called from a dedicated diagnostic thread
+     * (e.g. {@code /tiertagger doctor}); it WILL block on network I/O.</p>
+     */
+    public DoctorReport diagnoseBlocking(String username) {
+        String safe = username == null ? "" : username.trim();
+        String uuid = MojangResolver.peek(safe).orElse(null);
+        String src  = uuid != null ? "cache" : null;
+        if (uuid == null && !safe.isEmpty()) {
+            uuid = MojangResolver.resolveBlocking(safe);
+            if (uuid != null) src = "resolved";
+        }
+        DoctorReport report = new DoctorReport(safe, uuid, src);
+        for (TierService s : TierService.values()) {
+            report.services.put(s, fetchOneSync(safe, uuid, s));
+        }
+        return report;
+    }
+
+    private static ServiceReport fetchOneSync(String username, String uuid, TierService service) {
+        long started = System.currentTimeMillis();
+        String url = service.apiBase;
+        try {
+            String urlSuffix;
+            if (service.lookup == TierService.Lookup.USERNAME) {
+                if (username.isEmpty()) {
+                    return new ServiceReport(service, url, -1, null, false,
+                            "no username", System.currentTimeMillis() - started);
+                }
+                urlSuffix = URLEncoder.encode(username, StandardCharsets.UTF_8);
+            } else {
+                if (uuid == null) {
+                    return new ServiceReport(service, url, -1, null, false,
+                            "no UUID resolved", System.currentTimeMillis() - started);
+                }
+                urlSuffix = uuid;
+            }
+            url = service.apiBase + urlSuffix;
+            HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+                    .timeout(Duration.ofSeconds(20))
+                    .header("User-Agent", "TierTagger/" + TierTaggerCore.MOD_VERSION + " (+https://github.com/blackdmega-wq/tiertagger)")
+                    .header("Accept", "application/json")
+                    .GET().build();
+            HttpResponse<String> res = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+            int code = res.statusCode();
+            long elapsed = System.currentTimeMillis() - started;
+            if (code == 404) {
+                return new ServiceReport(service, url, 404, null, true, null, elapsed);
+            }
+            if (code / 100 != 2 || res.body() == null || res.body().isBlank()) {
+                return new ServiceReport(service, url, code, null, false,
+                        "non-2xx or empty body", elapsed);
+            }
+            ServiceData parsed = service == TierService.OUTERTIERS
+                    ? parseOuterTiers(service, res.body())
+                    : parseStandard(service, res.body());
+            if (parsed.missing) {
+                return new ServiceReport(service, url, code, null, true,
+                        "parser returned missing", elapsed);
+            }
+            Ranking best = parsed.highest();
+            String label = best == null ? null : best.label();
+            return new ServiceReport(service, url, code, label, false, null, elapsed);
+        } catch (Exception e) {
+            String msg = e.getClass().getSimpleName()
+                    + (e.getMessage() == null ? "" : ": " + e.getMessage());
+            return new ServiceReport(service, url, -1, null, false, msg,
+                    System.currentTimeMillis() - started);
+        }
+    }
+
     // ---------- fetch orchestration ----------
 
     private void requestAllAsync(String username, PlayerData data) {
