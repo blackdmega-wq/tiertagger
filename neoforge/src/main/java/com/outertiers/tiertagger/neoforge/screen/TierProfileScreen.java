@@ -7,18 +7,18 @@ import com.outertiers.tiertagger.common.TierConfig;
 import com.outertiers.tiertagger.common.TierIcons;
 import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
+import com.outertiers.tiertagger.neoforge.compat.Compat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.PlayerFaceRenderer;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.resources.PlayerSkin;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.Optional;
@@ -126,21 +126,18 @@ public class TierProfileScreen extends Screen {
     }
 
     private void drawHead(GuiGraphics ctx, String name, int x, int y, int size) {
-        ResourceLocation tex = STEVE;
+        PlayerSkin skin = null;
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc != null && mc.getConnection() != null) {
                 PlayerInfo p = mc.getConnection().getPlayerInfo(name);
-                if (p != null) {
-                    PlayerSkin skin = p.getSkin();
-                    if (skin != null && skin.texture() != null) tex = skin.texture();
-                }
+                if (p != null) skin = p.getSkin();
             }
         } catch (Throwable ignored) {}
 
         try {
             ctx.fill(x - 2, y - 2, x + size + 2, y + size + 2, 0xFF1A1A1A);
-            PlayerFaceRenderer.draw(ctx, tex, x, y, size);
+            Compat.drawPlayerFace(ctx, skin, STEVE, x, y, size);
         } catch (Throwable t) {
             ctx.fill(x, y, x + size, y + size, 0xFF6E4A2A);
         }
@@ -229,7 +226,8 @@ public class TierProfileScreen extends Screen {
             try {
                 ResourceLocation id = ResourceLocation.tryParse(TierIcons.iconFor(mode));
                 if (id != null) {
-                    ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(id));
+                    Item item = Compat.lookupItem(id);
+                    ItemStack stack = item == null ? ItemStack.EMPTY : new ItemStack(item);
                     if (!stack.isEmpty()) {
                         ctx.pose().pushPose();
                         ctx.pose().translate(x, y - 1, 0);

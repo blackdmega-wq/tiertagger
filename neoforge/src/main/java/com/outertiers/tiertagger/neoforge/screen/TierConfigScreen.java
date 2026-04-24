@@ -12,10 +12,10 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
@@ -281,7 +281,8 @@ public class TierConfigScreen extends Screen {
             try {
                 ResourceLocation id = ResourceLocation.tryParse(TierIcons.iconFor(mode));
                 if (id != null) {
-                    ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(id));
+                    Item item = com.outertiers.tiertagger.neoforge.compat.Compat.lookupItem(id);
+                    ItemStack stack = item == null ? ItemStack.EMPTY : new ItemStack(item);
                     if (!stack.isEmpty()) {
                         ctx.pose().pushPose();
                         ctx.pose().translate(iconX, iconY - 1, 0);

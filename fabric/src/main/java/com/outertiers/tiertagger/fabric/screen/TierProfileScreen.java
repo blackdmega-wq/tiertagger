@@ -7,15 +7,15 @@ import com.outertiers.tiertagger.common.TierConfig;
 import com.outertiers.tiertagger.common.TierIcons;
 import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
+import com.outertiers.tiertagger.fabric.compat.Compat;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.PlayerSkinDrawer;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.client.util.SkinTextures;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -149,22 +149,19 @@ public class TierProfileScreen extends Screen {
     }
 
     private void drawHead(DrawContext ctx, String name, int x, int y, int size) {
-        Identifier tex = STEVE;
+        SkinTextures st = null;
         try {
             MinecraftClient mc = MinecraftClient.getInstance();
             if (mc != null && mc.getNetworkHandler() != null) {
                 PlayerListEntry e = mc.getNetworkHandler().getPlayerListEntry(name);
-                if (e != null) {
-                    SkinTextures st = e.getSkinTextures();
-                    if (st != null && st.texture() != null) tex = st.texture();
-                }
+                if (e != null) st = e.getSkinTextures();
             }
         } catch (Throwable ignored) {}
 
         try {
             // Background plate behind the head for contrast
             ctx.fill(x - 2, y - 2, x + size + 2, y + size + 2, 0xFF1A1A1A);
-            PlayerSkinDrawer.draw(ctx, tex, x, y, size);
+            Compat.drawPlayerFace(ctx, st, STEVE, x, y, size);
         } catch (Throwable t) {
             // Fallback: solid steve-coloured square so we still have *something*
             ctx.fill(x, y, x + size, y + size, 0xFF6E4A2A);
@@ -260,7 +257,8 @@ public class TierProfileScreen extends Screen {
             try {
                 Identifier id = Identifier.tryParse(TierIcons.iconFor(mode));
                 if (id != null) {
-                    ItemStack stack = new ItemStack(Registries.ITEM.get(id));
+                    Item item = Compat.lookupItem(id);
+                    ItemStack stack = item == null ? ItemStack.EMPTY : new ItemStack(item);
                     if (!stack.isEmpty()) {
                         // Render ~10x10 by drawing at half-scale via matrix push.
                         ctx.getMatrices().push();

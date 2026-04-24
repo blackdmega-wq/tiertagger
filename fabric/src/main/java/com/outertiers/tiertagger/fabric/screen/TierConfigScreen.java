@@ -9,8 +9,8 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.CyclingButtonWidget;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -312,7 +312,8 @@ public class TierConfigScreen extends Screen {
             try {
                 Identifier id = Identifier.tryParse(TierIcons.iconFor(mode));
                 if (id != null) {
-                    ItemStack stack = new ItemStack(Registries.ITEM.get(id));
+                    Item item = com.outertiers.tiertagger.fabric.compat.Compat.lookupItem(id);
+                    ItemStack stack = item == null ? ItemStack.EMPTY : new ItemStack(item);
                     if (!stack.isEmpty()) {
                         ctx.getMatrices().push();
                         ctx.getMatrices().translate(iconX, iconY - 1, 0);
