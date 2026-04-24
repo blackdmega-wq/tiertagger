@@ -383,7 +383,7 @@ public class TierCompareScreen extends Screen {
         Identifier tex = ModeIcons.textureFor(mode);
         if (tex != null) {
             try {
-                ctx.drawTexture(tex, x, y - 1, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
+                Compat.drawTexture(ctx, tex, x, y - 1, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
                 drewIcon = true;
             } catch (Throwable ignored) {}
         }
@@ -473,7 +473,7 @@ public class TierCompareScreen extends Screen {
         try { fetched = SkinFetcher.headFor(name); } catch (Throwable ignored) {}
         if (fetched.isPresent()) {
             try {
-                ctx.drawTexture(fetched.get(), x, y, 0, 0, size, size, size, size);
+                Compat.drawTexture(ctx, fetched.get(), x, y, 0, 0, size, size, size, size);
                 return;
             } catch (Throwable ignored) {}
         }

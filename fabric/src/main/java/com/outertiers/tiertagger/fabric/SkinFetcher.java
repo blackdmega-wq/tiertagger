@@ -101,7 +101,12 @@ public final class SkinFetcher {
                 mc.execute(() -> {
                     try {
                         NativeImage img = NativeImage.read(new ByteArrayInputStream(bytes));
-                        NativeImageBackedTexture tex = new NativeImageBackedTexture(img);
+                        NativeImageBackedTexture tex = com.outertiers.tiertagger.fabric.compat.Compat
+                                .makeNativeImageTex(img, "tiertagger/skin/" + safeId(key));
+                        if (tex == null) {
+                            READY.put(key, FAILED);
+                            return;
+                        }
                         Identifier id = Identifier.of("tiertagger", "skins/" + safeId(key));
                         mc.getTextureManager().registerTexture(id, tex);
                         READY.put(key, id);

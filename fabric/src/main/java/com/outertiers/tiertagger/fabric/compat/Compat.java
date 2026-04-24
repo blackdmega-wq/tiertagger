@@ -2,13 +2,17 @@ package com.outertiers.tiertagger.fabric.compat;
 
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.PlayerSkinDrawer;
+import net.minecraft.client.texture.NativeImage;
+import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.client.util.SkinTextures;
 import net.minecraft.item.Item;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Tiny compatibility shim that papers over Vanilla API breakage between
@@ -83,6 +87,106 @@ public final class Compat {
                 if (value instanceof Item it3) return it3;
             } catch (Throwable ignored) {}
         }
+        return null;
+    }
+
+    /**
+     * Reflective {@code DrawContext.drawTexture} that compiles unchanged
+     * across all 1.21.x mappings. Vanilla's signature evolved repeatedly:
+     * <ul>
+     *   <li>1.21.1: {@code drawTexture(Identifier, x, y, u, v, w, h, texW, texH)} (9 args)</li>
+     *   <li>1.21.2+: {@code drawTexture(RenderLayer, Identifier, x, y, u, v, w, h, texW, texH)} (10 args)</li>
+     * </ul>
+     * We pick whichever overload exists on the runtime DrawContext class.
+     * Failures are swallowed so callers don't have to wrap every call.
+     */
+    public static void drawTexture(DrawContext ctx, Identifier tex,
+                                   int x, int y, float u, float v,
+                                   int w, int h, int texW, int texH) {
+        if (ctx == null || tex == null) return;
+        try {
+            for (Method m : DrawContext.class.getMethods()) {
+                if (!"drawTexture".equals(m.getName())) continue;
+                Class<?>[] p = m.getParameterTypes();
+                // 9-arg variant on 1.21.1 — first param is Identifier
+                if (p.length == 9 && p[0] == Identifier.class) {
+                    m.invoke(ctx, tex, x, y, u, v, w, h, texW, texH);
+                    return;
+                }
+                // 10-arg variant on 1.21.2+ — first param is a RenderLayer
+                // factory (Function<Identifier, RenderLayer>); pass null so
+                // Vanilla uses its default getGuiTextured(Identifier).
+                if (p.length == 10 && p[1] == Identifier.class) {
+                    Object renderLayer = defaultGuiRenderLayer(p[0], tex);
+                    m.invoke(ctx, renderLayer, tex, x, y, u, v, w, h, texW, texH);
+                    return;
+                }
+            }
+        } catch (Throwable ignored) {
+            // Visual fallback handled by caller.
+        }
+    }
+
+    private static Object defaultGuiRenderLayer(Class<?> firstParamType, Identifier tex) {
+        // 1.21.2 added an explicit Function<Identifier, RenderLayer> first
+        // parameter. The standard choice is RenderLayer::getGuiTextured.
+        try {
+            Class<?> renderLayerCls = Class.forName("net.minecraft.client.render.RenderLayer");
+            Method factory = renderLayerCls.getMethod("getGuiTextured", Identifier.class);
+            // If the parameter type is Function-like, return a method ref;
+            // if it's already RenderLayer, return the resolved instance.
+            if (firstParamType.isAssignableFrom(renderLayerCls)) {
+                return factory.invoke(null, tex);
+            }
+            // Function<Identifier, RenderLayer> — wrap the factory.
+            if (java.util.function.Function.class.isAssignableFrom(firstParamType)) {
+                return (java.util.function.Function<Identifier, Object>) (id -> {
+                    try { return factory.invoke(null, id); }
+                    catch (Throwable t) { return null; }
+                });
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    /**
+     * Reflective {@link NativeImageBackedTexture} constructor that compiles
+     * across mapping changes:
+     * <ul>
+     *   <li>1.21.1-1.21.4: {@code new NativeImageBackedTexture(NativeImage)}</li>
+     *   <li>1.21.5+: {@code new NativeImageBackedTexture(Supplier<String>, NativeImage)}
+     *       (a debug label used in renderdoc captures).</li>
+     * </ul>
+     * Returns {@code null} on any failure — callers must null-check.
+     */
+    public static NativeImageBackedTexture makeNativeImageTex(NativeImage img, String label) {
+        if (img == null) return null;
+        try {
+            for (Constructor<?> c : NativeImageBackedTexture.class.getConstructors()) {
+                Class<?>[] p = c.getParameterTypes();
+                if (p.length == 1 && p[0] == NativeImage.class) {
+                    return (NativeImageBackedTexture) c.newInstance(img);
+                }
+                if (p.length == 2 && p[1] == NativeImage.class) {
+                    Object first;
+                    if (p[0] == String.class) {
+                        first = label;
+                    } else if (Supplier.class.isAssignableFrom(p[0])) {
+                        final String l = label;
+                        first = (Supplier<String>) () -> l;
+                    } else {
+                        continue;
+                    }
+                    return (NativeImageBackedTexture) c.newInstance(first, img);
+                }
+                if (p.length == 2 && p[0] == NativeImage.class) {
+                    // Hypothetical (NativeImage, boolean) variant — pass false.
+                    if (p[1] == boolean.class || p[1] == Boolean.class) {
+                        return (NativeImageBackedTexture) c.newInstance(img, false);
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
         return null;
     }
 }
