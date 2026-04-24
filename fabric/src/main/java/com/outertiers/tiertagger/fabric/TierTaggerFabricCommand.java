@@ -14,10 +14,10 @@ import com.outertiers.tiertagger.fabric.screen.TierProfileScreen;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -89,9 +89,23 @@ public class TierTaggerFabricCommand {
                             .executes(c -> {
                                 sendCompare(c.getSource(),
                                     StringArgumentType.getString(c, "player1"),
-                                    StringArgumentType.getString(c, "player2"));
+                                    StringArgumentType.getString(c, "player2"),
+                                    "all");
                                 return 1;
-                            }))))
+                            })
+                            .then(ClientCommandManager.argument("tierlist", StringArgumentType.word())
+                                .suggests((ctx, b) -> {
+                                    for (TierService s : TierService.values()) b.suggest(s.id);
+                                    b.suggest("all");
+                                    return b.buildFuture();
+                                })
+                                .executes(c -> {
+                                    sendCompare(c.getSource(),
+                                        StringArgumentType.getString(c, "player1"),
+                                        StringArgumentType.getString(c, "player2"),
+                                        StringArgumentType.getString(c, "tierlist"));
+                                    return 1;
+                                })))))
                 .then(ClientCommandManager.literal("clear")
                     .then(ClientCommandManager.argument("player", StringArgumentType.word())
                         .executes(c -> {
@@ -167,16 +181,17 @@ public class TierTaggerFabricCommand {
                     return 1;
                 }))
                 .then(ClientCommandManager.literal("config").executes(ctx -> {
-                    MinecraftClient.getInstance().send(() ->
-                        MinecraftClient.getInstance().setScreen(new TierConfigScreen(null)));
+                    PendingScreen.open(new TierConfigScreen(null));
+                    ctx.getSource().sendFeedback(Text.literal("§7[TierTagger] §rOpening config…"));
                     return 1;
                 }))
                 .then(ClientCommandManager.literal("profile")
                     .then(ClientCommandManager.argument("player", StringArgumentType.word())
                         .executes(ctx -> {
                             String name = StringArgumentType.getString(ctx, "player");
-                            MinecraftClient.getInstance().send(() ->
-                                MinecraftClient.getInstance().setScreen(new TierProfileScreen(null, name)));
+                            try { TierTaggerCore.cache().peekData(name); } catch (Throwable ignored) {}
+                            PendingScreen.open(new TierProfileScreen(null, name));
+                            ctx.getSource().sendFeedback(Text.literal("§7[TierTagger] §rOpening profile for §e" + name + "§r…"));
                             return 1;
                         })))
                 .executes(ctx -> { sendStatus(ctx.getSource()); return 1; })
@@ -233,20 +248,35 @@ public class TierTaggerFabricCommand {
         }
     }
 
-    private static void sendCompare(FabricClientCommandSource src, String n1, String n2) {
+    private static void sendCompare(FabricClientCommandSource src, String n1, String n2, String tierlistArg) {
         Optional<PlayerData> e1 = TierTaggerCore.cache().peekData(n1);
         Optional<PlayerData> e2 = TierTaggerCore.cache().peekData(n2);
         if (e1.isEmpty() || e2.isEmpty()) {
             src.sendFeedback(Text.literal("§7[TierTagger] §rFetching tiers — try again in a moment…"));
             return;
         }
+
+        // Resolve which tier-list(s) to compare. "all" or null/empty -> every service.
+        String want = tierlistArg == null ? "all" : tierlistArg.toLowerCase(Locale.ROOT);
+        TierService only = null;
+        if (!want.equals("all") && !want.isBlank()) {
+            only = TierService.byId(want);
+            if (only == null) {
+                src.sendError(Text.literal("Unknown tier list: " + tierlistArg +
+                    " (valid: mctiers, outertiers, pvptiers, subtiers, all)"));
+                return;
+            }
+        }
+
         PlayerData a = e1.get();
         PlayerData b = e2.get();
-        src.sendFeedback(Text.literal("§6§l━━━━━━━━━ §f§lTier Compare §6§l━━━━━━━━━"));
+        String header = only == null ? "Tier Compare" : "Tier Compare – " + only.displayName;
+        src.sendFeedback(Text.literal("§6§l━━━━━━━━━ §f§l" + header + " §6§l━━━━━━━━━"));
         src.sendFeedback(Text.literal(String.format(" §b§l%-12s §7vs §b§l%s", n1, n2)));
         src.sendFeedback(Text.literal("§8─────────────────────────────────────"));
         int wins1 = 0, wins2 = 0, ties = 0;
         for (TierService svc : TierService.values()) {
+            if (only != null && svc != only) continue;
             ServiceData sa = a.get(svc);
             ServiceData sb = b.get(svc);
             for (String mode : svc.modes) {
@@ -297,7 +327,7 @@ public class TierTaggerFabricCommand {
             {"/tiertagger config",           "Open the GUI settings screen"},
             {"/tiertagger profile <player>", "Open the four-service tier breakdown"},
             {"/tiertagger lookup <player>",  "Print all-service tiers in chat"},
-            {"/tiertagger compare <a> <b>",  "Side-by-side comparison across services"},
+            {"/tiertagger compare <a> <b> [list]", "Side-by-side comparison (mctiers|outertiers|pvptiers|subtiers|all)"},
             {"/tiertagger service left <s>", "Set the LEFT badge service"},
             {"/tiertagger service right <s>","Set the RIGHT badge service"},
             {"/tiertagger service toggle <s>","Enable/disable a service"},

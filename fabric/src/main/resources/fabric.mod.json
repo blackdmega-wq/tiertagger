@@ -13,7 +13,11 @@
   "license": "MIT",
   "environment": "client",
   "entrypoints": {
-    "client": ["com.outertiers.tiertagger.fabric.TierTaggerFabric"]
+    "client":  ["com.outertiers.tiertagger.fabric.TierTaggerFabric"],
+    "modmenu": ["com.outertiers.tiertagger.fabric.modmenu.TierModMenuApi"]
+  },
+  "suggests": {
+    "modmenu": "*"
   },
   "mixins": [
     { "config": "fabric.mixins.json", "environment": "client" }

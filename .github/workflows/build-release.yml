@@ -89,9 +89,37 @@ jobs:
             fabric_api: '0.136.1+1.21.8'
             loom: '1.11-SNAPSHOT'
             gradle: '8.14'
-          # NOTE: Fabric MC 1.21.9, 1.21.10 and 1.21.11 dropped — vanilla
-          # rendering / registry APIs changed and our mixin/screen sources
-          # no longer compile unmodified. Needs a per-MC source split.
+          # ── Best-effort newer Fabric builds ─────────────────────────────
+          # These MC versions changed vanilla rendering/registry APIs that
+          # our mixins reference. The build is allowed to fail without
+          # blocking the release (experimental=true → continue-on-error).
+          - loader: fabric
+            mc: '1.21.9'
+            java: 21
+            yarn: '1.21.9+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.136.1+1.21.9'
+            loom: '1.11-SNAPSHOT'
+            gradle: '8.14'
+            experimental: true
+          - loader: fabric
+            mc: '1.21.10'
+            java: 21
+            yarn: '1.21.10+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.136.1+1.21.10'
+            loom: '1.11-SNAPSHOT'
+            gradle: '8.14'
+            experimental: true
+          - loader: fabric
+            mc: '1.21.11'
+            java: 21
+            yarn: '1.21.11+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.136.1+1.21.11'
+            loom: '1.11-SNAPSHOT'
+            gradle: '8.14'
+            experimental: true
 
           # ────────────── NeoForge ──────────────
           - loader: neoforge
@@ -124,9 +152,21 @@ jobs:
             neoforge: '21.8.53'
             moddev: '2.0.141'
             gradle: '8.10'
-          # NOTE: NeoForge 1.21.10 and 1.21.11 dropped — the vanilla
-          # rendering APIs we mix into changed and the source no longer
-          # compiles unmodified. Tracked for a future per-MC source split.
+          # ── Best-effort newer NeoForge builds ───────────────────────────
+          - loader: neoforge
+            mc: '1.21.10'
+            java: 21
+            neoforge: '21.10.0-beta'
+            moddev: '2.0.141'
+            gradle: '8.10'
+            experimental: true
+          - loader: neoforge
+            mc: '1.21.11'
+            java: 21
+            neoforge: '21.11.0-beta'
+            moddev: '2.0.141'
+            gradle: '8.10'
+            experimental: true
 
     steps:
       - uses: actions/checkout@v4
@@ -165,6 +205,7 @@ jobs:
       - name: Build Fabric JAR
         if: matrix.loader == 'fabric'
         id: build_fabric
+        continue-on-error: ${{ matrix.experimental == true }}
         run: |
           ./gradlew :fabric:build \
             -Pminecraft_version=${{ matrix.mc }} \
@@ -177,6 +218,7 @@ jobs:
       - name: Build NeoForge JAR
         if: matrix.loader == 'neoforge'
         id: build_neoforge
+        continue-on-error: ${{ matrix.experimental == true }}
         run: |
           ./gradlew :neoforge:build \
             -Pminecraft_version=${{ matrix.mc }} \

@@ -12,6 +12,7 @@ base {
 
 repositories {
     mavenCentral()
+    maven { url 'https://maven.terraformersmc.com/' }
 }
 
 dependencies {
@@ -19,6 +20,13 @@ dependencies {
     mappings  "net.fabricmc:yarn:${project.yarn_mappings}:v2"
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    // Mod Menu — compileOnly so the mod still works without it. The
+    // 'modmenu' entrypoint is only resolved when Mod Menu itself is loaded.
+    // 'modmenu_version' comes from gradle.properties (or -P override in CI).
+    if (project.hasProperty('modmenu_version') && !project.modmenu_version.toString().isBlank()) {
+        modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+    }
 
     implementation project(':common')
     include        project(':common')

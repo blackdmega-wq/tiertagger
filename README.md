@@ -2,6 +2,13 @@
 
 A multi-loader Minecraft mod that displays player tiers from the [OuterTiers](https://outertiers.com) website right next to player names — both in the in-game **tab list** and as a **badge above each player's head**. Inspired by [tiertagger on Modrinth](https://modrinth.com/mod/tiertagger).
 
+## What's new in 1.5.0
+
+- **Open the config from Minecraft Options.** With Mod Menu installed (Fabric) or via the built-in Mods screen (NeoForge), TierTagger now appears under *Options → Mods → TierTagger → Configure*, no command required.
+- **Fixed `/tiertagger config` and `/tiertagger profile <player>`.** They now reliably open the screen instead of being closed again by the chat-screen race that swallowed them in 1.4.x.
+- **`/tiertagger compare <a> <b> [tierlist]`.** Optional last argument lets you narrow the comparison to one tier list — `mctiers`, `outertiers`, `pvptiers`, `subtiers`, or `all` (default).
+- **Best-effort builds for MC 1.21.9 / 1.21.10 / 1.21.11.** Added to the build matrix as experimental rows; if they compile against the new vanilla API surface they ship in the release, otherwise the stable 1.21.1 – 1.21.8 builds still ship.
+
 ## Features
 
 - **Tab-list badges** — coloured `[HT3]`-style badges next to every player name when you press Tab.

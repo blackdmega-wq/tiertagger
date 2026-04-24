@@ -10,6 +10,7 @@ public class TierTaggerFabric implements ClientModInitializer {
     public void onInitializeClient() {
         TierConfig.setConfigDir(FabricLoader.getInstance().getConfigDir());
         TierTaggerCore.init();
+        PendingScreen.register();
         TierTaggerFabricCommand.register();
     }
 }
