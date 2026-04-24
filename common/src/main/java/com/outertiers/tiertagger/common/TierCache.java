@@ -102,21 +102,31 @@ public class TierCache {
                               : root.has("data")   ? root.getAsJsonObject("data")
                               : root;
 
+            // The OuterTiers API returns BOTH a simplified `tiers` map (T1..T5) and a
+            // detailed `rawTiers` map (HT1..LT5). Prefer rawTiers so that downstream
+            // displays (badges, /tiertagger compare, profile screen) can show the
+            // High/Low tier distinction. Fall back to `tiers` for older API revisions.
             Map<String, String> tiers = new java.util.HashMap<>();
-            JsonElement tEl = player.get("tiers");
-            if (tEl != null && tEl.isJsonObject()) {
-                JsonObject tObj = tEl.getAsJsonObject();
-                for (String mode : TierConfig.GAMEMODES) {
-                    if ("overall".equals(mode)) continue;
-                    JsonElement v = tObj.get(mode);
-                    if (v != null && !v.isJsonNull()) {
-                        String s = v.getAsString();
-                        if (s != null && !s.isBlank() && !"-".equals(s)) tiers.put(mode, s.toUpperCase(Locale.ROOT));
-                    }
-                }
+            JsonElement rawEl = player.get("rawTiers");
+            JsonObject rawObj = (rawEl != null && rawEl.isJsonObject()) ? rawEl.getAsJsonObject() : null;
+            JsonElement tEl   = player.get("tiers");
+            JsonObject tObj   = (tEl != null && tEl.isJsonObject()) ? tEl.getAsJsonObject() : null;
+
+            for (String mode : TierConfig.GAMEMODES) {
+                if ("overall".equals(mode)) continue;
+                String s = pickTierString(rawObj, mode);
+                if (s == null) s = pickTierString(tObj, mode);
+                if (s != null) tiers.put(mode, s.toUpperCase(Locale.ROOT));
             }
-            String peak   = optStr(player, "peakTier");
+
+            // Peak: prefer rawTiers.peak (HT/LT), fall back to top-level peakTier.
+            String peak = rawObj == null ? null : pickTierString(rawObj, "peak");
+            if (peak == null) peak = optStr(player, "peakTier");
+            if (peak != null && (peak.isBlank() || "-".equals(peak))) peak = null;
+
             String region = optStr(player, "region");
+            if (region != null && (region.isBlank() || "-".equals(region))) region = null;
+
             entries.put(key, new Entry(tiers, peak, region, System.currentTimeMillis(), tiers.isEmpty() && peak == null));
         } catch (Exception e) {
             TierTaggerCore.LOGGER.debug("[TierTagger] fetch failed for {}: {}", username, e.getMessage());
@@ -128,5 +138,19 @@ public class TierCache {
     private static String optStr(JsonObject o, String k) {
         JsonElement v = o.get(k);
         return (v == null || v.isJsonNull()) ? null : v.getAsString();
+    }
+
+    /** Reads a tier string from a JSON object, returning null for missing/blank/"-". */
+    private static String pickTierString(JsonObject o, String k) {
+        if (o == null) return null;
+        JsonElement v = o.get(k);
+        if (v == null || v.isJsonNull()) return null;
+        try {
+            String s = v.getAsString();
+            if (s == null || s.isBlank() || "-".equals(s)) return null;
+            return s;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }

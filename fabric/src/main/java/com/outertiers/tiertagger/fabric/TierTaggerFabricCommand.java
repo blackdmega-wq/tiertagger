@@ -221,26 +221,54 @@ public class TierTaggerFabricCommand {
             src.sendFeedback(Text.literal("§c[TierTagger] §rNo data for §e" + n1 + " §ror §e" + n2));
             return;
         }
-        src.sendFeedback(Text.literal("§a===== §fCompare: §e" + n1 + " §7vs §e" + n2 + " §a====="));
+
+        // Header
+        src.sendFeedback(Text.literal("§6§l━━━━━━━━━ §f§lTier Compare §6§l━━━━━━━━━"));
+        src.sendFeedback(Text.literal(String.format(" §b§l%-12s §7vs §b§l%s", n1, n2)));
+        src.sendFeedback(Text.literal("§8─────────────────────────────────────"));
+
+        int wins1 = 0, wins2 = 0, ties = 0;
         for (String mode : TierConfig.GAMEMODES) {
             if ("overall".equals(mode)) continue;
-            String t1 = a.missing || a.tiers == null ? null : a.tiers.get(mode);
-            String t2 = b.missing || b.tiers == null ? null : b.tiers.get(mode);
+            String t1 = (a.missing || a.tiers == null) ? null : a.tiers.get(mode);
+            String t2 = (b.missing || b.tiers == null) ? null : b.tiers.get(mode);
             int s1 = TierTaggerCore.score(t1);
             int s2 = TierTaggerCore.score(t2);
+
             String marker;
-            if (t1 == null && t2 == null) marker = "§8=";
-            else if (s1 > s2) marker = "§a<";
-            else if (s2 > s1) marker = "§a>";
-            else marker = "§e=";
-            String c1 = t1 == null ? "§8unranked" : "§" + TierTaggerCore.colourCodeFor(t1) + "§l" + t1.toUpperCase();
-            String c2 = t2 == null ? "§8unranked" : "§" + TierTaggerCore.colourCodeFor(t2) + "§l" + t2.toUpperCase();
-            src.sendFeedback(Text.literal(String.format("§7%-10s §r%s §r%s %s §r", mode, c1, marker, c2)));
+            if (t1 == null && t2 == null) {
+                marker = "§8·";
+            } else if (s1 > s2 || (s1 == s2 && t1 != null && t2 == null)) {
+                marker = "§a◀"; wins1++;
+            } else if (s2 > s1 || (s1 == s2 && t2 != null && t1 == null)) {
+                marker = "§a▶"; wins2++;
+            } else {
+                marker = "§e="; ties++;
+            }
+
+            String c1 = (t1 == null) ? "§8 unranked" : "§" + TierTaggerCore.colourCodeFor(t1) + "§l" + padLeft(t1.toUpperCase(), 9);
+            String c2 = (t2 == null) ? "§8unranked"  : "§" + TierTaggerCore.colourCodeFor(t2) + "§l" + t2.toUpperCase();
+            src.sendFeedback(Text.literal(String.format(" §7%-10s %s §r %s§r %s§r", mode, c1, marker, c2)));
         }
+
+        src.sendFeedback(Text.literal("§8─────────────────────────────────────"));
+        src.sendFeedback(Text.literal(String.format(" §7Wins: §a%s§7: §f%d  §7- §a%s§7: §f%d  §7(§e%d tie%s§7)",
+            n1, wins1, n2, wins2, ties, ties == 1 ? "" : "s")));
+
         String top1 = TierTaggerCore.pickHighest(a);
         String top2 = TierTaggerCore.pickHighest(b);
-        src.sendFeedback(Text.literal("§7Highest: §f" + n1 + " §8→ §f" + (top1 == null ? "—" : top1) +
-            "§r, §f" + n2 + " §8→ §f" + (top2 == null ? "—" : top2)));
+        String top1Coloured = (top1 == null) ? "§8—" : "§" + TierTaggerCore.colourCodeFor(top1) + "§l" + top1;
+        String top2Coloured = (top2 == null) ? "§8—" : "§" + TierTaggerCore.colourCodeFor(top2) + "§l" + top2;
+        src.sendFeedback(Text.literal(String.format(" §7Highest: §f%s §7→ %s§r  §7|  §f%s §7→ %s§r",
+            n1, top1Coloured, n2, top2Coloured)));
+    }
+
+    private static String padLeft(String s, int n) {
+        if (s == null) return "";
+        if (s.length() >= n) return s;
+        StringBuilder b = new StringBuilder();
+        while (b.length() < n - s.length()) b.append(' ');
+        return b.append(s).toString();
     }
 
     private static void sendStatus(net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource src) {

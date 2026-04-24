@@ -36,7 +36,7 @@ public final class TierTaggerCore {
         TierConfig c = CONFIG;
         if (c == null) return null;
 
-        if (c.showPeak && e.peakTier != null && !e.peakTier.isBlank()) {
+        if (c.showPeak && e.peakTier != null && !e.peakTier.isBlank() && !"-".equals(e.peakTier)) {
             return e.peakTier.toUpperCase();
         }
 
@@ -46,7 +46,7 @@ public final class TierTaggerCore {
         }
 
         String t = e.tiers == null ? null : e.tiers.get(mode);
-        if (t != null && !t.isBlank()) return t.toUpperCase();
+        if (t != null && !t.isBlank() && !"-".equals(t)) return t.toUpperCase();
 
         // Unranked in this mode -> fall-through to the highest tier we know about.
         if (c.fallthroughToHighest) {
