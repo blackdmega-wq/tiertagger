@@ -238,12 +238,11 @@ public class TierProfileScreen extends Screen {
                     Item item = Compat.lookupItem(id);
                     ItemStack stack = item == null ? ItemStack.EMPTY : new ItemStack(item);
                     if (!stack.isEmpty()) {
-                        ctx.pose().pushPose();
-                        ctx.pose().translate(x, y - 1, 0);
-                        ctx.pose().scale(0.625f, 0.625f, 1f);
-                        ctx.renderItem(stack, 0, 0);
-                        ctx.pose().popPose();
-                        textX = x + 12;
+                        // Draw at native 16x16 — avoids the 1.21.6+ Pose API
+                        // break (PoseStack -> Matrix3x2fStack rename of
+                        // pushPose/popPose, translate/scale signature change).
+                        ctx.renderItem(stack, x - 2, y - 4);
+                        textX = x + 16;
                     }
                 }
             } catch (Throwable ignored) {}
