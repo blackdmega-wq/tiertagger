@@ -177,7 +177,8 @@ public class TierCache {
             String url = service.apiBase + urlSuffix;
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                     .timeout(Duration.ofSeconds(20))
-                    .header("User-Agent", "TierTagger/1.5.4 (Minecraft mod)")
+                    .header("User-Agent", "TierTagger/" + TierTaggerCore.MOD_VERSION + " (+https://github.com/blackdmega-wq/tiertagger)")
+                    .header("Accept", "application/json")
                     .GET().build();
             HttpResponse<String> res = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
             int code = res.statusCode();
@@ -187,7 +188,7 @@ public class TierCache {
             }
             if (code / 100 != 2 || res.body() == null || res.body().isBlank()) {
                 // Transient server error — don't permanently mark missing; retry after 30 s via inflight
-                TierTaggerCore.LOGGER.debug("[TierTagger] {} HTTP {} for {} — will retry", service.id, code, username);
+                TierTaggerCore.LOGGER.info("[TierTagger] {} HTTP {} for {} — will retry", service.id, code, username);
                 return;
             }
 
@@ -197,7 +198,7 @@ public class TierCache {
             data.services.put(service, parsed);
         } catch (Exception e) {
             // Network / timeout error — don't permanently mark missing; retry after 30 s via inflight
-            TierTaggerCore.LOGGER.debug("[TierTagger] {} fetch failed for {}: {} — will retry",
+            TierTaggerCore.LOGGER.info("[TierTagger] {} fetch failed for {}: {} — will retry",
                     service.id, username, e.getMessage());
         }
     }
@@ -232,7 +233,7 @@ public class TierCache {
             return new ServiceData(service, rankings, region, points, overall,
                     System.currentTimeMillis(), false);
         } catch (Exception e) {
-            TierTaggerCore.LOGGER.debug("[TierTagger] {} parse failed: {}", service.id, e.getMessage());
+            TierTaggerCore.LOGGER.warn("[TierTagger] {} parse failed: {}", service.id, e.getMessage());
             return ServiceData.missing(service);
         }
     }
@@ -278,7 +279,7 @@ public class TierCache {
             return new ServiceData(service, rankings, region, points, overall,
                     System.currentTimeMillis(), false);
         } catch (Exception e) {
-            TierTaggerCore.LOGGER.debug("[TierTagger] outertiers parse failed: {}", e.getMessage());
+            TierTaggerCore.LOGGER.warn("[TierTagger] outertiers parse failed: {}", e.getMessage());
             return ServiceData.missing(service);
         }
     }

@@ -156,8 +156,27 @@ public class TierCompareScreen extends Screen {
 
             super.render(ctx, mouseX, mouseY, delta);
         } catch (Throwable t) {
-            TierTaggerCore.LOGGER.warn("[TierTagger] compare render: {}", t.toString());
+            TierTaggerCore.LOGGER.warn("[TierTagger] compare render", t);
+            try { drawErrorOverlay(ctx, "Compare render failed",
+                t.getClass().getSimpleName() + ": " +
+                (t.getMessage() == null ? "(no message)" : t.getMessage())); } catch (Throwable ignored) {}
         }
+    }
+
+    private void drawErrorOverlay(DrawContext ctx, String title, String detail) {
+        int cx = this.width / 2;
+        int cy = this.height / 2;
+        int w = Math.min(this.width - 40, 420);
+        try { ctx.fill(cx - w / 2, cy - 36, cx + w / 2, cy + 36, 0xCC110000); } catch (Throwable ignored) {}
+        try {
+            ctx.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal(title).formatted(Formatting.RED, Formatting.BOLD), cx, cy - 22, 0xFFFF5555);
+            ctx.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal(detail).formatted(Formatting.WHITE), cx, cy - 6, 0xFFFFFFFF);
+            ctx.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal("See latest.log for the full stack trace").formatted(Formatting.GRAY),
+                cx, cy + 12, 0xFFAAAAAA);
+        } catch (Throwable ignored) {}
     }
 
     // ── header ──────────────────────────────────────────────────────────────

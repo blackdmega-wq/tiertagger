@@ -32,7 +32,7 @@ public final class PendingScreen {
             try {
                 client.setScreen(s);
             } catch (Throwable t) {
-                TierTaggerCore.LOGGER.warn("[TierTagger] failed to open pending screen: {}", t.toString());
+                TierTaggerCore.LOGGER.warn("[TierTagger] failed to open pending screen", t);
             }
         });
     }

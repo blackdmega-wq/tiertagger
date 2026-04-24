@@ -64,14 +64,21 @@ public class TierConfigScreen extends Screen {
 
     private static int rgb(int argb) { return argb & 0xFFFFFF; }
 
+    private volatile String lastInitError = null;
+
     @Override
     protected void init() {
+        lastInitError = null;
         try { buildWidgets(); } catch (Throwable t) {
-            TierTaggerCore.LOGGER.warn("[TierTagger] config screen init failed: {}", t.toString());
+            // Log full stack trace so users can paste it as a bug report
+            TierTaggerCore.LOGGER.warn("[TierTagger] config screen init failed", t);
+            String simple = t.getClass().getSimpleName() + ": " +
+                (t.getMessage() == null ? "(no message)" : t.getMessage());
+            lastInitError = simple;
             this.clearChildren();
             this.addDrawableChild(ButtonWidget.builder(
-                    Text.literal("Done (init error \u2014 see log)"), b -> closeSafely())
-                .dimensions(this.width / 2 - 110, this.height / 2, 220, BTN_H).build());
+                    Text.literal("Done"), b -> closeSafely())
+                .dimensions(this.width / 2 - 110, this.height - 27, 220, BTN_H).build());
         }
     }
 
@@ -218,9 +225,30 @@ public class TierConfigScreen extends Screen {
                     Text.literal("\u2014 Enabled Services \u2014").formatted(Formatting.YELLOW),
                     this.width / 2, servicesHeaderY, 0xFFAA00);
             }
+            if (lastInitError != null) {
+                drawErrorOverlay(ctx, "Config init failed", lastInitError);
+            }
         } catch (Throwable t) {
-            TierTaggerCore.LOGGER.warn("[TierTagger] config screen render: {}", t.toString());
+            TierTaggerCore.LOGGER.warn("[TierTagger] config screen render", t);
+            try { drawErrorOverlay(ctx, "Config render failed",
+                t.getClass().getSimpleName() + ": " +
+                (t.getMessage() == null ? "(no message)" : t.getMessage())); } catch (Throwable ignored) {}
         }
+    }
+
+    private void drawErrorOverlay(DrawContext ctx, String title, String detail) {
+        int cx = this.width / 2;
+        int cy = this.height / 2;
+        int w = Math.min(this.width - 40, 360);
+        fillRect(ctx, cx - w / 2, cy - 30, cx + w / 2, cy + 30, 0xCC110000);
+        outlineRect(ctx, cx - w / 2, cy - 30, w, 60, 0xFFFF5555);
+        ctx.drawCenteredTextWithShadow(this.textRenderer,
+            Text.literal(title).formatted(Formatting.RED, Formatting.BOLD), cx, cy - 18, 0xFFFF5555);
+        ctx.drawCenteredTextWithShadow(this.textRenderer,
+            Text.literal(detail).formatted(Formatting.WHITE), cx, cy - 4, 0xFFFFFFFF);
+        ctx.drawCenteredTextWithShadow(this.textRenderer,
+            Text.literal("See latest.log for the full stack trace").formatted(Formatting.GRAY),
+            cx, cy + 12, 0xFFAAAAAA);
     }
 
     private static void fillRect(DrawContext ctx, int x1, int y1, int x2, int y2, int argb) {
