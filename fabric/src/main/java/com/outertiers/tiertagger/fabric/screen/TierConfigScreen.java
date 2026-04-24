@@ -11,20 +11,28 @@ import net.minecraft.client.gui.widget.CyclingButtonWidget;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
+import java.util.Arrays;
+import java.util.List;
+
 /**
- * TierTagger settings screen styled after Minecraft's Video Settings — two
- * columns of option buttons with a "Done" button at the bottom.
+ * TierTagger settings screen.
  *
- * Can be opened via:
- *   /tiertagger config
- *   Mod Menu → TierTagger → Configure
- *   Keybind (default K)
+ * Crash fix in v1.6.0:
+ *   {@code Style.withColor(int)} was tightened in MC 1.21.5+ to validate that
+ *   the value is a pure RGB triplet (0..0xFFFFFF). The previous version
+ *   passed {@code TierService.accentArgb} (e.g. {@code 0xFFE53935}, alpha
+ *   byte set) directly and the screen crashed on init. Every {@code .withColor}
+ *   call now masks with {@code & 0xFFFFFF}.
+ *
+ * Defensive: {@code init()} is wrapped so a single bad widget can't bring the
+ * whole screen down — the user just sees a fallback "Done" button instead of
+ * a hard client crash.
  */
 public class TierConfigScreen extends Screen {
 
     private static final int BTN_W   = 150;
     private static final int BTN_H   = 20;
-    private static final int BTN_GAP = 4;
+    private static final int BTN_GAP = 6;
     private static final int ROW_H   = BTN_H + 4;
 
     private final Screen parent;
@@ -35,7 +43,6 @@ public class TierConfigScreen extends Screen {
         this.parent = parent;
     }
 
-    /** X position of the left column (centred on screen). */
     private int colX(int col) {
         int totalW = BTN_W * 2 + BTN_GAP;
         int startX = (this.width - totalW) / 2;
@@ -43,11 +50,23 @@ public class TierConfigScreen extends Screen {
     }
 
     private int rowY(int row) {
-        return this.height / 6 + row * ROW_H;
+        return Math.max(36, this.height / 6) + row * ROW_H;
     }
+
+    private static int rgb(int argb) { return argb & 0xFFFFFF; }
 
     @Override
     protected void init() {
+        try { buildWidgets(); } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] config screen init failed: {}", t.toString());
+            this.clearChildren();
+            this.addDrawableChild(ButtonWidget.builder(
+                    Text.literal("Done (init error — see log)"), b -> closeSafely())
+                .dimensions(this.width / 2 - 110, this.height / 2, 220, BTN_H).build());
+        }
+    }
+
+    private void buildWidgets() {
         TierConfig cfg = TierTaggerCore.config();
         if (cfg == null) {
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> closeSafely())
@@ -59,14 +78,14 @@ public class TierConfigScreen extends Screen {
 
         // ── Left / right badge service ──
         this.addDrawableChild(
-            CyclingButtonWidget.<TierService>builder(s -> Text.literal(s.displayName).withColor(s.accentArgb))
+            CyclingButtonWidget.<TierService>builder(s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)))
                 .values(TierService.values())
                 .initially(cfg.leftServiceEnum())
                 .build(colX(0), rowY(r), BTN_W, BTN_H,
                     Text.literal("Left Badge"),
                     (b, v) -> { cfg.leftService = v.id; cfg.save(); }));
         this.addDrawableChild(
-            CyclingButtonWidget.<TierService>builder(s -> Text.literal(s.displayName).withColor(s.accentArgb))
+            CyclingButtonWidget.<TierService>builder(s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)))
                 .values(TierService.values())
                 .initially(cfg.rightServiceEnum())
                 .build(colX(1), rowY(r), BTN_W, BTN_H,
@@ -74,7 +93,7 @@ public class TierConfigScreen extends Screen {
                     (b, v) -> { cfg.rightService = v.id; cfg.save(); }));
         r++;
 
-        // ── Tab / Nametag badges ──
+        // ── Tab / Nametag ──
         this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showInTab)
             .build(colX(0), rowY(r), BTN_W, BTN_H, Text.literal("Tab Badges"),
                 (b, v) -> { cfg.showInTab = v; cfg.save(); }));
@@ -83,7 +102,7 @@ public class TierConfigScreen extends Screen {
                 (b, v) -> { cfg.showNametag = v; cfg.save(); }));
         r++;
 
-        // ── Right badge enabled / Coloured ──
+        // ── Dual badges / Coloured ──
         this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.rightBadgeEnabled)
             .build(colX(0), rowY(r), BTN_W, BTN_H, Text.literal("Dual Badges"),
                 (b, v) -> { cfg.rightBadgeEnabled = v; cfg.save(); }));
@@ -105,17 +124,17 @@ public class TierConfigScreen extends Screen {
         this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showPeak)
             .build(colX(0), rowY(r), BTN_W, BTN_H, Text.literal("Peak Tier"),
                 (b, v) -> { cfg.showPeak = v; cfg.save(); }));
+        List<String> formats = Arrays.asList(TierConfig.BADGE_FORMATS);
+        String initialFormat = (cfg.badgeFormat == null || !formats.contains(cfg.badgeFormat))
+            ? "bracket" : cfg.badgeFormat;
         this.addDrawableChild(
             CyclingButtonWidget.<String>builder(Text::literal)
-                .values(TierConfig.BADGE_FORMATS)
-                .initially(cfg.badgeFormat == null ? "bracket" : cfg.badgeFormat)
+                .values(formats)
+                .initially(initialFormat)
                 .build(colX(1), rowY(r), BTN_W, BTN_H,
                     Text.literal("Badge Format"),
                     (b, v) -> { cfg.badgeFormat = v; cfg.save(); }));
-        r++;
-
-        // ── Gap row before services section ──
-        r++;
+        r += 2;  // gap before services section
 
         // ── Per-service enable toggles (2 per row) ──
         TierService[] svcs = TierService.values();
@@ -127,7 +146,7 @@ public class TierConfigScreen extends Screen {
             this.addDrawableChild(
                 CyclingButtonWidget.onOffBuilder(cfg.isServiceEnabled(svc))
                     .build(colX(col), rowY(r), BTN_W, BTN_H,
-                        Text.literal(svc.displayName).withColor(svc.accentArgb),
+                        Text.literal(svc.displayName).withColor(rgb(svc.accentArgb)),
                         (b, v) -> {
                             cfg.setServiceEnabled(svc, v);
                             cfg.save();
@@ -147,29 +166,29 @@ public class TierConfigScreen extends Screen {
             .dimensions(colX(1), bottomY, BTN_W, BTN_H).build());
     }
 
-    // Blur-safe guard — prevents "can only blur once per frame" in MC 1.21.x
     @Override
     public void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
         if (bgApplied) return;
         bgApplied = true;
-        super.renderBackground(ctx, mouseX, mouseY, delta);
+        try { super.renderBackground(ctx, mouseX, mouseY, delta); } catch (Throwable ignored) {}
     }
 
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
         bgApplied = false;
-        this.renderBackground(ctx, mouseX, mouseY, delta); // exactly once
-        super.render(ctx, mouseX, mouseY, delta);           // widgets; guard blocks any 2nd blur call
+        try {
+            this.renderBackground(ctx, mouseX, mouseY, delta);
+            super.render(ctx, mouseX, mouseY, delta);
 
-        // Title
-        ctx.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 10, 0xFFFFFF);
-
-        // Services section separator label
-        int svcHeaderY = rowY(5) + 3;
-        if (svcHeaderY < this.height - 40) {
-            ctx.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("— Enabled Services —").formatted(Formatting.YELLOW),
-                this.width / 2, svcHeaderY, 0xFFAA00);
+            ctx.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 14, 0xFFFFFF);
+            int svcHeaderY = rowY(5) + 3;
+            if (svcHeaderY < this.height - 40) {
+                ctx.drawCenteredTextWithShadow(this.textRenderer,
+                    Text.literal("— Enabled Services —").formatted(Formatting.YELLOW),
+                    this.width / 2, svcHeaderY, 0xFFAA00);
+            }
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] config screen render: {}", t.toString());
         }
     }
 

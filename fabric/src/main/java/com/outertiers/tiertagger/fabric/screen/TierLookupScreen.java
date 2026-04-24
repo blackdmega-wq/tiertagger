@@ -3,46 +3,61 @@ package com.outertiers.tiertagger.fabric.screen;
 import com.outertiers.tiertagger.common.PlayerData;
 import com.outertiers.tiertagger.common.Ranking;
 import com.outertiers.tiertagger.common.ServiceData;
+import com.outertiers.tiertagger.common.TierIcons;
 import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
+import com.outertiers.tiertagger.fabric.compat.Compat;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.network.PlayerListEntry;
+import net.minecraft.client.util.SkinTextures;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.Identifier;
 
 import java.util.Optional;
 
 /**
- * GUI for /tiertagger lookup <player> — shows all four services' tiers in a
- * clean scrollable table.
+ * Tiers-Mod-style lookup GUI.
  *
- * Layout:
- *   ──────────────────────────────────────────
- *   TierTagger – Lookup: Steve
- *   ──────────────────────────────────────────
- *   MCTiers          (NA)   #42
- *     vanilla        HT2    peak HT1
- *     sword          LT3
- *   ──────────────────────────────────────────
- *   OuterTiers       (EU)
- *     ogvanilla      HT3
- *   ...
- *   ──────────────────────────────────────────
- *   [Update]                          [Close]
+ * Solid dark centered panel, top header with player head + highest-tier
+ * badge, then one card per service with its own coloured stripe, region and
+ * overall rank, followed by a row of {item icon · mode name · tier label}.
+ *
+ * Defensive everywhere: any draw failure falls back to a coloured rectangle
+ * so the panel is always legible even when the data is half-loaded.
  */
 public class TierLookupScreen extends Screen {
+
+    private static final Identifier STEVE = Identifier.ofVanilla("textures/entity/player/wide/steve.png");
+
+    // Layout constants
+    private static final int PANEL_W_MAX = 480;
+    private static final int PANEL_PAD   = 12;
+    private static final int CARD_GAP    = 6;
+    private static final int CARD_PAD    = 8;
+    private static final int ROW_H       = 14;
+    private static final int ICON_SIZE   = 16;
+
+    // Colours
+    private static final int BG_PANEL    = 0xF20E1116;   // near-opaque dark
+    private static final int BG_PANEL_BORDER = 0xFF2A2F38;
+    private static final int BG_HEADER   = 0xFF181C24;
+    private static final int BG_CARD     = 0xFF15191F;
+    private static final int BG_CARD_BAR = 0xFF1E232C;
+    private static final int FG_FAINT    = 0x9AA0AA;
+    private static final int FG_TEXT     = 0xE6E8EC;
 
     private final Screen parent;
     private final String username;
     private boolean bgApplied = false;
-
-    private int scrollY   = 0;
+    private int scrollY = 0;
     private int maxScroll = 0;
-
-    private static final int PAD = 12;
 
     public TierLookupScreen(Screen parent, String username) {
         super(Text.literal("TierTagger – Lookup: " + (username == null ? "?" : username)));
@@ -55,28 +70,33 @@ public class TierLookupScreen extends Screen {
         try { TierTaggerCore.cache().peekData(username); } catch (Throwable ignored) {}
         scrollY = 0;
 
-        int btnY = this.height - 25;
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Update"), btn -> {
-            TierTaggerCore.cache().invalidatePlayer(username);
-            try { TierTaggerCore.cache().peekData(username); } catch (Throwable ignored) {}
-        }).dimensions(PAD, btnY, 80, 20).build());
+        int panelW = Math.min(PANEL_W_MAX, this.width - 40);
+        int panelX = (this.width - panelW) / 2;
+        int btnY   = this.height - 28;
+
+        this.addDrawableChild(ButtonWidget.builder(Text.literal("\u21BB Update"), btn -> {
+                try {
+                    TierTaggerCore.cache().invalidatePlayer(username);
+                    TierTaggerCore.cache().peekData(username);
+                } catch (Throwable ignored) {}
+            })
+            .dimensions(panelX + CARD_PAD, btnY, 80, 20).build());
 
         this.addDrawableChild(ButtonWidget.builder(Text.literal("Close"), btn -> closeSafely())
-            .dimensions(this.width - PAD - 80, btnY, 80, 20).build());
+            .dimensions(panelX + panelW - CARD_PAD - 80, btnY, 80, 20).build());
     }
 
     @Override
     public boolean mouseScrolled(double mx, double my, double hd, double vd) {
-        scrollY = Math.max(0, Math.min(maxScroll, scrollY - (int)(vd * 12)));
+        scrollY = Math.max(0, Math.min(maxScroll, scrollY - (int)(vd * 16)));
         return true;
     }
 
-    // ── Blur-safe guard ──────────────────────────────────────────────────────
     @Override
     public void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
         if (bgApplied) return;
         bgApplied = true;
-        super.renderBackground(ctx, mouseX, mouseY, delta);
+        try { super.renderBackground(ctx, mouseX, mouseY, delta); } catch (Throwable ignored) {}
     }
 
     @Override
@@ -85,19 +105,27 @@ public class TierLookupScreen extends Screen {
         try {
             this.renderBackground(ctx, mouseX, mouseY, delta);
 
-            // Title
-            ctx.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("Lookup: ").formatted(Formatting.GRAY)
-                    .append(Text.literal(username).formatted(Formatting.AQUA, Formatting.BOLD)),
-                this.width / 2, 8, 0xFFFFFF);
+            int panelW = Math.min(PANEL_W_MAX, this.width - 40);
+            int panelX = (this.width - panelW) / 2;
+            int panelTop = 18;
+            int panelBottom = this.height - 36;
 
-            // Content
-            int contentTop    = 24;
-            int contentBottom = this.height - 30;
-            ctx.enableScissor(0, contentTop, this.width, contentBottom);
-            int y = drawContent(ctx, contentTop - scrollY);
+            // Solid backing panel
+            fillRect(ctx, panelX, panelTop, panelX + panelW, panelBottom, BG_PANEL);
+            outlineRect(ctx, panelX, panelTop, panelW, panelBottom - panelTop, BG_PANEL_BORDER);
+
+            int headerH = 50;
+            renderHeader(ctx, panelX + CARD_PAD, panelTop + CARD_PAD,
+                         panelW - CARD_PAD * 2, headerH);
+
+            // Body (scrollable cards)
+            int bodyTop    = panelTop + CARD_PAD + headerH + 6;
+            int bodyBottom = panelBottom - CARD_PAD;
+            ctx.enableScissor(panelX + 1, bodyTop, panelX + panelW - 1, bodyBottom);
+            int y = bodyTop - scrollY;
+            y = renderCards(ctx, panelX + CARD_PAD, y, panelW - CARD_PAD * 2);
             ctx.disableScissor();
-            maxScroll = Math.max(0, y + scrollY - contentBottom);
+            maxScroll = Math.max(0, y + scrollY - bodyBottom);
 
             super.render(ctx, mouseX, mouseY, delta);
         } catch (Throwable t) {
@@ -105,90 +133,218 @@ public class TierLookupScreen extends Screen {
         }
     }
 
-    private int drawContent(DrawContext ctx, int startY) {
-        int x = PAD;
-        int y = startY;
-        int w = this.width - PAD * 2;
+    // ── header ──────────────────────────────────────────────────────────────
+
+    private void renderHeader(DrawContext ctx, int x, int y, int w, int h) {
+        fillRect(ctx, x, y, x + w, y + h, BG_HEADER);
+
+        // Head plate
+        int headSize = h - 12;
+        int headX = x + 8;
+        int headY = y + (h - headSize) / 2;
+        drawHead(ctx, username, headX, headY, headSize);
+
+        // Username + highest tier
+        int textX = headX + headSize + 10;
+        int textY = y + 8;
+        ctx.drawTextWithShadow(this.textRenderer,
+            Text.literal(username).formatted(Formatting.WHITE, Formatting.BOLD),
+            textX, textY, 0xFFFFFFFF);
 
         Optional<PlayerData> opt = TierTaggerCore.cache().peekData(username);
-        PlayerData data = opt.orElse(null);
-
-        if (data == null) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal("Loading…").formatted(Formatting.DARK_GRAY), x, y + 4, 0x888888);
-            return y + 20;
+        Ranking best = null;
+        TierService bestSvc = null;
+        if (opt.isPresent()) {
+            for (TierService s : TierService.values()) {
+                Ranking r = opt.get().get(s).highest();
+                if (r == null) continue;
+                if (best == null || r.score() > best.score()) { best = r; bestSvc = s; }
+            }
         }
+        String sub;
+        int subColor;
+        if (best != null) {
+            sub = best.label() + " on " + bestSvc.shortLabel;
+            subColor = TierTaggerCore.argbFor(best.label()) & 0xFFFFFF;
+        } else if (opt.isEmpty()) {
+            sub = "Loading…"; subColor = FG_FAINT;
+        } else {
+            sub = "No tiers found"; subColor = FG_FAINT;
+        }
+        ctx.drawTextWithShadow(this.textRenderer,
+            Text.literal(sub).withColor(subColor & 0xFFFFFF),
+            textX, textY + 12, subColor & 0xFFFFFF);
+
+        // Right side: status pill ("4/4 services" or "loading 2/4")
+        if (opt.isPresent()) {
+            int ranked = 0, loaded = 0;
+            for (TierService s : TierService.values()) {
+                ServiceData sd = opt.get().get(s);
+                if (sd.fetchedAt > 0) loaded++;
+                if (sd.rankedCount() > 0) ranked++;
+            }
+            String st = ranked + " / " + TierService.values().length + " ranked";
+            if (loaded < TierService.values().length) st = "loading " + loaded + "/" + TierService.values().length;
+            int sw = this.textRenderer.getWidth(st);
+            ctx.drawTextWithShadow(this.textRenderer,
+                Text.literal(st).withColor(FG_FAINT),
+                x + w - 10 - sw, textY + 6, FG_FAINT);
+        }
+    }
+
+    // ── service cards ───────────────────────────────────────────────────────
+
+    private int renderCards(DrawContext ctx, int x, int y, int w) {
+        Optional<PlayerData> opt = TierTaggerCore.cache().peekData(username);
+        if (opt.isEmpty()) {
+            ctx.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal("Looking up player…").formatted(Formatting.GRAY),
+                x + w / 2, y + 20, 0xAAAAAA);
+            return y + 40;
+        }
+        PlayerData data = opt.get();
 
         for (TierService svc : TierService.values()) {
             ServiceData sd = data.get(svc);
-
-            // Service header bar
-            ctx.fill(x, y, x + w, y + 1, svc.accentArgb);
-            y += 3;
-
-            // Service name + region + overall
-            MutableText header = Text.literal(svc.displayName)
-                .withColor(svc.accentArgb).formatted(Formatting.BOLD);
-
-            if (sd != null && !sd.missing && sd.fetchedAt > 0) {
-                if (sd.region != null && !sd.region.isBlank()) {
-                    header = header.append(Text.literal("  (" + sd.region + ")")
-                        .formatted(Formatting.AQUA));
-                }
-                if (sd.overall > 0) {
-                    header = header.append(Text.literal("  #" + sd.overall)
-                        .formatted(Formatting.GOLD));
-                }
-            }
-            ctx.drawTextWithShadow(this.textRenderer, header, x, y, 0xFFFFFF);
-            y += 13;
-
-            if (sd == null || sd.fetchedAt == 0L) {
-                ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal("  Loading…").formatted(Formatting.DARK_GRAY), x, y, 0x888888);
-                y += 12;
-            } else if (sd.missing) {
-                ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal("  Not ranked on " + svc.displayName).formatted(Formatting.DARK_GRAY),
-                    x, y, 0x666666);
-                y += 12;
-            } else {
-                // Ranked — show modes
-                boolean any = false;
-                for (String mode : svc.modes) {
-                    Ranking r = sd.rankings.get(mode);
-                    if (r == null || r.tierLevel <= 0) continue;
-
-                    String modeLabel = mode.replace("_", " ");
-                    String curLabel  = r.label();
-                    int    curColor  = TierTaggerCore.argbFor(curLabel);
-
-                    MutableText row = Text.literal("  " + modeLabel)
-                        .formatted(Formatting.GRAY);
-
-                    // right-align tier within column
-                    int rightX = x + w - 10;
-                    MutableText tierTxt = Text.literal(curLabel).withColor(curColor).formatted(Formatting.BOLD);
-                    if (r.peakDiffers()) {
-                        String pk = r.peakLabel();
-                        tierTxt = tierTxt.append(Text.literal(" (" + pk + ")")
-                            .withColor(TierTaggerCore.argbFor(pk)));
-                    }
-                    ctx.drawTextWithShadow(this.textRenderer, row, x, y, 0xCCCCCC);
-                    int tw = this.textRenderer.getWidth(tierTxt);
-                    ctx.drawTextWithShadow(this.textRenderer, tierTxt, rightX - tw, y, curColor);
-                    y += 12;
-                    any = true;
-                }
-                if (!any) {
-                    ctx.drawTextWithShadow(this.textRenderer,
-                        Text.literal("  (no modes)").formatted(Formatting.DARK_GRAY), x, y, 0x666666);
-                    y += 12;
-                }
-            }
-            y += 4; // gap between services
+            int rows = Math.max(1, sd.rankings.size());
+            int cardH = 22 + rows * ROW_H + 6;
+            renderServiceCard(ctx, svc, sd, x, y, w, cardH);
+            y += cardH + CARD_GAP;
         }
         return y;
+    }
+
+    private void renderServiceCard(DrawContext ctx, TierService svc, ServiceData sd,
+                                   int x, int y, int w, int h) {
+        int accent = svc.accentArgb;
+
+        fillRect(ctx, x, y, x + w, y + h, BG_CARD);
+        outlineRect(ctx, x, y, w, h, 0xFF2A2F38);
+        fillRect(ctx, x, y, x + 3, y + h, accent);                       // left accent stripe
+        fillRect(ctx, x + 3, y, x + w, y + 22, BG_CARD_BAR);              // header bar
+
+        // Service name + short label
+        ctx.drawTextWithShadow(this.textRenderer,
+            Text.literal(svc.shortLabel).withColor(accent & 0xFFFFFF).copy().formatted(Formatting.BOLD),
+            x + 10, y + 7, accent & 0xFFFFFF);
+        ctx.drawTextWithShadow(this.textRenderer,
+            Text.literal(svc.displayName).formatted(Formatting.WHITE),
+            x + 10 + this.textRenderer.getWidth(svc.shortLabel) + 6, y + 7, FG_TEXT);
+
+        // Right side: region + #rank
+        String rightStr;
+        int rightCol;
+        if (sd.fetchedAt == 0L)      { rightStr = "loading…";       rightCol = FG_FAINT; }
+        else if (sd.missing)         { rightStr = "not ranked";     rightCol = FG_FAINT; }
+        else {
+            String reg = (sd.region == null || sd.region.isBlank()) ? "??" : sd.region;
+            rightStr = reg + (sd.overall > 0 ? "  ·  #" + sd.overall : "");
+            rightCol = 0xFFD27A;
+        }
+        int rw = this.textRenderer.getWidth(rightStr);
+        ctx.drawTextWithShadow(this.textRenderer, Text.literal(rightStr).withColor(rightCol & 0xFFFFFF),
+            x + w - 10 - rw, y + 7, rightCol & 0xFFFFFF);
+
+        // Mode rows
+        int rowY = y + 24;
+        int innerX = x + 10;
+        int innerW = w - 20;
+
+        if (sd.fetchedAt == 0L) {
+            ctx.drawTextWithShadow(this.textRenderer,
+                Text.literal("Fetching " + svc.displayName + "…").formatted(Formatting.DARK_GRAY),
+                innerX, rowY + 2, 0x808080);
+            return;
+        }
+        if (sd.missing || sd.rankings.isEmpty()) {
+            ctx.drawTextWithShadow(this.textRenderer,
+                Text.literal("Player has no entry on this tier-list").formatted(Formatting.DARK_GRAY),
+                innerX, rowY + 2, 0x808080);
+            return;
+        }
+
+        boolean alt = false;
+        for (String mode : svc.modes) {
+            Ranking r = sd.rankings.get(mode);
+            if (r == null || r.tierLevel <= 0) continue;
+            renderModeRow(ctx, mode, r, innerX, rowY, innerW, alt);
+            rowY += ROW_H;
+            alt = !alt;
+        }
+    }
+
+    private void renderModeRow(DrawContext ctx, String mode, Ranking r,
+                               int x, int y, int w, boolean alt) {
+        if (alt) fillRect(ctx, x - 4, y, x + w + 4, y + ROW_H, 0x14FFFFFF);
+
+        // Item icon at native 16x16 (avoids 1.21.6+ matrix-stack changes)
+        int textX = x;
+        try {
+            Identifier id = Identifier.tryParse(TierIcons.iconFor(mode));
+            if (id != null) {
+                Item item = Compat.lookupItem(id);
+                ItemStack stack = item == null ? ItemStack.EMPTY : new ItemStack(item);
+                if (!stack.isEmpty()) {
+                    ctx.drawItem(stack, x, y - 1);
+                    textX = x + ICON_SIZE + 4;
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // Mode name (left)
+        String label = TierIcons.labelFor(mode);
+        ctx.drawTextWithShadow(this.textRenderer,
+            Text.literal(label).withColor(FG_TEXT),
+            textX, y + 3, FG_TEXT);
+
+        // Tier label (right)
+        String cur = r.label();
+        int curColor = TierTaggerCore.argbFor(cur) & 0xFFFFFF;
+        MutableText tier = Text.literal(cur).withColor(curColor).copy().formatted(Formatting.BOLD);
+        if (r.peakDiffers()) {
+            String peak = r.peakLabel();
+            int peakC = TierTaggerCore.argbFor(peak) & 0xFFFFFF;
+            tier = tier.append(Text.literal(" · peak ").formatted(Formatting.DARK_GRAY))
+                       .append(Text.literal(peak).withColor(peakC));
+        }
+        if (r.retired) {
+            tier = Text.literal("(").formatted(Formatting.DARK_GRAY).append(tier)
+                       .append(Text.literal(")").formatted(Formatting.DARK_GRAY));
+        }
+        int tw = this.textRenderer.getWidth(tier);
+        ctx.drawTextWithShadow(this.textRenderer, tier, x + w - tw, y + 3, 0xFFFFFFFF);
+    }
+
+    // ── helpers ─────────────────────────────────────────────────────────────
+
+    private void drawHead(DrawContext ctx, String name, int x, int y, int size) {
+        SkinTextures st = null;
+        try {
+            MinecraftClient mc = MinecraftClient.getInstance();
+            if (mc != null && mc.getNetworkHandler() != null) {
+                PlayerListEntry e = mc.getNetworkHandler().getPlayerListEntry(name);
+                if (e != null) st = e.getSkinTextures();
+            }
+        } catch (Throwable ignored) {}
+        try {
+            ctx.fill(x - 2, y - 2, x + size + 2, y + size + 2, 0xFF1A1A1A);
+            Compat.drawPlayerFace(ctx, st, STEVE, x, y, size);
+        } catch (Throwable t) {
+            ctx.fill(x, y, x + size, y + size, 0xFF6E4A2A);
+        }
+    }
+
+    private static void fillRect(DrawContext ctx, int x1, int y1, int x2, int y2, int argb) {
+        try { ctx.fill(x1, y1, x2, y2, argb); } catch (Throwable ignored) {}
+    }
+
+    private static void outlineRect(DrawContext ctx, int x, int y, int w, int h, int argb) {
+        try {
+            ctx.fill(x,         y,         x + w,     y + 1,     argb);
+            ctx.fill(x,         y + h - 1, x + w,     y + h,     argb);
+            ctx.fill(x,         y,         x + 1,     y + h,     argb);
+            ctx.fill(x + w - 1, y,         x + w,     y + h,     argb);
+        } catch (Throwable ignored) {}
     }
 
     private void closeSafely() {
