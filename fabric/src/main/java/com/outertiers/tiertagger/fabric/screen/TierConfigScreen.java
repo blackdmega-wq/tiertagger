@@ -82,6 +82,18 @@ public class TierConfigScreen extends Screen {
         }
     }
 
+    /**
+     * Wraps a single widget-add in its own try/catch so one broken widget can't
+     * blow up the whole config screen. Any per-widget failure is logged at WARN
+     * with a full stack trace, but the rest of the screen still gets built.
+     */
+    private void safeAdd(String label, Runnable build) {
+        try { build.run(); }
+        catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] config widget '" + label + "' failed", t);
+        }
+    }
+
     private void buildWidgets() {
         TierConfig cfg = TierTaggerCore.config();
         if (cfg == null) {
@@ -90,99 +102,102 @@ public class TierConfigScreen extends Screen {
             return;
         }
 
-        int r = 0;
+        // r is shared mutable state across the safeAdd lambdas; wrap in an int[1].
+        final int[] rRef = { 0 };
 
         // ── Left / right badge service ──
-        this.addDrawableChild(
+        safeAdd("leftService", () -> this.addDrawableChild(
             CyclingButtonWidget.<TierService>builder(s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)))
                 .values(TierService.values())
                 .initially(cfg.leftServiceEnum())
-                .build(colX(0), rowY(r), BTN_W, BTN_H,
+                .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H,
                     Text.literal("Left Badge"),
-                    (b, v) -> { cfg.leftService = v.id; cfg.save(); }));
-        this.addDrawableChild(
+                    (b, v) -> { cfg.leftService = v.id; cfg.save(); })));
+        safeAdd("rightService", () -> this.addDrawableChild(
             CyclingButtonWidget.<TierService>builder(s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)))
                 .values(TierService.values())
                 .initially(cfg.rightServiceEnum())
-                .build(colX(1), rowY(r), BTN_W, BTN_H,
+                .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
                     Text.literal("Right Badge"),
-                    (b, v) -> { cfg.rightService = v.id; cfg.save(); }));
-        r++;
+                    (b, v) -> { cfg.rightService = v.id; cfg.save(); })));
+        rRef[0]++;
 
         // ── Tab / Nametag ──
-        this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showInTab)
-            .build(colX(0), rowY(r), BTN_W, BTN_H, Text.literal("Tab Badges"),
-                (b, v) -> { cfg.showInTab = v; cfg.save(); }));
-        this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showNametag)
-            .build(colX(1), rowY(r), BTN_W, BTN_H, Text.literal("Nametag"),
-                (b, v) -> { cfg.showNametag = v; cfg.save(); }));
-        r++;
+        safeAdd("showInTab", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showInTab)
+            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Tab Badges"),
+                (b, v) -> { cfg.showInTab = v; cfg.save(); })));
+        safeAdd("showNametag", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showNametag)
+            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Nametag"),
+                (b, v) -> { cfg.showNametag = v; cfg.save(); })));
+        rRef[0]++;
 
         // ── Dual badges / Coloured ──
-        this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.rightBadgeEnabled)
-            .build(colX(0), rowY(r), BTN_W, BTN_H, Text.literal("Dual Badges"),
-                (b, v) -> { cfg.rightBadgeEnabled = v; cfg.save(); }));
-        this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.coloredBadges)
-            .build(colX(1), rowY(r), BTN_W, BTN_H, Text.literal("Coloured Badges"),
-                (b, v) -> { cfg.coloredBadges = v; cfg.save(); }));
-        r++;
+        safeAdd("rightBadgeEnabled", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.rightBadgeEnabled)
+            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Dual Badges"),
+                (b, v) -> { cfg.rightBadgeEnabled = v; cfg.save(); })));
+        safeAdd("coloredBadges", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.coloredBadges)
+            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Coloured Badges"),
+                (b, v) -> { cfg.coloredBadges = v; cfg.save(); })));
+        rRef[0]++;
 
         // ── Service tag / Mode icons ──
-        this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showServiceIcon)
-            .build(colX(0), rowY(r), BTN_W, BTN_H, Text.literal("Service Tag"),
-                (b, v) -> { cfg.showServiceIcon = v; cfg.save(); }));
-        this.addDrawableChild(CyclingButtonWidget.onOffBuilder(!cfg.disableIcons)
-            .build(colX(1), rowY(r), BTN_W, BTN_H, Text.literal("Mode Icons"),
-                (b, v) -> { cfg.disableIcons = !v; cfg.showModeIcon = v; cfg.save(); }));
-        r++;
+        safeAdd("showServiceIcon", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showServiceIcon)
+            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Service Tag"),
+                (b, v) -> { cfg.showServiceIcon = v; cfg.save(); })));
+        safeAdd("modeIcons", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(!cfg.disableIcons)
+            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Mode Icons"),
+                (b, v) -> { cfg.disableIcons = !v; cfg.showModeIcon = v; cfg.save(); })));
+        rRef[0]++;
 
         // ── Peak tier / Badge format ──
-        this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showPeak)
-            .build(colX(0), rowY(r), BTN_W, BTN_H, Text.literal("Peak Tier"),
-                (b, v) -> { cfg.showPeak = v; cfg.save(); }));
-        List<String> formats = Arrays.asList(TierConfig.BADGE_FORMATS);
-        String initialFormat = (cfg.badgeFormat == null || !formats.contains(cfg.badgeFormat))
-            ? "bracket" : cfg.badgeFormat;
-        this.addDrawableChild(
-            CyclingButtonWidget.<String>builder(Text::literal)
-                .values(formats)
-                .initially(initialFormat)
-                .build(colX(1), rowY(r), BTN_W, BTN_H,
-                    Text.literal("Badge Format"),
-                    (b, v) -> { cfg.badgeFormat = v; cfg.save(); }));
-        r++;
+        safeAdd("showPeak", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showPeak)
+            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Peak Tier"),
+                (b, v) -> { cfg.showPeak = v; cfg.save(); })));
+        safeAdd("badgeFormat", () -> {
+            List<String> formats = Arrays.asList(TierConfig.BADGE_FORMATS);
+            String initialFormat = (cfg.badgeFormat == null || !formats.contains(cfg.badgeFormat))
+                ? "bracket" : cfg.badgeFormat;
+            this.addDrawableChild(
+                CyclingButtonWidget.<String>builder(Text::literal)
+                    .values(formats)
+                    .initially(initialFormat)
+                    .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
+                        Text.literal("Badge Format"),
+                        (b, v) -> { cfg.badgeFormat = v; cfg.save(); }));
+        });
+        rRef[0]++;
 
         // Section break before per-service toggles
-        servicesHeaderY = rowY(r) + 6;
-        r++;
+        servicesHeaderY = rowY(rRef[0]) + 6;
+        rRef[0]++;
 
         // ── Per-service enable toggles (2 per row) ──
         TierService[] svcs = TierService.values();
         int bottomLimit = this.height - 32 - ROW_H;  // leave room for the bottom buttons
         for (int i = 0; i < svcs.length; i++) {
-            TierService svc = svcs[i];
-            int col = i % 2;
-            if (col == 0 && i > 0) r++;
-            if (rowY(r) + BTN_H > bottomLimit) break;
-            this.addDrawableChild(
+            final TierService svc = svcs[i];
+            final int col = i % 2;
+            if (col == 0 && i > 0) rRef[0]++;
+            if (rowY(rRef[0]) + BTN_H > bottomLimit) break;
+            safeAdd("svc:" + svc.id, () -> this.addDrawableChild(
                 CyclingButtonWidget.onOffBuilder(cfg.isServiceEnabled(svc))
-                    .build(colX(col), rowY(r), BTN_W, BTN_H,
+                    .build(colX(col), rowY(rRef[0]), BTN_W, BTN_H,
                         Text.literal(svc.displayName).withColor(rgb(svc.accentArgb)),
                         (b, v) -> {
                             cfg.setServiceEnabled(svc, v);
                             cfg.save();
                             try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
-                        }));
+                        })));
         }
 
         // ── Bottom buttons (always anchored to the bottom of the screen) ──
         int bottomY = this.height - 27;
-        this.addDrawableChild(ButtonWidget.builder(
+        safeAdd("refreshCache", () -> this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("Refresh Cache"),
                 b -> { try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {} })
-            .dimensions(colX(0), bottomY, BTN_W, BTN_H).build());
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> closeSafely())
-            .dimensions(colX(1), bottomY, BTN_W, BTN_H).build());
+            .dimensions(colX(0), bottomY, BTN_W, BTN_H).build()));
+        safeAdd("done", () -> this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> closeSafely())
+            .dimensions(colX(1), bottomY, BTN_W, BTN_H).build()));
     }
 
     @Override

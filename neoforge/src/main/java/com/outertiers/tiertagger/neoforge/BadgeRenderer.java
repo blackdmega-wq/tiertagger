@@ -32,7 +32,10 @@ public final class BadgeRenderer {
 
         if (!TierFormat.showServiceLabel()) return core;
 
-        MutableComponent svcLabel = Component.literal(svc.shortLabel).withColor(svc.accentArgb);
+        // CRITICAL: must mask with 0xFFFFFF — Style.withColor(int) in MC 1.21.5+
+        // throws IllegalArgumentException for any value outside 0..0xFFFFFF, which
+        // would silently kill every badge for everyone on newer Minecraft versions.
+        MutableComponent svcLabel = Component.literal(svc.shortLabel).withColor(svc.accentArgb & 0xFFFFFF);
         return serviceLabelLeading
             ? svcLabel.append(Component.literal(" ")).append(core)
             : core.append(Component.literal(" ")).append(svcLabel);

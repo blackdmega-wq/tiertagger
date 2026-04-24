@@ -82,8 +82,12 @@ public class TierCompareScreen extends Screen {
         this.nameB  = nameB == null ? "" : nameB;
     }
 
+    /** Set when init() throws, so render() can show a useful overlay instead of a blank screen. */
+    private volatile String lastInitError = null;
+
     @Override
     protected void init() {
+        lastInitError = null;
         try { TierTaggerCore.cache().peekData(nameA); } catch (Throwable ignored) {}
         try { TierTaggerCore.cache().peekData(nameB); } catch (Throwable ignored) {}
         // Pre-warm offline avatar downloads.
@@ -94,20 +98,36 @@ public class TierCompareScreen extends Screen {
         int panelX = (this.width - panelW) / 2;
         int btnY   = this.height - 28;
 
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("\u21BB " + nameA), btn -> {
-                try { TierTaggerCore.cache().invalidatePlayer(nameA);
-                      TierTaggerCore.cache().peekData(nameA); } catch (Throwable ignored) {}
-            })
-            .dimensions(panelX + CARD_PAD, btnY, 100, 20).build());
+        // Add the Close button FIRST so the user can always escape, even if a
+        // later button construction throws.
+        try {
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Close"), btn -> closeSafely())
+                .dimensions(this.width / 2 - 40, btnY, 80, 20).build());
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] compare close button failed", t);
+        }
 
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Close"), btn -> closeSafely())
-            .dimensions(this.width / 2 - 40, btnY, 80, 20).build());
+        try {
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("\u21BB " + nameA), btn -> {
+                    try { TierTaggerCore.cache().invalidatePlayer(nameA);
+                          TierTaggerCore.cache().peekData(nameA); } catch (Throwable ignored) {}
+                })
+                .dimensions(panelX + CARD_PAD, btnY, 100, 20).build());
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] compare refresh-A button failed", t);
+            lastInitError = "Refresh button failed: " + t.getClass().getSimpleName();
+        }
 
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("\u21BB " + nameB), btn -> {
-                try { TierTaggerCore.cache().invalidatePlayer(nameB);
-                      TierTaggerCore.cache().peekData(nameB); } catch (Throwable ignored) {}
-            })
-            .dimensions(panelX + panelW - CARD_PAD - 100, btnY, 100, 20).build());
+        try {
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("\u21BB " + nameB), btn -> {
+                    try { TierTaggerCore.cache().invalidatePlayer(nameB);
+                          TierTaggerCore.cache().peekData(nameB); } catch (Throwable ignored) {}
+                })
+                .dimensions(panelX + panelW - CARD_PAD - 100, btnY, 100, 20).build());
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] compare refresh-B button failed", t);
+            lastInitError = "Refresh button failed: " + t.getClass().getSimpleName();
+        }
     }
 
     @Override
@@ -155,6 +175,10 @@ public class TierCompareScreen extends Screen {
             maxScroll = Math.max(0, y + scrollY - bodyBottom);
 
             super.render(ctx, mouseX, mouseY, delta);
+
+            if (lastInitError != null) {
+                drawErrorOverlay(ctx, "Compare init failed", lastInitError);
+            }
         } catch (Throwable t) {
             TierTaggerCore.LOGGER.warn("[TierTagger] compare render", t);
             try { drawErrorOverlay(ctx, "Compare render failed",

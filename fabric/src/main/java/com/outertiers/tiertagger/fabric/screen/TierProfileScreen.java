@@ -68,8 +68,12 @@ public class TierProfileScreen extends Screen {
         this.username = username == null ? "" : username;
     }
 
+    /** Set when init() throws, so render() can show a useful overlay instead of a blank screen. */
+    private volatile String lastInitError = null;
+
     @Override
     protected void init() {
+        lastInitError = null;
         try { TierTaggerCore.cache().peekData(username); } catch (Throwable ignored) {}
         // Kick off the offline-skin download so it shows up on subsequent frames.
         try { SkinFetcher.headFor(username); } catch (Throwable ignored) {}
@@ -79,16 +83,27 @@ public class TierProfileScreen extends Screen {
         int panelX = (this.width - panelW) / 2;
         int btnY   = this.height - 28;
 
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("\u21BB Update"), btn -> {
-                try {
-                    TierTaggerCore.cache().invalidatePlayer(username);
-                    TierTaggerCore.cache().peekData(username);
-                } catch (Throwable ignored) {}
-            })
-            .dimensions(panelX + CARD_PAD, btnY, 80, 20).build());
+        // Always add the Close button FIRST and outside any sub-try so the user
+        // can never get stuck on a screen they can't close, even if init throws.
+        try {
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Close"), btn -> closeSafely())
+                .dimensions(panelX + panelW - CARD_PAD - 80, btnY, 80, 20).build());
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] profile close button failed", t);
+        }
 
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Close"), btn -> closeSafely())
-            .dimensions(panelX + panelW - CARD_PAD - 80, btnY, 80, 20).build());
+        try {
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("\u21BB Update"), btn -> {
+                    try {
+                        TierTaggerCore.cache().invalidatePlayer(username);
+                        TierTaggerCore.cache().peekData(username);
+                    } catch (Throwable ignored) {}
+                })
+                .dimensions(panelX + CARD_PAD, btnY, 80, 20).build());
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] profile update button failed", t);
+            lastInitError = "Update button failed: " + t.getClass().getSimpleName();
+        }
     }
 
     @Override
@@ -131,6 +146,10 @@ public class TierProfileScreen extends Screen {
             maxScroll = Math.max(0, y + scrollY - bodyBottom);
 
             super.render(ctx, mouseX, mouseY, delta);
+
+            if (lastInitError != null) {
+                drawErrorOverlay(ctx, "Profile init failed", lastInitError);
+            }
         } catch (Throwable t) {
             TierTaggerCore.LOGGER.warn("[TierTagger] profile render", t);
             try { drawErrorOverlay(ctx, "Profile render failed",

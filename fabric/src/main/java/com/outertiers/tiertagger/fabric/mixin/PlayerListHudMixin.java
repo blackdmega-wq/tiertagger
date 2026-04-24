@@ -15,9 +15,13 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Mixin(PlayerListHud.class)
 public class PlayerListHudMixin {
+
+    /** Logged at WARN once per session so a real bug is actually visible in latest.log. */
+    private static final AtomicBoolean WARNED = new AtomicBoolean(false);
 
     @Inject(method = "getPlayerName", at = @At("RETURN"), cancellable = true)
     private void tiertagger$appendTier(PlayerListEntry entry, CallbackInfoReturnable<Text> cir) {
@@ -41,7 +45,14 @@ public class PlayerListHudMixin {
             Text original = cir.getReturnValue();
             cir.setReturnValue((original == null ? Text.empty() : original.copy()).append(badges));
         } catch (Throwable t) {
-            TierTaggerCore.LOGGER.debug("[TierTagger] tab badge mixin failed: {}", t.toString());
+            // The first time we hit a render error, log the full stack trace at WARN
+            // so users can actually see what's wrong. Subsequent errors stay at DEBUG
+            // so the log isn't spammed every tick.
+            if (WARNED.compareAndSet(false, true)) {
+                TierTaggerCore.LOGGER.warn("[TierTagger] tab badge mixin failed (further errors suppressed)", t);
+            } else {
+                TierTaggerCore.LOGGER.debug("[TierTagger] tab badge mixin failed: {}", t.toString());
+            }
         }
     }
 }

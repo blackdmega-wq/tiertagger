@@ -16,9 +16,13 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Mixin(PlayerEntityRenderer.class)
 public abstract class PlayerEntityRendererMixin {
+
+    /** Logged at WARN once per session so a real bug is actually visible in latest.log. */
+    private static final AtomicBoolean WARNED = new AtomicBoolean(false);
 
     @ModifyVariable(
         method = "renderLabelIfPresent(Lnet/minecraft/client/network/AbstractClientPlayerEntity;Lnet/minecraft/text/Text;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;IF)V",
@@ -50,7 +54,13 @@ public abstract class PlayerEntityRendererMixin {
             MutableText wrapped = BadgeRenderer.wrapNametag(cfg, opt.get(), original);
             return wrapped == null ? original : wrapped;
         } catch (Throwable t) {
-            TierTaggerCore.LOGGER.debug("[TierTagger] nametag mixin failed: {}", t.toString());
+            // First failure: log full stack trace at WARN so users can see what
+            // actually broke. Subsequent failures stay at DEBUG to avoid log spam.
+            if (WARNED.compareAndSet(false, true)) {
+                TierTaggerCore.LOGGER.warn("[TierTagger] nametag mixin failed (further errors suppressed)", t);
+            } else {
+                TierTaggerCore.LOGGER.debug("[TierTagger] nametag mixin failed: {}", t.toString());
+            }
             return original;
         }
     }
