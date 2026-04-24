@@ -19,24 +19,27 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * In-memory multi-service cache. {@link #peek(String)} is non-blocking — it
- * returns whatever data is already loaded and triggers a background fetch
+ * In-memory multi-service cache. {@link #peekData(String)} is non-blocking —
+ * it returns whatever data is already loaded and triggers a background fetch
  * (per service, in parallel) if any entry is stale.
  *
- * Storage is keyed by the lowercase username so the existing tab-list /
- * nametag mixins, which only have a username, can still hit the cache.
- *
- * Backwards-compatibility shim: {@link Entry} mirrors the old single-service
- * shape and is derived on demand from the highest-tier across the user's
- * configured "primary" service. This keeps existing call sites compiling
- * while we migrate the screens to the multi-service API.
+ * <p><b>Thread safety:</b> Each background thread writes to the same
+ * {@link PlayerData} object that lives in {@link #entries}. Because
+ * {@code uuidNoDash} is volatile and each service writes to a distinct
+ * {@link java.util.EnumMap} slot (distinct {@code enum} ordinal), the
+ * concurrent writes are safe in practice. Crucially, we never replace the
+ * {@code PlayerData} object once it is in the map — the old "replaceUuid"
+ * approach caused a race where concurrent threads would overwrite each
+ * other's results.</p>
  */
 public class TierCache {
 
-    /** Legacy single-service view, kept so existing helpers in
-     *  {@link TierTaggerCore#chooseTier(Entry)} still work. */
+    /**
+     * Legacy single-service view, kept so existing helpers in
+     * {@link TierTaggerCore#chooseTier(Entry)} still compile.
+     */
     public static class Entry {
-        public final Map<String, String> tiers;   // gamemode -> "HT3"
+        public final Map<String, String> tiers;
         public final String  peakTier;
         public final String  region;
         public final long    fetchedAt;
@@ -72,7 +75,7 @@ public class TierCache {
 
     private final TierConfig cfg;
     private final ConcurrentHashMap<String, PlayerData> entries  = new ConcurrentHashMap<>();
-    /** Per-(player,service) inflight markers to throttle repeated requests. */
+    /** Per-(player,service) in-flight markers to throttle repeated requests. */
     private final ConcurrentHashMap<String, Long> inflight = new ConcurrentHashMap<>();
 
     public TierCache(TierConfig cfg) { this.cfg = cfg; }
@@ -83,25 +86,27 @@ public class TierCache {
     public Optional<PlayerData> peekData(String username) {
         if (username == null || username.isBlank()) return Optional.empty();
         String key = username.toLowerCase(Locale.ROOT);
+
+        // Pre-populate UUID cache from MojangResolver if already known.
+        String knownUuid = MojangResolver.peek(username).orElse(null);
+
         PlayerData data = entries.get(key);
-        long ageSec = data == null ? Long.MAX_VALUE
-                : (System.currentTimeMillis() - data.fetchedAt) / 1000L;
         if (data == null) {
-            data = new PlayerData(username, MojangResolver.peek(username).orElse(null));
-            entries.put(key, data);
+            PlayerData fresh = new PlayerData(username, knownUuid);
+            PlayerData existing = entries.putIfAbsent(key, fresh);
+            data = existing != null ? existing : fresh;
             requestAllAsync(username, data);
         } else {
+            // Lazily backfill UUID if we just learned it.
+            if (data.uuidNoDash == null && knownUuid != null) {
+                data.uuidNoDash = knownUuid;
+            }
             // Refresh any service entries past TTL.
             for (TierService s : TierService.values()) {
                 ServiceData sd = data.services.get(s);
                 long sAge = sd == null || sd.fetchedAt == 0L ? Long.MAX_VALUE
                         : (System.currentTimeMillis() - sd.fetchedAt) / 1000L;
                 if (sAge > cfg.cacheTtlSeconds) requestServiceAsync(username, data, s);
-            }
-            if (data.uuidNoDash == null && ageSec > 5) {
-                // We may have learned the UUID via PlayerListEntry since first peek.
-                String uuid = MojangResolver.peek(username).orElse(null);
-                if (uuid != null) requestAllAsync(username, replaceUuid(key, data, uuid));
             }
         }
         return Optional.of(data);
@@ -122,24 +127,12 @@ public class TierCache {
         if (username == null) return;
         String key = username.toLowerCase(Locale.ROOT);
         entries.remove(key);
-        // Drop all inflight markers for this player.
         inflight.keySet().removeIf(k -> k.startsWith(key + "|"));
     }
 
     public int size() { return entries.size(); }
 
     // ---------- fetch orchestration ----------
-
-    private PlayerData replaceUuid(String key, PlayerData old, String newUuid) {
-        PlayerData fresh = new PlayerData(old.username, newUuid);
-        // copy over any already-resolved service data
-        for (TierService s : TierService.values()) {
-            ServiceData sd = old.services.get(s);
-            if (sd != null && sd.fetchedAt != 0L) fresh.services.put(s, sd);
-        }
-        entries.put(key, fresh);
-        return fresh;
-    }
 
     private void requestAllAsync(String username, PlayerData data) {
         for (TierService s : TierService.values()) requestServiceAsync(username, data, s);
@@ -157,30 +150,34 @@ public class TierCache {
         });
     }
 
+    /**
+     * Fetches one service for one player. Always writes results back to the
+     * passed {@code data} object — which is the live entry in {@link #entries}.
+     * We never replace the {@code PlayerData} object in the map, so there is
+     * no risk of concurrent threads clobbering each other's writes.
+     */
     private void fetchOne(String username, PlayerData data, TierService service) {
-        String key = username.toLowerCase(Locale.ROOT);
         try {
             String urlSuffix;
             if (service.lookup == TierService.Lookup.USERNAME) {
                 urlSuffix = URLEncoder.encode(username, StandardCharsets.UTF_8);
             } else {
+                // UUID-based lookup — resolve lazily and store on the shared object.
                 String uuid = data.uuidNoDash;
                 if (uuid == null) uuid = MojangResolver.resolveBlocking(username);
                 if (uuid == null) {
-                    // Mark this service as missing so we stop spamming; allow retry on next peek
                     data.services.put(service, ServiceData.missing(service));
                     return;
                 }
-                if (data.uuidNoDash == null) {
-                    data = replaceUuid(key, data, uuid);
-                }
+                // Persist resolved UUID so other concurrent threads don't re-resolve.
+                if (data.uuidNoDash == null) data.uuidNoDash = uuid;
                 urlSuffix = uuid;
             }
 
             String url = service.apiBase + urlSuffix;
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                     .timeout(Duration.ofSeconds(10))
-                    .header("User-Agent", "TierTagger/1.4 (Minecraft mod)")
+                    .header("User-Agent", "TierTagger/1.5.4 (Minecraft mod)")
                     .GET().build();
             HttpResponse<String> res = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
             int code = res.statusCode();
@@ -190,7 +187,6 @@ public class TierCache {
             }
             if (code / 100 != 2 || res.body() == null || res.body().isBlank()) {
                 TierTaggerCore.LOGGER.debug("[TierTagger] {} HTTP {} for {}", service.id, code, username);
-                // Treat as missing for now (don't block other services or future retries).
                 data.services.put(service, ServiceData.missing(service));
                 return;
             }
@@ -202,18 +198,12 @@ public class TierCache {
         } catch (Exception e) {
             TierTaggerCore.LOGGER.debug("[TierTagger] {} fetch failed for {}: {}",
                     service.id, username, e.getMessage());
-            // mark missing so the loading spinner doesn't hang forever
             data.services.put(service, ServiceData.missing(service));
         }
     }
 
     // ---------- parsers ----------
 
-    /**
-     * Parses the MCTiers / SubTiers / PvPTiers JSON shape:
-     *   { uuid, name, region, points, overall,
-     *     rankings: { mode: { tier, pos, peak_tier, peak_pos, retired, attained } } }
-     */
     private static ServiceData parseStandard(TierService service, String body) {
         try {
             JsonObject root = JsonParser.parseString(body).getAsJsonObject();
@@ -247,11 +237,6 @@ public class TierCache {
         }
     }
 
-    /**
-     * Parses the OuterTiers shape:
-     *   { player|data: { rawTiers: { mode: "HT3", peak: "HT2" }, tiers: { mode: "T3" },
-     *                    region, peakTier } }
-     */
     private static ServiceData parseOuterTiers(TierService service, String body) {
         try {
             JsonObject root = JsonParser.parseString(body).getAsJsonObject();
@@ -274,8 +259,6 @@ public class TierCache {
                 Ranking r = parseHtLt(s);
                 if (r != null) rankings.put(mode, r);
             }
-            // Apply the global peak tier as the per-mode peak when the per-mode peak is unknown
-            // and the player has at least one ranked mode (this is how OuterTiers mirrors it).
             if (topPeak != null && !topPeak.isBlank() && !"-".equals(topPeak)) {
                 Ranking peak = parseHtLt(topPeak);
                 if (peak != null) {
@@ -300,7 +283,6 @@ public class TierCache {
         }
     }
 
-    /** Parses "HT3" / "LT4" / "T3" into a Ranking. Returns null on garbage. */
     private static Ranking parseHtLt(String s) {
         if (s == null) return null;
         String u = s.trim().toUpperCase(Locale.ROOT);

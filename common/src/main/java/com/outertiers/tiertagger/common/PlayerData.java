@@ -5,13 +5,16 @@ import java.util.Map;
 
 /**
  * Aggregated tier data for one player across every service we know about.
- * The map always contains an entry for each service, even if the data is
- * still loading or marked missing. This keeps the screens simple — they can
- * iterate {@link TierService#values()} and never have to null-check.
+ *
+ * NOTE: {@code uuidNoDash} is intentionally NOT final — the cache writes it
+ * lazily once the UUID has been resolved so we never need to replace the
+ * entire object, which previously caused a race condition between concurrent
+ * service-fetch threads writing results to stale object references.
  */
 public final class PlayerData {
     public final String username;
-    public final String uuidNoDash;     // may be null while resolving / on offline players
+    /** 32-hex UUID without dashes. May be null while resolving / on offline servers. Volatile for thread-safe lazy init. */
+    public volatile String uuidNoDash;
     public final EnumMap<TierService, ServiceData> services;
     public final long   fetchedAt;
 
