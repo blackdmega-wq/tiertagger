@@ -142,7 +142,7 @@ public class TierCache {
         String inflightKey = username.toLowerCase(Locale.ROOT) + "|" + service.id;
         long now = System.currentTimeMillis();
         Long last = inflight.get(inflightKey);
-        if (last != null && now - last < 10_000) return;
+        if (last != null && now - last < 30_000) return;
         inflight.put(inflightKey, now);
         EXEC.submit(() -> {
             try { fetchOne(username, data, service); }
@@ -176,7 +176,7 @@ public class TierCache {
 
             String url = service.apiBase + urlSuffix;
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofSeconds(10))
+                    .timeout(Duration.ofSeconds(20))
                     .header("User-Agent", "TierTagger/1.5.4 (Minecraft mod)")
                     .GET().build();
             HttpResponse<String> res = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
@@ -186,8 +186,8 @@ public class TierCache {
                 return;
             }
             if (code / 100 != 2 || res.body() == null || res.body().isBlank()) {
-                TierTaggerCore.LOGGER.debug("[TierTagger] {} HTTP {} for {}", service.id, code, username);
-                data.services.put(service, ServiceData.missing(service));
+                // Transient server error — don't permanently mark missing; retry after 30 s via inflight
+                TierTaggerCore.LOGGER.debug("[TierTagger] {} HTTP {} for {} — will retry", service.id, code, username);
                 return;
             }
 
@@ -196,9 +196,9 @@ public class TierCache {
                     : parseStandard(service, res.body());
             data.services.put(service, parsed);
         } catch (Exception e) {
-            TierTaggerCore.LOGGER.debug("[TierTagger] {} fetch failed for {}: {}",
+            // Network / timeout error — don't permanently mark missing; retry after 30 s via inflight
+            TierTaggerCore.LOGGER.debug("[TierTagger] {} fetch failed for {}: {} — will retry",
                     service.id, username, e.getMessage());
-            data.services.put(service, ServiceData.missing(service));
         }
     }
 

@@ -50,6 +50,7 @@ public class TierProfileScreen extends Screen {
 
     private final Screen parent;
     private final String username;
+    private boolean bgApplied = false;
 
     public TierProfileScreen(Screen parent, String username) {
         super(Text.literal("TierTagger – " + (username == null ? "?" : username)));
@@ -76,8 +77,17 @@ public class TierProfileScreen extends Screen {
             .dimensions(this.width - 100, btnY, 80, 20).build());
     }
 
+    // Blur-safe guard
+    @Override
+    protected void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        if (bgApplied) return;
+        bgApplied = true;
+        super.renderBackground(ctx, mouseX, mouseY, delta);
+    }
+
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        bgApplied = false;
         try {
             this.renderBackground(ctx, mouseX, mouseY, delta);
             super.render(ctx, mouseX, mouseY, delta);

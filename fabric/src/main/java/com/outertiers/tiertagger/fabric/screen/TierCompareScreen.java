@@ -49,6 +49,7 @@ public class TierCompareScreen extends Screen {
 
     private int scrollY = 0;
     private int maxScroll = 0;
+    private boolean bgApplied = false;
 
     public TierCompareScreen(Screen parent, String nameA, String nameB) {
         super(Text.literal(nameA + " vs " + nameB));
@@ -92,7 +93,15 @@ public class TierCompareScreen extends Screen {
     // ── render ──────────────────────────────────────────────────────────────
 
     @Override
+    protected void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        if (bgApplied) return;
+        bgApplied = true;
+        super.renderBackground(ctx, mouseX, mouseY, delta);
+    }
+
+    @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        bgApplied = false;
         try {
             this.renderBackground(ctx, mouseX, mouseY, delta);
 

@@ -11,6 +11,7 @@ import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
 import com.outertiers.tiertagger.fabric.screen.TierConfigScreen;
 import com.outertiers.tiertagger.fabric.screen.TierCompareScreen;
+import com.outertiers.tiertagger.fabric.screen.TierLookupScreen;
 import com.outertiers.tiertagger.fabric.screen.TierProfileScreen;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -78,12 +79,14 @@ public class TierTaggerFabricCommand {
                             return 1;
                         })))
                 .then(ClientCommandManager.literal("lookup")
-                    .then(ClientCommandManager.argument("player", StringArgumentType.word())
-                        .executes(c -> {
-                            String name = StringArgumentType.getString(c, "player");
-                            sendLookup(c.getSource(), name);
-                            return 1;
-                        })))
+                .then(ClientCommandManager.argument("player", StringArgumentType.word())
+                    .executes(c -> {
+                        String name = StringArgumentType.getString(c, "player");
+                        try { TierTaggerCore.cache().peekData(name); } catch (Throwable ignored) {}
+                        PendingScreen.open(new TierLookupScreen(null, name));
+                        c.getSource().sendFeedback(Text.literal("§7[TierTagger] §rLooking up §e" + name + "§r…"));
+                        return 1;
+                    })))
                 .then(ClientCommandManager.literal("compare")
                     .then(ClientCommandManager.argument("player1", StringArgumentType.word())
                         .then(ClientCommandManager.argument("player2", StringArgumentType.word())

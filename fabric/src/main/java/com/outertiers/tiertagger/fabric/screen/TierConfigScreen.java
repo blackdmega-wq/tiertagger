@@ -28,6 +28,7 @@ public class TierConfigScreen extends Screen {
     private static final int ROW_H   = BTN_H + 4;
 
     private final Screen parent;
+    private boolean bgApplied = false;
 
     public TierConfigScreen(Screen parent) {
         super(Text.literal("TierTagger — Settings"));
@@ -42,7 +43,7 @@ public class TierConfigScreen extends Screen {
     }
 
     private int rowY(int row) {
-        return 36 + row * ROW_H;
+        return this.height / 6 + row * ROW_H;
     }
 
     @Override
@@ -122,6 +123,7 @@ public class TierConfigScreen extends Screen {
             TierService svc = svcs[i];
             int col = i % 2;
             if (col == 0 && i > 0) r++;
+            if (rowY(r) + BTN_H > this.height - 32) break;
             this.addDrawableChild(
                 CyclingButtonWidget.onOffBuilder(cfg.isServiceEnabled(svc))
                     .build(colX(col), rowY(r), BTN_W, BTN_H,
@@ -145,18 +147,30 @@ public class TierConfigScreen extends Screen {
             .dimensions(colX(1), bottomY, BTN_W, BTN_H).build());
     }
 
+    // Blur-safe guard — prevents "can only blur once per frame" in MC 1.21.x
+    @Override
+    protected void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        if (bgApplied) return;
+        bgApplied = true;
+        super.renderBackground(ctx, mouseX, mouseY, delta);
+    }
+
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
-        this.renderBackground(ctx, mouseX, mouseY, delta);
-        ctx.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 15, 0xFFFFFF);
+        bgApplied = false;
+        this.renderBackground(ctx, mouseX, mouseY, delta); // exactly once
+        super.render(ctx, mouseX, mouseY, delta);           // widgets; guard blocks any 2nd blur call
 
-        // Section header for services
-        int svcsHeaderY = rowY(6) - 2;
-        ctx.drawCenteredTextWithShadow(this.textRenderer,
-            Text.literal("Services").formatted(Formatting.YELLOW),
-            this.width / 2, svcsHeaderY, 0xFFAA00);
+        // Title
+        ctx.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 10, 0xFFFFFF);
 
-        super.render(ctx, mouseX, mouseY, delta);
+        // Services section separator label
+        int svcHeaderY = rowY(5) + 3;
+        if (svcHeaderY < this.height - 40) {
+            ctx.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal("— Enabled Services —").formatted(Formatting.YELLOW),
+                this.width / 2, svcHeaderY, 0xFFAA00);
+        }
     }
 
     private void closeSafely() {

@@ -64,9 +64,17 @@ public class TierCompareScreen extends Screen {
     }
 
     @Override
+    protected void renderBackground(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
+        if (bgApplied) return;
+        bgApplied = true;
+        super.renderBackground(ctx, mouseX, mouseY, delta);
+    }
+
+    @Override
     public void render(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
+        bgApplied = false;
         try {
-            super.renderBackground(ctx, mouseX, mouseY, delta);
+            this.renderBackground(ctx, mouseX, mouseY, delta);
 
             Optional<PlayerData> optA = TierTaggerCore.cache().peekData(nameA);
             Optional<PlayerData> optB = TierTaggerCore.cache().peekData(nameB);

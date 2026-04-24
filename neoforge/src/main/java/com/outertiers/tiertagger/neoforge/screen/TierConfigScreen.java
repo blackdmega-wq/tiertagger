@@ -28,6 +28,7 @@ public class TierConfigScreen extends Screen {
     private static final int ROW_H   = BTN_H + 4;
 
     private final Screen parent;
+    private boolean bgApplied = false;
 
     public TierConfigScreen(Screen parent) {
         super(Component.literal("TierTagger — Settings"));
@@ -41,7 +42,7 @@ public class TierConfigScreen extends Screen {
     }
 
     private int rowY(int row) {
-        return 36 + row * ROW_H;
+        return this.height / 6 + row * ROW_H;
     }
 
     @Override
@@ -121,6 +122,7 @@ public class TierConfigScreen extends Screen {
             TierService svc = svcs[i];
             int col = i % 2;
             if (col == 0 && i > 0) r++;
+            if (rowY(r) + BTN_H > this.height - 32) break;
             this.addRenderableWidget(
                 CyclingButton.onOffBuilder(cfg.isServiceEnabled(svc))
                     .create(colX(col), rowY(r), BTN_W, BTN_H,
@@ -144,18 +146,27 @@ public class TierConfigScreen extends Screen {
             .bounds(colX(1), bottomY, BTN_W, BTN_H).build());
     }
 
+    // Blur-safe guard
+    @Override
+    protected void renderBackground(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
+        if (bgApplied) return;
+        bgApplied = true;
+        super.renderBackground(ctx, mouseX, mouseY, delta);
+    }
+
     @Override
     public void render(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
-        super.renderBackground(ctx, mouseX, mouseY, delta);
-        ctx.drawCenteredString(this.font, this.title, this.width / 2, 15, 0xFFFFFF);
-
-        // Section header for services
-        int svcsHeaderY = rowY(6) - 2;
-        ctx.drawCenteredString(this.font,
-            Component.literal("Services").withStyle(ChatFormatting.YELLOW),
-            this.width / 2, svcsHeaderY, 0xFFAA00);
-
+        bgApplied = false;
+        this.renderBackground(ctx, mouseX, mouseY, delta);
         super.render(ctx, mouseX, mouseY, delta);
+
+        ctx.drawCenteredString(this.font, this.title, this.width / 2, 10, 0xFFFFFF);
+        int svcHeaderY = rowY(5) + 3;
+        if (svcHeaderY < this.height - 40) {
+            ctx.drawCenteredString(this.font,
+                Component.literal("— Enabled Services —").withStyle(ChatFormatting.YELLOW),
+                this.width / 2, svcHeaderY, 0xFFAA00);
+        }
     }
 
     private void closeSafely() {

@@ -11,6 +11,7 @@ import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
 import com.outertiers.tiertagger.neoforge.screen.TierConfigScreen;
 import com.outertiers.tiertagger.neoforge.screen.TierCompareScreen;
+import com.outertiers.tiertagger.neoforge.screen.TierLookupScreen;
 import com.outertiers.tiertagger.neoforge.screen.TierProfileScreen;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -77,7 +78,9 @@ public class TierTaggerNeoForgeCommand {
                 .then(Commands.argument("player", StringArgumentType.word())
                     .executes(c -> {
                         String name = StringArgumentType.getString(c, "player");
-                        sendLookup(c.getSource(), name);
+                        try { TierTaggerCore.cache().peekData(name); } catch (Throwable ignored) {}
+                        PendingScreen.open(new TierLookupScreen(null, name));
+                        c.getSource().sendSuccess(() -> Component.literal("§7[TierTagger] §rLooking up §e" + name + "§r…"), false);
                         return 1;
                     })))
             .then(Commands.literal("compare")

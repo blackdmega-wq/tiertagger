@@ -31,6 +31,7 @@ public class TierProfileScreen extends Screen {
 
     private final Screen parent;
     private final String username;
+    private boolean bgApplied = false;
 
     public TierProfileScreen(Screen parent, String username) {
         super(Component.literal("TierTagger – " + (username == null ? "?" : username)));
@@ -58,7 +59,15 @@ public class TierProfileScreen extends Screen {
     }
 
     @Override
+    protected void renderBackground(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
+        if (bgApplied) return;
+        bgApplied = true;
+        super.renderBackground(ctx, mouseX, mouseY, delta);
+    }
+
+    @Override
     public void render(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
+        bgApplied = false;
         try {
             super.render(ctx, mouseX, mouseY, delta);
 
