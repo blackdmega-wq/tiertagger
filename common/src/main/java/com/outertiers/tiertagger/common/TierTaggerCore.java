@@ -8,6 +8,7 @@ public final class TierTaggerCore {
     public static final String MOD_ID  = "tiertagger";
     public static final String MOD_NAME = "TierTagger";
     public static final Logger LOGGER  = LoggerFactory.getLogger(MOD_NAME);
+    public static final String MOD_VERSION = "1.4.0";
 
     private static TierConfig CONFIG;
     private static TierCache  CACHE;
@@ -18,19 +19,19 @@ public final class TierTaggerCore {
         if (CONFIG != null) return;
         CONFIG = TierConfig.load();
         CACHE  = new TierCache(CONFIG);
-        LOGGER.info("[TierTagger] core initialised — gamemode: {}, api: {}", CONFIG.gamemode, CONFIG.apiBase);
+        LOGGER.info("[TierTagger] core initialised — primary service: {}, mode: {}",
+                CONFIG.primaryService, CONFIG.displayMode);
     }
 
     public static TierConfig config() { return CONFIG; }
     public static TierCache  cache()  { return CACHE; }
 
-    /**
-     * Picks the tier to display for an entry, applying:
-     *   1) the "show peak tier" override, if enabled and available
-     *   2) the configured gamemode
-     *   3) fall-through to the player's highest tier across modes (when enabled)
-     * Returns null when the player has no rated tiers at all.
-     */
+    // ============================================================================
+    // Legacy single-tier helpers (used by the existing tab/nametag mixins until
+    // they're migrated to the dual-badge API). These resolve against the user's
+    // primary service.
+    // ============================================================================
+
     public static String chooseTier(TierCache.Entry e) {
         if (e == null || e.missing) return null;
         TierConfig c = CONFIG;
@@ -40,29 +41,24 @@ public final class TierTaggerCore {
             return e.peakTier.toUpperCase();
         }
 
-        String mode = c.gamemode == null ? "overall" : c.gamemode.toLowerCase();
-        if ("overall".equals(mode)) {
-            return pickHighest(e);
-        }
+        String mode = c.displayMode == null ? "highest" : c.displayMode.toLowerCase();
+        if ("highest".equals(mode) || "overall".equals(mode)) return pickHighest(e);
 
         String t = e.tiers == null ? null : e.tiers.get(mode);
         if (t != null && !t.isBlank() && !"-".equals(t)) return t.toUpperCase();
 
-        // Unranked in this mode -> fall-through to the highest tier we know about.
-        if (c.fallthroughToHighest) {
-            return pickHighest(e);
-        }
+        if (c.fallthroughToHighest) return pickHighest(e);
         return null;
     }
 
-    /** Returns highest tier from the entry's per-mode map (HT1 > LT1 > HT2 > ...). */
     public static String pickHighest(TierCache.Entry e) {
         if (e == null || e.tiers == null || e.tiers.isEmpty()) return null;
         String best = null;
         int bestScore = -1;
-        for (String t : e.tiers.values()) {
-            int s = score(t);
-            if (s > bestScore) { bestScore = s; best = t; }
+        for (java.util.Map.Entry<String, String> me : e.tiers.entrySet()) {
+            if (CONFIG != null && !CONFIG.isModeEnabled(me.getKey())) continue;
+            int s = score(me.getValue());
+            if (s > bestScore) { bestScore = s; best = me.getValue(); }
         }
         return best == null ? null : best.toUpperCase();
     }
@@ -79,19 +75,47 @@ public final class TierTaggerCore {
         }
     }
 
-    /** Returns ANSI / chat colour code (§ + char) for tier. */
+    // ============================================================================
+    // Multi-service helpers — preferred for new code paths.
+    // ============================================================================
+
+    /** Returns the displayed tier label for one service ("HT3" / "LT4" / null). */
+    public static String tierForService(PlayerData data, TierService service) {
+        if (data == null || service == null || CONFIG == null) return null;
+        ServiceData sd = data.get(service);
+        if (sd == null || sd.missing) return null;
+
+        String mode = CONFIG.displayMode == null ? "highest" : CONFIG.displayMode.toLowerCase();
+        if ("highest".equals(mode) || "overall".equals(mode)) {
+            Ranking best = null;
+            for (java.util.Map.Entry<String, Ranking> me : sd.rankings.entrySet()) {
+                if (!CONFIG.isModeEnabled(me.getKey())) continue;
+                Ranking r = me.getValue();
+                if (r == null || r.tierLevel <= 0) continue;
+                if (best == null || r.score() > best.score()) best = r;
+            }
+            return best == null ? null : best.label();
+        }
+        Ranking r = sd.rankings.get(mode);
+        if (r != null && r.tierLevel > 0) return r.label();
+        if (CONFIG.fallthroughToHighest) {
+            Ranking best = sd.highest();
+            return best == null ? null : best.label();
+        }
+        return null;
+    }
+
     public static char colourCodeFor(String tier) {
         if (tier == null) return '7';
         String t = tier.toUpperCase();
-        if (t.endsWith("1")) return 'd'; // light purple
-        if (t.endsWith("2")) return 'c'; // red
-        if (t.endsWith("3")) return '6'; // gold
-        if (t.endsWith("4")) return 'e'; // yellow
-        if (t.endsWith("5")) return 'a'; // green
+        if (t.endsWith("1")) return 'd';
+        if (t.endsWith("2")) return 'c';
+        if (t.endsWith("3")) return '6';
+        if (t.endsWith("4")) return 'e';
+        if (t.endsWith("5")) return 'a';
         return '7';
     }
 
-    /** Returns an ARGB int suitable for GUI fills (alpha 0xFF), matching colourCodeFor(). */
     public static int argbFor(String tier) {
         char c = colourCodeFor(tier);
         switch (c) {

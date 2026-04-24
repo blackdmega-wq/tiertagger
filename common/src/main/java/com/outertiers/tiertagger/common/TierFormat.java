@@ -30,4 +30,9 @@ public final class TierFormat {
     public static boolean colored() {
         return TierTaggerCore.config() == null || TierTaggerCore.config().coloredBadges;
     }
+
+    /** Whether the per-service short label (MCT / OT / PVP / ST) should be prepended. */
+    public static boolean showServiceLabel() {
+        return TierTaggerCore.config() == null || TierTaggerCore.config().showServiceIcon;
+    }
 }

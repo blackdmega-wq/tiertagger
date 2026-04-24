@@ -1,9 +1,10 @@
 package com.outertiers.tiertagger.neoforge.mixin;
 
-import com.outertiers.tiertagger.common.TierCache;
-import com.outertiers.tiertagger.common.TierFormat;
+import com.outertiers.tiertagger.common.MojangResolver;
+import com.outertiers.tiertagger.common.PlayerData;
+import com.outertiers.tiertagger.common.TierConfig;
 import com.outertiers.tiertagger.common.TierTaggerCore;
-import net.minecraft.ChatFormatting;
+import com.outertiers.tiertagger.neoforge.BadgeRenderer;
 import net.minecraft.client.gui.components.PlayerTabOverlay;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.Component;
@@ -21,36 +22,24 @@ public class PlayerListHudMixin {
     @Inject(method = "getNameForDisplay", at = @At("RETURN"), cancellable = true)
     private void tiertagger$appendTier(PlayerInfo entry, CallbackInfoReturnable<Component> cir) {
         try {
-            if (TierTaggerCore.config() == null || !TierTaggerCore.config().showInTab) return;
+            TierConfig cfg = TierTaggerCore.config();
+            if (cfg == null || !cfg.showInTab) return;
             if (entry == null || entry.getProfile() == null) return;
             String name = entry.getProfile().getName();
             if (name == null || name.isBlank()) return;
+            try {
+                if (entry.getProfile().getId() != null) {
+                    MojangResolver.cache(name, entry.getProfile().getId().toString().replace("-", ""));
+                }
+            } catch (Throwable ignored) {}
 
-            Optional<TierCache.Entry> opt = TierTaggerCore.cache().peek(name);
+            Optional<PlayerData> opt = TierTaggerCore.cache().peekData(name);
             if (opt.isEmpty()) return;
-            String tier = TierTaggerCore.chooseTier(opt.get());
-            if (tier == null || tier.isBlank()) return;
-
-            ChatFormatting colour = TierFormat.colored()
-                ? ChatFormatting.getByCode(TierTaggerCore.colourCodeFor(tier))
-                : ChatFormatting.GRAY;
-            if (colour == null) colour = ChatFormatting.GRAY;
-
-            String label = TierFormat.label(tier);
-            MutableComponent badge;
-            if (TierFormat.useBrackets()) {
-                badge = Component.literal(" [")
-                        .append(Component.literal(label).withStyle(colour, ChatFormatting.BOLD))
-                        .append(Component.literal("]"))
-                        .withStyle(ChatFormatting.GRAY);
-            } else {
-                badge = Component.literal(" ")
-                        .append(Component.literal(label).withStyle(colour, ChatFormatting.BOLD));
-            }
+            MutableComponent badges = BadgeRenderer.buildTabSuffix(cfg, opt.get());
+            if (badges == null) return;
 
             Component original = cir.getReturnValue();
-            MutableComponent combined = (original == null ? Component.empty() : original.copy()).append(badge);
-            cir.setReturnValue(combined);
+            cir.setReturnValue((original == null ? Component.empty() : original.copy()).append(badges));
         } catch (Throwable t) {
             TierTaggerCore.LOGGER.debug("[TierTagger] tab badge mixin failed: {}", t.toString());
         }

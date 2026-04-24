@@ -6,7 +6,29 @@ import com.google.gson.GsonBuilder;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
+/**
+ * Persisted user config. Backwards-compatible: old fields ({@code apiBase},
+ * {@code gamemode}, {@code showInTab}, etc.) are still read & honoured so
+ * users upgrading from 1.3.x don't lose their settings.
+ *
+ * Multi-service additions:
+ *   - {@code services}        : per-service enabled flag
+ *   - {@code primaryService}  : which service drives the legacy single-tier
+ *                               badge in the tab list / nametag
+ *   - {@code leftService}     : service used for the LEFT badge
+ *   - {@code rightService}    : service used for the RIGHT badge
+ *   - {@code rightBadgeEnabled} : show the right badge at all
+ *   - {@code enabledModes}    : modes to include when computing "highest" tier
+ *   - {@code displayMode}     : "highest" or specific mode name
+ *   - {@code showServiceIcon} : prefix the badge with the service short label
+ *   - {@code showModeIcon}    : show mode item icons in screens
+ */
 public class TierConfig {
     public static final String[] GAMEMODES = {
         "overall", "ogvanilla", "vanilla", "uhc", "pot",
@@ -15,6 +37,7 @@ public class TierConfig {
 
     public static final String[] BADGE_FORMATS = { "bracket", "plain", "short" };
 
+    // ------- legacy fields (kept for backward compat with old config files) -------
     public String  apiBase    = "https://outertiers-api.onrender.com";
     public String  gamemode   = "overall";
     public boolean showInTab  = true;
@@ -25,6 +48,32 @@ public class TierConfig {
     public String  badgeFormat = "bracket";
     public int     cacheTtlSeconds = 300;
 
+    // ------- new multi-service fields -------
+    /** Per-service enabled state — default: every service on. */
+    public Map<String, Boolean> services = defaultServices();
+    /** Service used by the legacy single-tier helper. */
+    public String  primaryService    = TierService.OUTERTIERS.id;
+    public String  leftService       = TierService.OUTERTIERS.id;
+    public String  rightService      = TierService.MCTIERS.id;
+    public boolean rightBadgeEnabled = true;
+    public boolean showServiceIcon   = true;
+    public boolean showModeIcon      = true;
+    /** Either "highest" or one of {@link #GAMEMODES} (excluding "overall" which means highest). */
+    public String  displayMode       = "highest";
+    /** Modes considered when computing "highest" tier. Empty => use everything. */
+    public List<String> enabledModes = new ArrayList<>();
+    /** Cosmetic toggles surfaced in the config screen. */
+    public boolean disableTiers      = false;
+    public boolean disableIcons      = false;
+    public boolean disableAnimations = false;
+
+    private static Map<String, Boolean> defaultServices() {
+        Map<String, Boolean> m = new LinkedHashMap<>();
+        for (TierService s : TierService.values()) m.put(s.id, true);
+        return m;
+    }
+
+    // ------- io -------
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static Path configDir = Path.of(".");
 
@@ -57,6 +106,19 @@ public class TierConfig {
         if (apiBase  == null || apiBase.isBlank()) apiBase = "https://outertiers-api.onrender.com";
         if (cacheTtlSeconds <= 0) cacheTtlSeconds = 300;
         if (badgeFormat == null || !isValidBadgeFormat(badgeFormat)) badgeFormat = "bracket";
+
+        // Multi-service field defaults (safe upgrade path)
+        if (services == null || services.isEmpty()) services = defaultServices();
+        else {
+            // Ensure every known service has an entry (new services added in future updates).
+            for (TierService s : TierService.values()) services.putIfAbsent(s.id, true);
+        }
+        if (primaryService == null || TierService.byId(primaryService) == null) primaryService = TierService.OUTERTIERS.id;
+        if (leftService    == null || TierService.byId(leftService)    == null) leftService    = TierService.OUTERTIERS.id;
+        if (rightService   == null || TierService.byId(rightService)   == null) rightService   = TierService.MCTIERS.id;
+        if (displayMode    == null || displayMode.isBlank()) displayMode = "highest";
+        if (enabledModes   == null) enabledModes = new ArrayList<>();
+
         return this;
     }
 
@@ -67,6 +129,8 @@ public class TierConfig {
             TierTaggerCore.LOGGER.warn("[TierTagger] could not save config: {}", e.getMessage());
         }
     }
+
+    // ------- helpers -------
 
     public static boolean isValidGamemode(String g) {
         if (g == null) return false;
@@ -80,6 +144,41 @@ public class TierConfig {
         return false;
     }
 
+    public boolean isServiceEnabled(TierService s) {
+        if (s == null || services == null) return false;
+        Boolean b = services.get(s.id);
+        return b == null ? true : b;
+    }
+
+    public void setServiceEnabled(TierService s, boolean enabled) {
+        if (s == null) return;
+        if (services == null) services = defaultServices();
+        services.put(s.id, enabled);
+    }
+
+    public boolean isModeEnabled(String mode) {
+        if (mode == null) return false;
+        if (enabledModes == null || enabledModes.isEmpty()) return true; // default: all on
+        for (String m : enabledModes) if (m.equalsIgnoreCase(mode)) return true;
+        return false;
+    }
+
+    public void setModeEnabled(String mode, boolean enabled) {
+        if (mode == null) return;
+        if (enabledModes == null) enabledModes = new ArrayList<>();
+        if (enabledModes.isEmpty()) {
+            // Materialise the implicit "all on" set so we can flip individual entries off.
+            for (String m : TierService.allKnownModes()) enabledModes.add(m.toLowerCase(Locale.ROOT));
+        }
+        String key = mode.toLowerCase(Locale.ROOT);
+        enabledModes.removeIf(s -> s.equalsIgnoreCase(key));
+        if (enabled) enabledModes.add(key);
+    }
+
+    public TierService primaryServiceEnum()   { return TierService.byIdOr(primaryService, TierService.OUTERTIERS); }
+    public TierService leftServiceEnum()      { return TierService.byIdOr(leftService,    TierService.OUTERTIERS); }
+    public TierService rightServiceEnum()     { return TierService.byIdOr(rightService,   TierService.MCTIERS);    }
+
     public void resetToDefaults() {
         TierConfig def = new TierConfig();
         this.apiBase = def.apiBase;
@@ -91,5 +190,17 @@ public class TierConfig {
         this.coloredBadges = def.coloredBadges;
         this.badgeFormat = def.badgeFormat;
         this.cacheTtlSeconds = def.cacheTtlSeconds;
+        this.services = defaultServices();
+        this.primaryService    = def.primaryService;
+        this.leftService       = def.leftService;
+        this.rightService      = def.rightService;
+        this.rightBadgeEnabled = def.rightBadgeEnabled;
+        this.showServiceIcon   = def.showServiceIcon;
+        this.showModeIcon      = def.showModeIcon;
+        this.displayMode       = def.displayMode;
+        this.enabledModes      = new ArrayList<>();
+        this.disableTiers      = def.disableTiers;
+        this.disableIcons      = def.disableIcons;
+        this.disableAnimations = def.disableAnimations;
     }
 }
