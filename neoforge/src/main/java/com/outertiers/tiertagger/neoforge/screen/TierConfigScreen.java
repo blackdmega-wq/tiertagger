@@ -148,7 +148,7 @@ public class TierConfigScreen extends Screen {
 
     // Blur-safe guard
     @Override
-    protected void renderBackground(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
+    public void renderBackground(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
         if (bgApplied) return;
         bgApplied = true;
         super.renderBackground(ctx, mouseX, mouseY, delta);

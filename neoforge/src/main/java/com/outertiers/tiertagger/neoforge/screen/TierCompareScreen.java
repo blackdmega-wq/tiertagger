@@ -64,7 +64,7 @@ public class TierCompareScreen extends Screen {
     }
 
     @Override
-    protected void renderBackground(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
+    public void renderBackground(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
         if (bgApplied) return;
         bgApplied = true;
         super.renderBackground(ctx, mouseX, mouseY, delta);

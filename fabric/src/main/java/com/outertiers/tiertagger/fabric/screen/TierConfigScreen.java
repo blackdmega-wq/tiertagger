@@ -149,7 +149,7 @@ public class TierConfigScreen extends Screen {
 
     // Blur-safe guard — prevents "can only blur once per frame" in MC 1.21.x
     @Override
-    protected void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
+    public void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
         if (bgApplied) return;
         bgApplied = true;
         super.renderBackground(ctx, mouseX, mouseY, delta);
