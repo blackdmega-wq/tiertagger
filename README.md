@@ -2,6 +2,10 @@
 
 A multi-loader Minecraft mod that displays player tiers from the [OuterTiers](https://outertiers.com) website right next to player names — both in the in-game **tab list** and as a **badge above each player's head**. Inspired by [tiertagger on Modrinth](https://modrinth.com/mod/tiertagger).
 
+## What's new in 1.5.1
+
+- **Configurable keybind** — under *Options → Controls → Key Binds → TierTagger* you can bind a key (default **K**) that opens the config screen instantly. Pick any key you like, or set it to "Not bound" to disable.
+
 ## What's new in 1.5.0
 
 - **Open the config from Minecraft Options.** With Mod Menu installed (Fabric) or via the built-in Mods screen (NeoForge), TierTagger now appears under *Options → Mods → TierTagger → Configure*, no command required.

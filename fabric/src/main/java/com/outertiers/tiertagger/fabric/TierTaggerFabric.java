@@ -11,6 +11,7 @@ public class TierTaggerFabric implements ClientModInitializer {
         TierConfig.setConfigDir(FabricLoader.getInstance().getConfigDir());
         TierTaggerCore.init();
         PendingScreen.register();
+        TierKeybinds.register();
         TierTaggerFabricCommand.register();
     }
 }

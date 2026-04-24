@@ -18,6 +18,7 @@ public class TierTaggerNeoForge {
         TierConfig.setConfigDir(FMLPaths.CONFIGDIR.get());
         TierTaggerCore.init();
         PendingScreen.register();
+        TierKeybinds.register(modBus);
 
         // Register the config screen so it appears under
         // Minecraft Options -> Mods -> TierTagger -> Configure.
