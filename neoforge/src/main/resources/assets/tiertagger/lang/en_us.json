@@ -1,4 +1,5 @@
 {
   "key.categories.tiertagger": "TierTagger",
-  "key.tiertagger.config": "Open config screen"
+  "key.tiertagger.config": "Open config screen",
+  "key.tiertagger.profile": "Show targeted player's profile"
 }
