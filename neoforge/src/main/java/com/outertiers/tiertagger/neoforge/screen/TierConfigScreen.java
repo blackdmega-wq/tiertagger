@@ -7,7 +7,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.CyclingButton;
+import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -58,14 +58,14 @@ public class TierConfigScreen extends Screen {
 
         // ── Left / right badge service ──
         this.addRenderableWidget(
-            CyclingButton.<TierService>builder(s -> Component.literal(s.displayName).withColor(s.accentArgb))
+            CycleButton.<TierService>builder(s -> Component.literal(s.displayName).withColor(s.accentArgb))
                 .withValues(TierService.values())
                 .withInitialValue(cfg.leftServiceEnum())
                 .create(colX(0), rowY(r), BTN_W, BTN_H,
                     Component.literal("Left Badge"),
                     (b, v) -> { cfg.leftService = v.id; cfg.save(); }));
         this.addRenderableWidget(
-            CyclingButton.<TierService>builder(s -> Component.literal(s.displayName).withColor(s.accentArgb))
+            CycleButton.<TierService>builder(s -> Component.literal(s.displayName).withColor(s.accentArgb))
                 .withValues(TierService.values())
                 .withInitialValue(cfg.rightServiceEnum())
                 .create(colX(1), rowY(r), BTN_W, BTN_H,
@@ -74,38 +74,38 @@ public class TierConfigScreen extends Screen {
         r++;
 
         // ── Tab / Nametag badges ──
-        this.addRenderableWidget(CyclingButton.onOffBuilder(cfg.showInTab)
+        this.addRenderableWidget(CycleButton.onOffBuilder(cfg.showInTab)
             .create(colX(0), rowY(r), BTN_W, BTN_H, Component.literal("Tab Badges"),
                 (b, v) -> { cfg.showInTab = v; cfg.save(); }));
-        this.addRenderableWidget(CyclingButton.onOffBuilder(cfg.showNametag)
+        this.addRenderableWidget(CycleButton.onOffBuilder(cfg.showNametag)
             .create(colX(1), rowY(r), BTN_W, BTN_H, Component.literal("Nametag"),
                 (b, v) -> { cfg.showNametag = v; cfg.save(); }));
         r++;
 
         // ── Right badge enabled / Coloured ──
-        this.addRenderableWidget(CyclingButton.onOffBuilder(cfg.rightBadgeEnabled)
+        this.addRenderableWidget(CycleButton.onOffBuilder(cfg.rightBadgeEnabled)
             .create(colX(0), rowY(r), BTN_W, BTN_H, Component.literal("Dual Badges"),
                 (b, v) -> { cfg.rightBadgeEnabled = v; cfg.save(); }));
-        this.addRenderableWidget(CyclingButton.onOffBuilder(cfg.coloredBadges)
+        this.addRenderableWidget(CycleButton.onOffBuilder(cfg.coloredBadges)
             .create(colX(1), rowY(r), BTN_W, BTN_H, Component.literal("Coloured Badges"),
                 (b, v) -> { cfg.coloredBadges = v; cfg.save(); }));
         r++;
 
         // ── Service tag / Mode icons ──
-        this.addRenderableWidget(CyclingButton.onOffBuilder(cfg.showServiceIcon)
+        this.addRenderableWidget(CycleButton.onOffBuilder(cfg.showServiceIcon)
             .create(colX(0), rowY(r), BTN_W, BTN_H, Component.literal("Service Tag"),
                 (b, v) -> { cfg.showServiceIcon = v; cfg.save(); }));
-        this.addRenderableWidget(CyclingButton.onOffBuilder(!cfg.disableIcons)
+        this.addRenderableWidget(CycleButton.onOffBuilder(!cfg.disableIcons)
             .create(colX(1), rowY(r), BTN_W, BTN_H, Component.literal("Mode Icons"),
                 (b, v) -> { cfg.disableIcons = !v; cfg.showModeIcon = v; cfg.save(); }));
         r++;
 
         // ── Peak tier / Badge format ──
-        this.addRenderableWidget(CyclingButton.onOffBuilder(cfg.showPeak)
+        this.addRenderableWidget(CycleButton.onOffBuilder(cfg.showPeak)
             .create(colX(0), rowY(r), BTN_W, BTN_H, Component.literal("Peak Tier"),
                 (b, v) -> { cfg.showPeak = v; cfg.save(); }));
         this.addRenderableWidget(
-            CyclingButton.<String>builder(Component::literal)
+            CycleButton.<String>builder(Component::literal)
                 .withValues(TierConfig.BADGE_FORMATS)
                 .withInitialValue(cfg.badgeFormat == null ? "bracket" : cfg.badgeFormat)
                 .create(colX(1), rowY(r), BTN_W, BTN_H,
@@ -124,7 +124,7 @@ public class TierConfigScreen extends Screen {
             if (col == 0 && i > 0) r++;
             if (rowY(r) + BTN_H > this.height - 32) break;
             this.addRenderableWidget(
-                CyclingButton.onOffBuilder(cfg.isServiceEnabled(svc))
+                CycleButton.onOffBuilder(cfg.isServiceEnabled(svc))
                     .create(colX(col), rowY(r), BTN_W, BTN_H,
                         Component.literal(svc.displayName).withColor(svc.accentArgb),
                         (b, v) -> {

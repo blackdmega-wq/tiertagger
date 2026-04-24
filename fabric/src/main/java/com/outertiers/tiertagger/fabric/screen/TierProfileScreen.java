@@ -270,13 +270,12 @@ public class TierProfileScreen extends Screen {
                     Item item = Compat.lookupItem(id);
                     ItemStack stack = item == null ? ItemStack.EMPTY : new ItemStack(item);
                     if (!stack.isEmpty()) {
-                        // Render ~10x10 by drawing at half-scale via matrix push.
-                        ctx.getMatrices().push();
-                        ctx.getMatrices().translate(x, y - 1, 0);
-                        ctx.getMatrices().scale(0.625f, 0.625f, 1f); // 16 * 0.625 = 10
-                        ctx.drawItem(stack, 0, 0);
-                        ctx.getMatrices().pop();
-                        textX = x + 12;
+                        // Draw at native 16x16 — avoids the 1.21.6+ matrix API
+                        // break (MatrixStack -> Matrix3x2fStack rename of
+                        // push/pop/translate/scale). Slightly larger icon, but
+                        // compiles cleanly across MC 1.21.1 .. 1.21.11.
+                        ctx.drawItem(stack, x - 2, y - 4);
+                        textX = x + 16;
                     }
                 }
             } catch (Throwable ignored) {}

@@ -28,6 +28,7 @@ public class TierCompareScreen extends Screen {
 
     private int scrollY   = 0;
     private int maxScroll = 0;
+    private boolean bgApplied = false;
 
     public TierCompareScreen(Screen parent, String nameA, String nameB) {
         super(Component.literal(nameA + " vs " + nameB));
