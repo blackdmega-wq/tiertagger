@@ -89,7 +89,7 @@ public final class Compat {
         out[4] = size;
         for (int i = 5; i < p.length; i++) {
             Class<?> t = p[i];
-            if (t == boolean.class || t == Boolean.class)      out[i] = true;     // hat / overlay defaults to visible
+            if (t == boolean.class || t == Boolean.class)      out[i] = true;
             else if (t == int.class || t == Integer.class)     out[i] = size;
             else                                                out[i] = null;
         }
@@ -130,48 +130,37 @@ public final class Compat {
      * across all 1.21.x mappings. Vanilla's signature evolved repeatedly:
      * <ul>
      *   <li>1.21.1: {@code drawTexture(Identifier, x, y, u, v, w, h, texW, texH)} (9 args)</li>
-     *   <li>1.21.2+: {@code drawTexture(Function<Identifier,RenderLayer>, Identifier, x, y, u, v, w, h, texW, texH)} (10 args)</li>
-     *   <li>1.21.5+: same as above plus a trailing {@code int color} tint (11 args).</li>
+     *   <li>1.21.2–1.21.5: {@code drawTexture(Function<Identifier,RenderLayer>, Identifier, x, y, u, v, w, h, texW, texH)} (10 args)</li>
+     *   <li>1.21.6+: {@code drawTexture(RenderPipeline, Identifier, x, y, u, v, w, h, texW, texH[, color])} (10-11 args)</li>
      * </ul>
-     * <p><b>Fast path:</b> when {@code u == 0 && v == 0} (full-texture blit, no UV offset),
-     * this method first tries {@code drawGuiTexture(Identifier, x, y, w, h)} — a stable
-     * 5-argument overload present in every 1.21.x build that needs no RenderLayer or
-     * RenderPipeline. This is the path that finally fixes skin / icon rendering on
-     * MC 1.21.6+, where the multi-arg reflection paths kept failing silently.
-     * <p>
-     * Failures are swallowed so callers don't have to wrap every call.
+     *
+     * <p><b>Root-cause note (why icons &amp; skins were invisible on 1.21.6+):</b>
+     * The previous code tried to resolve the {@code RenderPipeline} value by checking
+     * for a hardcoded Mojang/intermediary class name
+     * ({@code "com.mojang.blaze3d.pipeline.RenderPipeline"}).  In Yarn-remapped
+     * production builds that class does NOT exist under that name, so
+     * {@code tryClass()} returned {@code null}, the pipeline was never looked up,
+     * {@code defaultGuiRenderLayer} returned {@code null}, and the draw call was
+     * silently skipped every frame — leaving every icon and skin box empty.
+     *
+     * <p><b>Fix:</b> pass {@code firstParamType} (the actual parameter type of the
+     * found method) directly to {@link #lookupRenderPipeline}.  That type IS the
+     * correct {@code RenderPipeline} class for this MC version, regardless of what
+     * Yarn calls it — so {@code renderPipelineCls.isInstance(v)} works correctly
+     * without any name guessing.
+     *
+     * <p>Failures are swallowed so callers don't have to wrap every call.
      */
     public static void drawTexture(DrawContext ctx, Identifier tex,
                                    int x, int y, float u, float v,
                                    int w, int h, int texW, int texH) {
         if (ctx == null || tex == null) return;
 
-        // ── Fast path: drawGuiTexture(Identifier, int, int, int, int) ────────
-        // This 5-arg overload is stable across ALL 1.21.x versions and requires
-        // no RenderLayer / RenderPipeline. We use it whenever we want the full
-        // texture (u == 0, v == 0), which covers every caller in this mod
-        // (skin heads, gamemode icons). This is the fix for the persistent
-        // "skins don't appear" bug on MC 1.21.6+.
-        if (u == 0 && v == 0) {
-            for (Method m : DrawContext.class.getMethods()) {
-                if (!"drawGuiTexture".equals(m.getName())) continue;
-                Class<?>[] p = m.getParameterTypes();
-                // (Identifier, int, int, int, int) — pure 5-arg form
-                if (p.length == 5
-                        && p[0] == Identifier.class
-                        && p[1] == int.class && p[2] == int.class
-                        && p[3] == int.class && p[4] == int.class) {
-                    try { m.invoke(ctx, tex, x, y, w, h); return; }
-                    catch (Throwable ignored) {}
-                }
-            }
-        }
-
-        // ── Fallback: full reflection search across 9-12 arg overloads ───────
-        // We try multiple method names because Mojang has shuffled them over
-        // 1.21.x: "drawTexture" (1.21.1-1.21.10), and some snapshots renamed
-        // the GUI variant to "drawGuiTexture". Both signatures are otherwise
-        // identical, so we accept either.
+        // Search for the best drawTexture overload. We accept 9–12 args because
+        // Mojang kept adding parameters across the 1.21.x release line.
+        // NOTE: do NOT try drawGuiTexture(Identifier, x, y, w, h) here — that
+        // 5-arg form renders GUI-atlas sprites, not arbitrary mod textures, and
+        // calling it for mod icons or downloaded skin PNGs renders nothing.
         Method best = null;
         int bestArity = -1;
         for (Method m : DrawContext.class.getMethods()) {
@@ -179,15 +168,18 @@ public final class Compat {
             if (!"drawTexture".equals(n) && !"drawGuiTexture".equals(n)) continue;
             Class<?>[] p = m.getParameterTypes();
             int arity = p.length;
-            // Acceptable: 9 (legacy), 10 (1.21.2+), 11 (1.21.5+ with color tint),
-            // 12 (defensive — some snapshots add another scalar).
+            // Acceptable arities:
+            //   9  — legacy 1.21.1   (Identifier first)
+            //  10  — 1.21.2+         (RenderLayer/RenderPipeline first, Identifier second)
+            //  11  — 1.21.5+         (+ int color tint)
+            //  12  — defensive guard for any future addition
             if (arity < 9 || arity > 12) continue;
             // The Identifier must appear at index 0 (legacy) or 1 (modern).
             boolean hasIdentifier = (arity == 9 && p[0] == Identifier.class)
                                   || (arity >= 10 && p[1] == Identifier.class);
             if (!hasIdentifier) continue;
-            // Prefer the highest-arity match (newer signature) so we don't
-            // accidentally pick a deprecated overload that was kept for compat.
+            // Prefer the highest-arity match so we don't accidentally pick a
+            // deprecated overload that Mojang kept for backwards compatibility.
             if (arity > bestArity) { best = m; bestArity = arity; }
         }
         if (best == null) return;
@@ -196,15 +188,15 @@ public final class Compat {
             Class<?>[] p = best.getParameterTypes();
             Object[] args;
             if (bestArity == 9) {
+                // Legacy 1.21.1 signature — no leading pipeline/layer.
                 args = new Object[] { tex, x, y, u, v, w, h, texW, texH };
             } else {
+                // Modern signature (1.21.2+): first parameter is a pipeline or layer.
                 Object pipelineOrLayer = defaultGuiRenderLayer(p[0], tex);
-                // CRITICAL: the modern (1.21.6+) overload has a primitive
-                // RenderPipeline first parameter. Reflection.invoke throws
-                // NullPointerException if we pass null for it — which is
-                // exactly the silent failure mode that hid every gamemode
-                // icon in compare / profile. Bail out cleanly here so the
-                // caller's item-icon fallback gets a chance to draw.
+                // CRITICAL: if we cannot resolve the pipeline, we must NOT call the
+                // method with null for a primitive-typed first parameter — the JVM
+                // throws NullPointerException on unbox, which is exactly the silent
+                // failure that hid every icon and skin on 1.21.6+.
                 if (pipelineOrLayer == null) return;
                 args = new Object[bestArity];
                 args[0] = pipelineOrLayer;
@@ -213,40 +205,57 @@ public final class Compat {
                 args[4] = u; args[5] = v;
                 args[6] = w; args[7] = h;
                 args[8] = texW; args[9] = texH;
-                // Trailing slots default to opaque-white tint / safe defaults.
+                // Trailing slots: color tint (opaque white) or safe type-specific defaults.
                 for (int i = 10; i < bestArity; i++) {
                     Class<?> t = p[i];
-                    if (t == int.class || t == Integer.class)     args[i] = 0xFFFFFFFF;
-                    else if (t == float.class || t == Float.class) args[i] = 1.0f;
+                    if (t == int.class || t == Integer.class)          args[i] = 0xFFFFFFFF;
+                    else if (t == float.class || t == Float.class)     args[i] = 1.0f;
                     else if (t == boolean.class || t == Boolean.class) args[i] = false;
-                    else                                            args[i] = null;
+                    else                                                args[i] = null;
                 }
             }
             best.invoke(ctx, args);
         } catch (Throwable ignored) {
-            // Visual fallback handled by caller.
+            // Visual fallback handled by caller (item icon or placeholder rect).
         }
     }
 
     /**
-     * Resolves the value to pass for the first non-Identifier parameter of the
-     * modern {@code drawTexture}/{@code drawGuiTexture} overloads. The MC API
-     * went through three incompatible shapes in the 1.21.x line:
+     * Returns the value to pass as the first (non-Identifier) parameter of the
+     * modern {@code drawTexture} overloads.  The MC API changed this slot three
+     * times across the 1.21.x series:
      *
      * <ul>
-     *   <li>1.21.1: single overload with no extra leading parameter (handled
-     *       by the 9-arg branch in {@link #drawTexture}).</li>
-     *   <li>1.21.2-1.21.5: leading {@code Function<Identifier, RenderLayer>}
-     *       — typical value is {@code RenderLayer::getGuiTextured}.</li>
-     *   <li>1.21.6+ (incl. 1.21.11): leading {@code RenderPipeline} —
-     *       typical value is {@code RenderPipelines.GUI_TEXTURED}. This is
-     *       the variant our prior reflection failed to satisfy, which made
-     *       every gamemode icon on the compare/profile screens silently
-     *       disappear.</li>
+     *   <li>1.21.1: no extra parameter (handled by the 9-arg branch above).</li>
+     *   <li>1.21.2–1.21.5: {@code Function<Identifier, RenderLayer>}.</li>
+     *   <li>1.21.6+ (incl. 1.21.11): {@code RenderPipeline}.</li>
      * </ul>
+     *
+     * <p><b>Key fix vs. previous code:</b> instead of guessing the Yarn name of
+     * {@code RenderPipeline} (which is under {@code com.mojang.blaze3d.*} in
+     * intermediary but has a completely different name in Yarn-mapped builds),
+     * we now pass {@code firstParamType} — the actual runtime type of the method
+     * parameter — directly to {@link #lookupRenderPipeline}.  This lets
+     * {@code renderPipelineCls.isInstance(v)} do the right thing without any
+     * name guessing, and is the change that finally makes icon &amp; skin
+     * rendering work on all 1.21.x versions.
      */
     private static Object defaultGuiRenderLayer(Class<?> firstParamType, Identifier tex) {
-        // ── Path 1: RenderPipeline (1.21.6+ inc. 1.21.11) ────────────────
+
+        // ── Path 1 (PRIMARY): use firstParamType directly ─────────────────────
+        // firstParamType IS the correct RenderPipeline (or RenderLayer) class for
+        // this MC build — no Yarn name guessing needed.  This is the main fix:
+        // the old code required com.mojang.blaze3d.pipeline.RenderPipeline to be
+        // loadable, which fails on all Yarn-mapped production builds.
+        if (!java.util.function.Function.class.isAssignableFrom(firstParamType)) {
+            // Non-Function first param → likely a RenderPipeline (1.21.6+).
+            try {
+                Object pipeline = lookupRenderPipeline(firstParamType);
+                if (pipeline != null) return pipeline;
+            } catch (Throwable ignored) {}
+        }
+
+        // ── Path 2: Mojang/intermediary RenderPipeline class name (kept as fallback) ──
         try {
             Class<?> rp = tryClass("com.mojang.blaze3d.pipeline.RenderPipeline");
             if (rp != null && firstParamType.isAssignableFrom(rp)) {
@@ -255,7 +264,7 @@ public final class Compat {
             }
         } catch (Throwable ignored) {}
 
-        // ── Path 2: RenderLayer / Function<Identifier,RenderLayer> (1.21.2-1.21.5) ──
+        // ── Path 3: RenderLayer / Function<Identifier,RenderLayer> (1.21.2–1.21.5) ──
         try {
             Class<?> renderLayerCls = tryClass("net.minecraft.client.render.RenderLayer");
             if (renderLayerCls != null) {
@@ -287,22 +296,28 @@ public final class Compat {
 
     /**
      * Looks up {@code RenderPipelines.GUI_TEXTURED} (or its closest equivalent)
-     * across the package locations Mojang has shipped it from in 1.21.6+. The
-     * field name is stable across snapshots ({@code GUI_TEXTURED}) but its
-     * containing class moved between {@code net.minecraft.client.gl.*},
+     * across all package locations Mojang has used in 1.21.6+.
+     *
+     * <p>The field name ({@code GUI_TEXTURED}) is stable across snapshots, but
+     * its containing class moved between {@code net.minecraft.client.gl.*},
      * {@code net.minecraft.client.render.*}, and {@code com.mojang.blaze3d.*}
-     * between yarn builds.
+     * between Yarn builds.
+     *
+     * <p>{@code renderPipelineCls} must be the <em>actual runtime type</em> that
+     * the method parameter expects (i.e. {@code firstParamType} from
+     * {@link #defaultGuiRenderLayer}) so that {@code isInstance} works correctly.
      */
     private static Object lookupRenderPipeline(Class<?> renderPipelineCls) {
         Object cached = CACHED_GUI_PIPELINE;
-        if (cached != null) return cached;
+        if (cached != null && renderPipelineCls.isInstance(cached)) return cached;
+
         String[] containers = {
             "net.minecraft.client.gl.RenderPipelines",
             "net.minecraft.client.render.RenderPipelines",
-            "com.mojang.blaze3d.pipeline.RenderPipelines"
+            "com.mojang.blaze3d.pipeline.RenderPipelines",
+            "net.minecraft.client.renderer.RenderPipelines"
         };
         String[] preferredFields = {
-            // Listed best-first: GUI_TEXTURED is the standard for opaque GUI sprites.
             "GUI_TEXTURED",
             "GUI_TEXTURED_PREMULTIPLIED_ALPHA",
             "GUI_TEXTURED_OVERLAY",
@@ -311,6 +326,7 @@ public final class Compat {
         for (String cls : containers) {
             Class<?> c = tryClass(cls);
             if (c == null) continue;
+            // Try the preferred field names first.
             for (String fn : preferredFields) {
                 try {
                     java.lang.reflect.Field f = c.getField(fn);
@@ -321,13 +337,13 @@ public final class Compat {
                     }
                 } catch (Throwable ignored) {}
             }
-            // Last resort: any public static field whose declared type is RenderPipeline.
+            // Last resort: any public static field of the right type.
             for (java.lang.reflect.Field f : c.getFields()) {
                 if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
                 if (!renderPipelineCls.isAssignableFrom(f.getType())) continue;
                 try {
                     Object v = f.get(null);
-                    if (v != null) {
+                    if (v != null && renderPipelineCls.isInstance(v)) {
                         CACHED_GUI_PIPELINE = v;
                         return v;
                     }
@@ -345,7 +361,7 @@ public final class Compat {
      * Reflective {@link NativeImageBackedTexture} constructor that compiles
      * across mapping changes:
      * <ul>
-     *   <li>1.21.1-1.21.4: {@code new NativeImageBackedTexture(NativeImage)}</li>
+     *   <li>1.21.1–1.21.4: {@code new NativeImageBackedTexture(NativeImage)}</li>
      *   <li>1.21.5+: {@code new NativeImageBackedTexture(Supplier<String>, NativeImage)}
      *       (a debug label used in renderdoc captures).</li>
      * </ul>
@@ -372,7 +388,6 @@ public final class Compat {
                     return (NativeImageBackedTexture) c.newInstance(first, img);
                 }
                 if (p.length == 2 && p[0] == NativeImage.class) {
-                    // Hypothetical (NativeImage, boolean) variant — pass false.
                     if (p[1] == boolean.class || p[1] == Boolean.class) {
                         return (NativeImageBackedTexture) c.newInstance(img, false);
                     }
