@@ -334,12 +334,11 @@ public class TierCompareScreen extends Screen {
             if (sdA != null) allModes.addAll(sdA.rankings.keySet());
             if (sdB != null) allModes.addAll(sdB.rankings.keySet());
 
-            int rowsToDraw = 0;
-            for (String m : allModes) {
-                Ranking rA = sdA == null ? null : sdA.rankings.get(m);
-                Ranking rB = sdB == null ? null : sdB.rankings.get(m);
-                if ((rA != null && rA.tierLevel > 0) || (rB != null && rB.tierLevel > 0)) rowsToDraw++;
-            }
+            // Always render every mode the service exposes (even when neither
+            // player is ranked) so users can see e.g. NethOP / Netherite Pot /
+            // Crystal slots — previously hidden modes confused users into
+            // thinking they were missing from the mod.
+            int rowsToDraw = allModes.size();
             int cardH = 22 + Math.max(1, rowsToDraw) * ROW_H + 6;
 
             fillRect(ctx, x, y, x + w, y + cardH, BG_CARD);
@@ -360,27 +359,24 @@ public class TierCompareScreen extends Screen {
                 x + w - 10 - rsw, y + 7, FG_FAINT);
 
             int rowY = y + 24;
-            if (rowsToDraw == 0) {
-                String msg = (sdA != null && sdA.fetchedAt == 0) || (sdB != null && sdB.fetchedAt == 0)
-                    ? "loading\u2026" : "neither player ranked here";
-                ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(msg).formatted(Formatting.DARK_GRAY),
-                    x + 10, rowY + 2, 0xFF808080);
-            } else {
+            {
                 boolean alt = false;
                 for (String mode : allModes) {
                     Ranking rA = sdA == null ? null : sdA.rankings.get(mode);
                     Ranking rB = sdB == null ? null : sdB.rankings.get(mode);
                     boolean hasA = rA != null && rA.tierLevel > 0;
                     boolean hasB = rB != null && rB.tierLevel > 0;
-                    if (!hasA && !hasB) continue;
 
                     int sA = hasA ? rA.score() : -1;
                     int sB = hasB ? rB.score() : -1;
                     char winner;
-                    if (sA > sB)      { winner = 'A'; wins1++; }
-                    else if (sB > sA) { winner = 'B'; wins2++; }
-                    else              { winner = '='; ties++; }
+                    if (!hasA && !hasB) {
+                        // Neither ranked — render an info row but don't count
+                        // it toward the win/loss/tie footer summary.
+                        winner = '-';
+                    } else if (sA > sB) { winner = 'A'; wins1++; }
+                    else if (sB > sA)   { winner = 'B'; wins2++; }
+                    else                { winner = '='; ties++; }
 
                     renderCmpRow(ctx, mode, rA, rB, winner, x + 10, rowY, w - 20, alt);
                     rowY += ROW_H;
@@ -455,7 +451,8 @@ public class TierCompareScreen extends Screen {
         switch (winner) {
             case 'A': wsym = Text.literal("\u25C0").formatted(Formatting.GREEN, Formatting.BOLD); break;
             case 'B': wsym = Text.literal("\u25B6").formatted(Formatting.GREEN, Formatting.BOLD); break;
-            default:  wsym = Text.literal("=").formatted(Formatting.YELLOW); break;
+            case '=': wsym = Text.literal("=").formatted(Formatting.YELLOW); break;
+            default:  wsym = Text.literal("\u2014").formatted(Formatting.DARK_GRAY); break; // neither ranked
         }
         ctx.drawCenteredTextWithShadow(this.textRenderer, wsym, rightStart + colW + colW / 2, y + 3, 0xFFFFFFFF);
 

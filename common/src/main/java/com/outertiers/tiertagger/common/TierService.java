@@ -31,7 +31,7 @@ public enum TierService {
     MCTIERS(
         "mctiers",  "MCTiers",   "MCT",  0xFFE53935,
         "https://mctiers.com/api/profile/",  Lookup.UUID_NODASH,
-        List.of("vanilla", "sword", "axe", "pot", "nethpot", "smp", "uhc", "mace")
+        List.of("vanilla", "sword", "axe", "pot", "nethpot", "nethop", "smp", "uhc", "mace")
     ),
     OUTERTIERS(
         "outertiers", "OuterTiers", "OT",  0xFFFFB300,
@@ -41,14 +41,17 @@ public enum TierService {
     PVPTIERS(
         "pvptiers", "PvPTiers",  "PVP",  0xFF1E88E5,
         "https://pvptiers.com/api/profile/", Lookup.UUID_NODASH,
-        List.of("vanilla", "sword", "axe", "pot", "nethpot", "smp", "uhc", "mace")
+        List.of("vanilla", "sword", "axe", "pot", "nethpot", "nethop", "smp", "uhc", "mace", "crystal")
     ),
     // SubTiers exposes the niche / community-driven gamemodes that mainline
     // tier lists don't track. Order matches subtiers.net's own profile layout.
+    // Sword/Axe/Mace/UHC are intentionally OMITTED here — those modes are
+    // duplicated on the mainstream services (MCTIERS / OUTERTIERS / PVPTIERS)
+    // and showing them again under SubTiers just clutters the profile screen.
     SUBTIERS(
         "subtiers", "SubTiers",  "ST",   0xFF8E24AA,
         "https://subtiers.net/api/profile/", Lookup.UUID_NODASH,
-        List.of("og_vanilla", "sword", "axe", "mace", "uhc", "speed", "bed", "elytra",
+        List.of("og_vanilla", "speed", "bed", "elytra",
                 "trident", "creeper", "minecart", "manhunt", "dia_smp", "dia_crystal",
                 "dia_2v2", "debuff", "bow")
     );
