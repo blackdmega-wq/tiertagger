@@ -281,7 +281,7 @@ public class TierProfileScreen extends Screen {
      * either duplicate a mainstream mode or aren't actively maintained on
      * that tier list.
      *   MCTiers  — drop NethPot (keep NethOP)
-     *   PvPTiers — drop NethOP   (keep Vanilla AND NethPot)
+     *   PvPTiers — drop NethOP AND Vanilla (Vanilla == Crystal on PvPTiers; only show Crystal)
      *   SubTiers — drop Dia 2v2
      */
     private static boolean isModeHidden(TierService svc, String mode) {
@@ -294,8 +294,9 @@ public class TierProfileScreen extends Screen {
                 // Hide only Netherite Pot. Keep NethOP and the regular Pot.
                 return m.equals("nethpot") || m.equals("neth_pot");
             case PVPTIERS:
-                // Hide only NethOP. Keep Vanilla and Netherite Pot.
-                return m.equals("nethop");
+                // Hide NethOP and Vanilla. On PvPTiers "vanilla" is Crystal PvP —
+                // we show it under the "crystal" key only to avoid the duplicate.
+                return m.equals("nethop") || m.equals("vanilla");
             case SUBTIERS:
                 return m.equals("dia_2v2") || m.equals("dia2v2") || m.equals("2v2");
             default:
