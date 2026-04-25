@@ -62,10 +62,18 @@ public class TierCompareScreen extends Screen {
     private static final int BG_HEADER       = 0xFF181C24;
     private static final int BG_CARD         = 0xFF15191F;
     private static final int BG_CARD_BAR     = 0xFF1E232C;
-    private static final int FG_FAINT        = 0x9AA0AA;
-    private static final int FG_TEXT         = 0xE6E8EC;
+    // Colours carry the 0xFF alpha byte — MC 1.21.5+ treats alpha == 0 as
+    // "fully transparent" inside drawTextWithShadow(), which previously hid
+    // every label drawn on this screen.
+    private static final int FG_FAINT        = 0xFF9AA0AA;
+    private static final int FG_TEXT         = 0xFFE6E8EC;
     private static final int VS_BG           = 0xFF222631;
     private static final int VS_BORDER       = 0xFF3A4150;
+
+    /** Force the high alpha byte on; needed for drawTextWithShadow() colour params. */
+    private static int opaque(int rgbOrArgb) { return rgbOrArgb | 0xFF000000; }
+    /** Strip alpha to keep Style.withColor(int) inside its required 0..0xFFFFFF range. */
+    private static int rgb(int argb) { return argb & 0xFFFFFF; }
 
     private final Screen parent;
     private final String nameA;
@@ -224,19 +232,19 @@ public class TierCompareScreen extends Screen {
         Ranking bestA = highestOverall(dA);
         TierService bestSvcA = highestOverallSvc(dA);
         if (bestA != null) {
-            int c = TierTaggerCore.argbFor(bestA.label()) & 0xFFFFFF;
-            MutableText t = Text.literal(bestA.label()).withColor(c).copy().formatted(Formatting.BOLD)
+            int cArgb = TierTaggerCore.argbFor(bestA.label());
+            MutableText t = Text.literal(bestA.label()).withColor(rgb(cArgb)).copy().formatted(Formatting.BOLD)
                 .append(Text.literal(" on ").formatted(Formatting.GRAY))
-                .append(Text.literal(bestSvcA == null ? "" : bestSvcA.shortLabel).withColor(FG_TEXT));
-            ctx.drawTextWithShadow(this.textRenderer, t, leftTextX, y + 24, c);
+                .append(Text.literal(bestSvcA == null ? "" : bestSvcA.shortLabel).withColor(rgb(FG_TEXT)));
+            ctx.drawTextWithShadow(this.textRenderer, t, leftTextX, y + 24, opaque(cArgb));
         } else {
             ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal(dA == null ? "loading\u2026" : "no tiers").withColor(FG_FAINT),
+                Text.literal(dA == null ? "loading\u2026" : "no tiers").withColor(rgb(FG_FAINT)),
                 leftTextX, y + 24, FG_FAINT);
         }
         // Per-player loaded count
         ctx.drawTextWithShadow(this.textRenderer,
-            Text.literal(loadedCount(dA)).withColor(FG_FAINT),
+            Text.literal(loadedCount(dA)).withColor(rgb(FG_FAINT)),
             leftTextX, y + 38, FG_FAINT);
 
         // ── Right side text block (right-aligned, with extra gap from head) ──
@@ -249,22 +257,22 @@ public class TierCompareScreen extends Screen {
         Ranking bestB = highestOverall(dB);
         TierService bestSvcB = highestOverallSvc(dB);
         if (bestB != null) {
-            int c = TierTaggerCore.argbFor(bestB.label()) & 0xFFFFFF;
-            MutableText t = Text.literal(bestB.label()).withColor(c).copy().formatted(Formatting.BOLD)
+            int cArgb = TierTaggerCore.argbFor(bestB.label());
+            MutableText t = Text.literal(bestB.label()).withColor(rgb(cArgb)).copy().formatted(Formatting.BOLD)
                 .append(Text.literal(" on ").formatted(Formatting.GRAY))
-                .append(Text.literal(bestSvcB == null ? "" : bestSvcB.shortLabel).withColor(FG_TEXT));
+                .append(Text.literal(bestSvcB == null ? "" : bestSvcB.shortLabel).withColor(rgb(FG_TEXT)));
             int wt = this.textRenderer.getWidth(t);
-            ctx.drawTextWithShadow(this.textRenderer, t, rightTextRight - wt, y + 24, c);
+            ctx.drawTextWithShadow(this.textRenderer, t, rightTextRight - wt, y + 24, opaque(cArgb));
         } else {
             String s = dB == null ? "loading\u2026" : "no tiers";
             int sw = this.textRenderer.getWidth(s);
             ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal(s).withColor(FG_FAINT), rightTextRight - sw, y + 24, FG_FAINT);
+                Text.literal(s).withColor(rgb(FG_FAINT)), rightTextRight - sw, y + 24, FG_FAINT);
         }
         String lc = loadedCount(dB);
         int lcw = this.textRenderer.getWidth(lc);
         ctx.drawTextWithShadow(this.textRenderer,
-            Text.literal(lc).withColor(FG_FAINT), rightTextRight - lcw, y + 38, FG_FAINT);
+            Text.literal(lc).withColor(rgb(FG_FAINT)), rightTextRight - lcw, y + 38, FG_FAINT);
 
         // ── Centred "vs" pill ──
         String vs = "vs";
@@ -340,15 +348,15 @@ public class TierCompareScreen extends Screen {
             fillRect(ctx, x + 3, y, x + w, y + 22, BG_CARD_BAR);
 
             ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal(svc.shortLabel).withColor(svc.accentArgb & 0xFFFFFF).copy().formatted(Formatting.BOLD),
-                x + 10, y + 7, svc.accentArgb & 0xFFFFFF);
+                Text.literal(svc.shortLabel).withColor(rgb(svc.accentArgb)).copy().formatted(Formatting.BOLD),
+                x + 10, y + 7, opaque(svc.accentArgb));
             ctx.drawTextWithShadow(this.textRenderer,
                 Text.literal(svc.displayName).formatted(Formatting.WHITE),
                 x + 10 + this.textRenderer.getWidth(svc.shortLabel) + 6, y + 7, FG_TEXT);
 
             String regs = regionPair(sdA, sdB);
             int rsw = this.textRenderer.getWidth(regs);
-            ctx.drawTextWithShadow(this.textRenderer, Text.literal(regs).withColor(FG_FAINT),
+            ctx.drawTextWithShadow(this.textRenderer, Text.literal(regs).withColor(rgb(FG_FAINT)),
                 x + w - 10 - rsw, y + 7, FG_FAINT);
 
             int rowY = y + 24;
@@ -357,7 +365,7 @@ public class TierCompareScreen extends Screen {
                     ? "loading\u2026" : "neither player ranked here";
                 ctx.drawTextWithShadow(this.textRenderer,
                     Text.literal(msg).formatted(Formatting.DARK_GRAY),
-                    x + 10, rowY + 2, 0x808080);
+                    x + 10, rowY + 2, 0xFF808080);
             } else {
                 boolean alt = false;
                 for (String mode : allModes) {
@@ -393,7 +401,7 @@ public class TierCompareScreen extends Screen {
             .append(Text.literal(String.valueOf(wins2)).formatted(Formatting.GREEN, Formatting.BOLD))
             .append(Text.literal("    ties: ").formatted(Formatting.WHITE))
             .append(Text.literal(String.valueOf(ties)).formatted(Formatting.YELLOW, Formatting.BOLD));
-        ctx.drawCenteredTextWithShadow(this.textRenderer, sum, x + w / 2, y + 7, 0xFFFFFF);
+        ctx.drawCenteredTextWithShadow(this.textRenderer, sum, x + w / 2, y + 7, 0xFFFFFFFF);
         return y + 26;
     }
 
@@ -427,7 +435,7 @@ public class TierCompareScreen extends Screen {
 
         String label = TierIcons.labelFor(mode);
         ctx.drawTextWithShadow(this.textRenderer,
-            Text.literal(label).withColor(FG_TEXT),
+            Text.literal(label).withColor(rgb(FG_TEXT)),
             textX, y + 3, FG_TEXT);
 
         // Three columns inside the right portion of the row:
@@ -436,10 +444,10 @@ public class TierCompareScreen extends Screen {
         int rightEnd   = x + w;
         int colW       = (rightEnd - rightStart) / 3;
 
-        Text tA = tierComp(rA);
+        Text tA = tierComp(rA, (rA != null && rA.tierLevel > 0) ? TierTaggerCore.argbFor(rA.label()) : 0xFF808080);
         int wA = this.textRenderer.getWidth(tA);
         int aCx = rightStart + colW / 2;
-        int aColor = (rA != null && rA.tierLevel > 0) ? TierTaggerCore.argbFor(rA.label()) & 0xFFFFFF : 0x808080;
+        int aColor = (rA != null && rA.tierLevel > 0) ? opaque(TierTaggerCore.argbFor(rA.label())) : 0xFF808080;
         if (winner == 'A') fillRect(ctx, aCx - wA / 2 - 3, y + 1, aCx + wA / 2 + 3, y + ROW_H - 1, 0x3000FF66);
         ctx.drawTextWithShadow(this.textRenderer, tA, aCx - wA / 2, y + 3, aColor);
 
@@ -449,19 +457,19 @@ public class TierCompareScreen extends Screen {
             case 'B': wsym = Text.literal("\u25B6").formatted(Formatting.GREEN, Formatting.BOLD); break;
             default:  wsym = Text.literal("=").formatted(Formatting.YELLOW); break;
         }
-        ctx.drawCenteredTextWithShadow(this.textRenderer, wsym, rightStart + colW + colW / 2, y + 3, 0xFFFFFF);
+        ctx.drawCenteredTextWithShadow(this.textRenderer, wsym, rightStart + colW + colW / 2, y + 3, 0xFFFFFFFF);
 
-        Text tB = tierComp(rB);
+        Text tB = tierComp(rB, (rB != null && rB.tierLevel > 0) ? TierTaggerCore.argbFor(rB.label()) : 0xFF808080);
         int wB = this.textRenderer.getWidth(tB);
         int bCx = rightStart + colW * 2 + colW / 2;
-        int bColor = (rB != null && rB.tierLevel > 0) ? TierTaggerCore.argbFor(rB.label()) & 0xFFFFFF : 0x808080;
+        int bColor = (rB != null && rB.tierLevel > 0) ? opaque(TierTaggerCore.argbFor(rB.label())) : 0xFF808080;
         if (winner == 'B') fillRect(ctx, bCx - wB / 2 - 3, y + 1, bCx + wB / 2 + 3, y + ROW_H - 1, 0x3000FF66);
         ctx.drawTextWithShadow(this.textRenderer, tB, bCx - wB / 2, y + 3, bColor);
     }
 
-    private static Text tierComp(Ranking r) {
+    private static Text tierComp(Ranking r, int argb) {
         if (r == null || r.tierLevel <= 0) return Text.literal("\u2014").formatted(Formatting.DARK_GRAY);
-        return Text.literal(r.label()).formatted(Formatting.BOLD);
+        return Text.literal(r.label()).withColor(argb & 0xFFFFFF).copy().formatted(Formatting.BOLD);
     }
 
     private static String regionPair(ServiceData a, ServiceData b) {

@@ -62,6 +62,10 @@ public class TierConfig {
     public String  displayMode       = "highest";
     /** Modes considered when computing "highest" tier. Empty => use everything. */
     public List<String> enabledModes = new ArrayList<>();
+    /** Modes shown in the player tab list. {@code null}/empty => follow {@link #enabledModes}. */
+    public List<String> tabModes = null;
+    /** Modes shown above player nametags. {@code null}/empty => follow {@link #enabledModes}. */
+    public List<String> nametagModes = null;
     /** Cosmetic toggles surfaced in the config screen. */
     public boolean disableTiers      = false;
     public boolean disableIcons      = false;
@@ -175,6 +179,43 @@ public class TierConfig {
         if (enabled) enabledModes.add(key);
     }
 
+    /** Returns true if the given mode should be displayed in the tab list. */
+    public boolean isTabModeEnabled(String mode) {
+        if (mode == null) return false;
+        if (tabModes == null || tabModes.isEmpty()) return isModeEnabled(mode);
+        for (String m : tabModes) if (m.equalsIgnoreCase(mode)) return true;
+        return false;
+    }
+
+    /** Returns true if the given mode should be displayed above nametags. */
+    public boolean isNametagModeEnabled(String mode) {
+        if (mode == null) return false;
+        if (nametagModes == null || nametagModes.isEmpty()) return isModeEnabled(mode);
+        for (String m : nametagModes) if (m.equalsIgnoreCase(mode)) return true;
+        return false;
+    }
+
+    public void setTabModeEnabled(String mode, boolean enabled) {
+        tabModes = setModeEnabledIn(tabModes, mode, enabled);
+    }
+
+    public void setNametagModeEnabled(String mode, boolean enabled) {
+        nametagModes = setModeEnabledIn(nametagModes, mode, enabled);
+    }
+
+    private static List<String> setModeEnabledIn(List<String> list, String mode, boolean enabled) {
+        if (mode == null) return list;
+        if (list == null) list = new ArrayList<>();
+        if (list.isEmpty()) {
+            // Materialise the implicit "all on" set before flipping entries.
+            for (String m : TierService.allKnownModes()) list.add(m.toLowerCase(Locale.ROOT));
+        }
+        String key = mode.toLowerCase(Locale.ROOT);
+        list.removeIf(s -> s.equalsIgnoreCase(key));
+        if (enabled) list.add(key);
+        return list;
+    }
+
     public TierService primaryServiceEnum()   { return TierService.byIdOr(primaryService, TierService.OUTERTIERS); }
     public TierService leftServiceEnum()      { return TierService.byIdOr(leftService,    TierService.OUTERTIERS); }
     public TierService rightServiceEnum()     { return TierService.byIdOr(rightService,   TierService.MCTIERS);    }
@@ -199,6 +240,8 @@ public class TierConfig {
         this.showModeIcon      = def.showModeIcon;
         this.displayMode       = def.displayMode;
         this.enabledModes      = new ArrayList<>();
+        this.tabModes          = null;
+        this.nametagModes      = null;
         this.disableTiers      = def.disableTiers;
         this.disableIcons      = def.disableIcons;
         this.disableAnimations = def.disableAnimations;

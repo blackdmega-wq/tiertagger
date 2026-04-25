@@ -45,8 +45,11 @@ public final class BadgeRenderer {
     public static MutableText buildTabSuffix(TierConfig cfg, PlayerData data) {
         TierService leftSvc  = cfg.leftServiceEnum();
         TierService rightSvc = cfg.rightServiceEnum();
-        String leftTier  = TierTaggerCore.tierForService(data, leftSvc);
-        String rightTier = cfg.rightBadgeEnabled ? TierTaggerCore.tierForService(data, rightSvc) : null;
+        // Per-context filter so the user can hide specific gamemodes from the tab list
+        // without affecting nametags or the tier screens.
+        java.util.function.Predicate<String> tabFilter = cfg::isTabModeEnabled;
+        String leftTier  = TierTaggerCore.tierForService(data, leftSvc, tabFilter);
+        String rightTier = cfg.rightBadgeEnabled ? TierTaggerCore.tierForService(data, rightSvc, tabFilter) : null;
         if ((leftTier == null || leftTier.isBlank()) && (rightTier == null || rightTier.isBlank())) return null;
 
         MutableText out = Text.literal("");
@@ -63,8 +66,9 @@ public final class BadgeRenderer {
     public static MutableText wrapNametag(TierConfig cfg, PlayerData data, Text original) {
         TierService leftSvc  = cfg.leftServiceEnum();
         TierService rightSvc = cfg.rightServiceEnum();
-        String leftTier  = TierTaggerCore.tierForService(data, leftSvc);
-        String rightTier = cfg.rightBadgeEnabled ? TierTaggerCore.tierForService(data, rightSvc) : null;
+        java.util.function.Predicate<String> nametagFilter = cfg::isNametagModeEnabled;
+        String leftTier  = TierTaggerCore.tierForService(data, leftSvc, nametagFilter);
+        String rightTier = cfg.rightBadgeEnabled ? TierTaggerCore.tierForService(data, rightSvc, nametagFilter) : null;
         if ((leftTier == null || leftTier.isBlank()) && (rightTier == null || rightTier.isBlank())) return null;
 
         MutableText out = Text.empty();

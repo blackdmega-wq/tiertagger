@@ -34,6 +34,11 @@ import java.util.Optional;
  *
  * Defensive everywhere: any draw failure falls back to a coloured rectangle
  * so the panel is always legible even when data is half-loaded.
+ *
+ * <p>v1.7.10 fix: every {@code drawTextWithShadow} colour parameter must
+ * include the high alpha byte ({@code 0xFF000000}) — MC 1.21.5+ treats
+ * {@code alpha == 0} as "fully transparent" instead of the legacy "opaque",
+ * which silently hid every label on this screen.
  */
 public class TierProfileScreen extends Screen {
 
@@ -46,14 +51,21 @@ public class TierProfileScreen extends Screen {
     private static final int ROW_H       = 14;
     private static final int ICON_SIZE   = 16;
 
-    // Colours (kept in sync with TierCompareScreen)
+    // Colours — every constant carries the 0xFF alpha byte so it can be passed
+    // straight into drawTextWithShadow() / fill() without further masking.
     private static final int BG_PANEL        = 0xF20E1116;
     private static final int BG_PANEL_BORDER = 0xFF2A2F38;
     private static final int BG_HEADER       = 0xFF181C24;
     private static final int BG_CARD         = 0xFF15191F;
     private static final int BG_CARD_BAR     = 0xFF1E232C;
-    private static final int FG_FAINT        = 0x9AA0AA;
-    private static final int FG_TEXT         = 0xE6E8EC;
+    private static final int FG_FAINT        = 0xFF9AA0AA;
+    private static final int FG_TEXT         = 0xFFE6E8EC;
+    private static final int FG_REGION       = 0xFFFFD27A;
+
+    /** Force the high alpha byte on; needed for drawTextWithShadow() colour params on 1.21.5+. */
+    private static int opaque(int rgbOrArgb) { return rgbOrArgb | 0xFF000000; }
+    /** Strip alpha to keep Style.withColor(int) inside its required 0..0xFFFFFF range. */
+    private static int rgb(int argb) { return argb & 0xFFFFFF; }
 
     private final Screen parent;
     private final String username;
@@ -203,15 +215,15 @@ public class TierProfileScreen extends Screen {
         int subColor;
         if (best != null) {
             sub = best.label() + " on " + bestSvc.shortLabel;
-            subColor = TierTaggerCore.argbFor(best.label()) & 0xFFFFFF;
+            subColor = TierTaggerCore.argbFor(best.label());
         } else if (opt.isEmpty()) {
             sub = "Loading\u2026"; subColor = FG_FAINT;
         } else {
             sub = "No tiers found"; subColor = FG_FAINT;
         }
         ctx.drawTextWithShadow(this.textRenderer,
-            Text.literal(sub).withColor(subColor & 0xFFFFFF),
-            textX, textY + 14, subColor & 0xFFFFFF);
+            Text.literal(sub).withColor(rgb(subColor)),
+            textX, textY + 14, opaque(subColor));
 
         if (opt.isPresent()) {
             int ranked = 0, loaded = 0;
@@ -224,7 +236,7 @@ public class TierProfileScreen extends Screen {
             if (loaded < TierService.values().length) st = "loading " + loaded + "/" + TierService.values().length;
             int sw = this.textRenderer.getWidth(st);
             ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal(st).withColor(FG_FAINT),
+                Text.literal(st).withColor(rgb(FG_FAINT)),
                 x + w - 10 - sw, textY + 6, FG_FAINT);
         }
     }
@@ -236,7 +248,7 @@ public class TierProfileScreen extends Screen {
         if (opt.isEmpty()) {
             ctx.drawCenteredTextWithShadow(this.textRenderer,
                 Text.literal("Looking up player\u2026").formatted(Formatting.GRAY),
-                x + w / 2, y + 20, 0xAAAAAA);
+                x + w / 2, y + 20, 0xFFAAAAAA);
             return y + 40;
         }
         PlayerData data = opt.get();
@@ -267,8 +279,8 @@ public class TierProfileScreen extends Screen {
 
         // Title: "OT  OuterTiers"
         ctx.drawTextWithShadow(this.textRenderer,
-            Text.literal(svc.shortLabel).withColor(accent & 0xFFFFFF).copy().formatted(Formatting.BOLD),
-            x + 10, y + 7, accent & 0xFFFFFF);
+            Text.literal(svc.shortLabel).withColor(rgb(accent)).copy().formatted(Formatting.BOLD),
+            x + 10, y + 7, opaque(accent));
         ctx.drawTextWithShadow(this.textRenderer,
             Text.literal(svc.displayName).formatted(Formatting.WHITE),
             x + 10 + this.textRenderer.getWidth(svc.shortLabel) + 6, y + 7, FG_TEXT);
@@ -282,12 +294,12 @@ public class TierProfileScreen extends Screen {
             String s = "loading\u2026";
             int sw = this.textRenderer.getWidth(s);
             ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal(s).withColor(FG_FAINT), rightX - sw, y + 7, FG_FAINT);
+                Text.literal(s).withColor(rgb(FG_FAINT)), rightX - sw, y + 7, FG_FAINT);
         } else if (sd.missing || sd.rankedCount() == 0) {
             String s = "not on this list";
             int sw = this.textRenderer.getWidth(s);
             ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal(s).withColor(FG_FAINT), rightX - sw, y + 7, FG_FAINT);
+                Text.literal(s).withColor(rgb(FG_FAINT)), rightX - sw, y + 7, FG_FAINT);
         } else {
             String reg = (sd.region == null || sd.region.isBlank()) ? "" : sd.region;
             String tail = reg + (sd.overall > 0
@@ -296,7 +308,7 @@ public class TierProfileScreen extends Screen {
             int tailW = tail.isEmpty() ? 0 : this.textRenderer.getWidth(tail);
             if (!tail.isEmpty()) {
                 ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(tail).withColor(0xFFD27A), rightX - tailW, y + 7, 0xFFD27A);
+                    Text.literal(tail).withColor(rgb(FG_REGION)), rightX - tailW, y + 7, FG_REGION);
             }
             // Best-tier pill, right of the title and left of the region/rank tail.
             Ranking best = sd.highest();
@@ -309,8 +321,8 @@ public class TierProfileScreen extends Screen {
                 fillRect(ctx, pillX, y + 4, pillX + pillW, y + 18, (color & 0x00FFFFFF) | 0x33000000);
                 outlineRect(ctx, pillX, y + 4, pillW, 14, color);
                 ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(pill).withColor(color & 0xFFFFFF).copy().formatted(Formatting.BOLD),
-                    pillX + 4, y + 7, color & 0xFFFFFF);
+                    Text.literal(pill).withColor(rgb(color)).copy().formatted(Formatting.BOLD),
+                    pillX + 4, y + 7, opaque(color));
             }
         }
 
@@ -321,7 +333,7 @@ public class TierProfileScreen extends Screen {
         if (sd.fetchedAt == 0L) {
             ctx.drawTextWithShadow(this.textRenderer,
                 Text.literal("Fetching " + svc.displayName + "\u2026").formatted(Formatting.DARK_GRAY),
-                innerX, rowY + 2, 0x808080);
+                innerX, rowY + 2, 0xFF808080);
             return;
         }
 
@@ -374,7 +386,7 @@ public class TierProfileScreen extends Screen {
         String label = TierIcons.labelFor(mode);
         int labelCol = ranked ? FG_TEXT : FG_FAINT;
         ctx.drawTextWithShadow(this.textRenderer,
-            Text.literal(label).withColor(labelCol),
+            Text.literal(label).withColor(rgb(labelCol)),
             textX, y + 3, labelCol);
 
         // Inline #position next to the mode name when known (e.g. "Vanilla #42").
@@ -383,7 +395,7 @@ public class TierProfileScreen extends Screen {
             int posX = textX + this.textRenderer.getWidth(label) + 5;
             ctx.drawTextWithShadow(this.textRenderer,
                 Text.literal(pos).formatted(Formatting.DARK_GRAY),
-                posX, y + 3, 0x707070);
+                posX, y + 3, 0xFF707070);
         }
 
         // Right-hand side: tier badge, peak, retired marker, or em-dash if unranked.
@@ -392,13 +404,13 @@ public class TierProfileScreen extends Screen {
             tier = Text.literal("\u2014").formatted(Formatting.DARK_GRAY);
         } else {
             String cur = r.label();
-            int curColor = TierTaggerCore.argbFor(cur) & 0xFFFFFF;
-            tier = Text.literal(cur).withColor(curColor).copy().formatted(Formatting.BOLD);
+            int curColor = TierTaggerCore.argbFor(cur);
+            tier = Text.literal(cur).withColor(rgb(curColor)).copy().formatted(Formatting.BOLD);
             if (r.peakDiffers()) {
                 String peak = r.peakLabel();
-                int peakC = TierTaggerCore.argbFor(peak) & 0xFFFFFF;
+                int peakC = TierTaggerCore.argbFor(peak);
                 tier = tier.append(Text.literal("  \u25B2").formatted(Formatting.DARK_GRAY))
-                           .append(Text.literal(peak).withColor(peakC));
+                           .append(Text.literal(peak).withColor(rgb(peakC)));
             }
             if (r.retired) {
                 tier = tier.copy().append(Text.literal(" \u2022 ret").formatted(Formatting.DARK_GRAY));

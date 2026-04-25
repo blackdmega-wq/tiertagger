@@ -39,7 +39,10 @@ public class TierConfigScreen extends Screen {
     private static final int BG_PANEL        = 0xF20E1116;
     private static final int BG_PANEL_BORDER = 0xFF2A2F38;
     private static final int BG_HEADER       = 0xFF181C24;
-    private static final int FG_FAINT        = 0x9AA0AA;
+    // Carry the 0xFF alpha byte — drawTextWithShadow on MC 1.21.5+ treats
+    // alpha == 0 as fully transparent and skips rendering the text entirely.
+    private static final int FG_FAINT        = 0xFF9AA0AA;
+    private static final int FG_SECTION      = 0xFFFFAA00;
 
     private final Screen parent;
     private boolean bgApplied = false;
@@ -63,6 +66,7 @@ public class TierConfigScreen extends Screen {
     }
 
     private static int rgb(int argb) { return argb & 0xFFFFFF; }
+    private static int opaque(int argb) { return argb | 0xFF000000; }
 
     private volatile String lastInitError = null;
 
@@ -175,8 +179,9 @@ public class TierConfigScreen extends Screen {
         rRef[0]++;
 
         // ── Per-service enable toggles (2 per row) ──
+        // Reserve space for the two bottom rows (mode-filter + refresh/done).
         TierService[] svcs = TierService.values();
-        int bottomLimit = this.height - 32 - ROW_H;  // leave room for the bottom buttons
+        int bottomLimit = this.height - 32 - ROW_H * 2;
         for (int i = 0; i < svcs.length; i++) {
             final TierService svc = svcs[i];
             final int col = i % 2;
@@ -192,6 +197,23 @@ public class TierConfigScreen extends Screen {
                             try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
                         })));
         }
+
+        // ── Mode-filter buttons (open the per-context mode picker) ──
+        int filterY = this.height - 27 - ROW_H;
+        safeAdd("tabModes", () -> this.addDrawableChild(ButtonWidget.builder(
+                Text.literal("Tab Modes\u2026"),
+                b -> {
+                    MinecraftClient mc = this.client != null ? this.client : MinecraftClient.getInstance();
+                    if (mc != null) mc.setScreen(new ModeFilterScreen(this, true));
+                })
+            .dimensions(colX(0), filterY, BTN_W, BTN_H).build()));
+        safeAdd("nametagModes", () -> this.addDrawableChild(ButtonWidget.builder(
+                Text.literal("Nametag Modes\u2026"),
+                b -> {
+                    MinecraftClient mc = this.client != null ? this.client : MinecraftClient.getInstance();
+                    if (mc != null) mc.setScreen(new ModeFilterScreen(this, false));
+                })
+            .dimensions(colX(1), filterY, BTN_W, BTN_H).build()));
 
         // ── Bottom buttons (always anchored to the bottom of the screen) ──
         int bottomY = this.height - 27;
@@ -233,7 +255,7 @@ public class TierConfigScreen extends Screen {
                 this.width / 2, panelTop + 10, 0xFFFFFFFF);
             ctx.drawCenteredTextWithShadow(this.textRenderer,
                 Text.literal("v" + TierTaggerCore.MOD_VERSION + "  \u00B7  /tiertagger help for chat commands")
-                    .withColor(FG_FAINT),
+                    .withColor(rgb(FG_FAINT)),
                 this.width / 2, panelTop + 18, FG_FAINT);
 
             super.render(ctx, mouseX, mouseY, delta);
@@ -241,7 +263,7 @@ public class TierConfigScreen extends Screen {
             if (servicesHeaderY > 0 && servicesHeaderY < this.height - 40) {
                 ctx.drawCenteredTextWithShadow(this.textRenderer,
                     Text.literal("\u2014 Enabled Services \u2014").formatted(Formatting.YELLOW),
-                    this.width / 2, servicesHeaderY, 0xFFAA00);
+                    this.width / 2, servicesHeaderY, FG_SECTION);
             }
             if (lastInitError != null) {
                 drawErrorOverlay(ctx, "Config init failed", lastInitError);

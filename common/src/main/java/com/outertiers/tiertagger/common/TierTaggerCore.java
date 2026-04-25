@@ -8,7 +8,7 @@ public final class TierTaggerCore {
     public static final String MOD_ID  = "tiertagger";
     public static final String MOD_NAME = "TierTagger";
     public static final Logger LOGGER  = LoggerFactory.getLogger(MOD_NAME);
-    public static final String MOD_VERSION = "1.7.9";
+    public static final String MOD_VERSION = "1.7.10";
 
     private static TierConfig CONFIG;
     private static TierCache  CACHE;
@@ -81,6 +81,18 @@ public final class TierTaggerCore {
 
     /** Returns the displayed tier label for one service ("HT3" / "LT4" / null). */
     public static String tierForService(PlayerData data, TierService service) {
+        return tierForService(data, service, null);
+    }
+
+    /**
+     * Same as {@link #tierForService(PlayerData, TierService)} but additionally
+     * filters which modes can win — used by the tab-list and nametag mixins so
+     * the user can hide specific gamemodes per surface (e.g. show only Vanilla
+     * in the tab list, only Crystal above nametags). When {@code modeFilter} is
+     * {@code null} every globally-enabled mode is considered.
+     */
+    public static String tierForService(PlayerData data, TierService service,
+                                        java.util.function.Predicate<String> modeFilter) {
         if (data == null || service == null || CONFIG == null) return null;
         ServiceData sd = data.get(service);
         if (sd == null || sd.missing) return null;
@@ -89,17 +101,30 @@ public final class TierTaggerCore {
         if ("highest".equals(mode) || "overall".equals(mode)) {
             Ranking best = null;
             for (java.util.Map.Entry<String, Ranking> me : sd.rankings.entrySet()) {
-                if (!CONFIG.isModeEnabled(me.getKey())) continue;
+                String k = me.getKey();
+                if (!CONFIG.isModeEnabled(k)) continue;
+                if (modeFilter != null && !modeFilter.test(k)) continue;
                 Ranking r = me.getValue();
                 if (r == null || r.tierLevel <= 0) continue;
                 if (best == null || r.score() > best.score()) best = r;
             }
             return best == null ? null : best.label();
         }
+        // Specific-mode display: respect the filter so a hidden mode shows nothing.
+        if (modeFilter != null && !modeFilter.test(mode)) return null;
         Ranking r = sd.rankings.get(mode);
         if (r != null && r.tierLevel > 0) return r.label();
         if (CONFIG.fallthroughToHighest) {
-            Ranking best = sd.highest();
+            // Apply the same filter when falling through to "highest".
+            Ranking best = null;
+            for (java.util.Map.Entry<String, Ranking> me : sd.rankings.entrySet()) {
+                String k = me.getKey();
+                if (!CONFIG.isModeEnabled(k)) continue;
+                if (modeFilter != null && !modeFilter.test(k)) continue;
+                Ranking rr = me.getValue();
+                if (rr == null || rr.tierLevel <= 0) continue;
+                if (best == null || rr.score() > best.score()) best = rr;
+            }
             return best == null ? null : best.label();
         }
         return null;
