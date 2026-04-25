@@ -20,14 +20,15 @@ import java.util.Set;
 /**
  * TierTagger settings screen.
  *
- * v1.21.11 redesign: scrollable two-column layout that exposes every option
- * the mod actually has, not just the most common ones. The user can tweak
- * badge appearance, per-service toggles, per-mode filters, animations and
- * cache behaviour all from one place — no need to dig into the JSON file.
+ * v1.21.11 redesign: scrollable two-column layout. Every scroll rebuild calls
+ * {@code buildWidgets()}, which now properly clears both section-header lists
+ * (the missing clear was causing headers to accumulate on every scroll event).
  *
- * The previous "always fits in 480p" guarantee is preserved by clipping the
- * widget area to a scissor and supporting mouse-wheel scrolling, so the
- * Refresh / Done buttons stay anchored to the bottom of the panel.
+ * Widget rendering is done OUTSIDE the scissor so the Done / Refresh buttons
+ * at the bottom are never clipped. Section-header text (which must scroll) is
+ * drawn INSIDE the scissor. The title strip is re-painted on top after
+ * {@code super.render()} so any widget that briefly leaks into that area is
+ * covered up cleanly.
  */
 public class TierConfigScreen extends Screen {
 
@@ -46,18 +47,13 @@ public class TierConfigScreen extends Screen {
     private final Screen parent;
     private boolean bgApplied = false;
 
-    /** Section header positions discovered while building widgets. */
-    private final List<int[]> sectionHeaders = new ArrayList<>();
-    /** Vertical scroll offset (positive scrolls content up). */
-    private int scrollY = 0;
-    /** Maximum scroll offset, computed each frame. */
-    private int maxScroll = 0;
-    /** Top of the body region (below the title strip). */
-    private int bodyTop = 36;
-    /** Bottom of the body region (above the bottom button bar). */
-    private int bodyBottom = 0;
+    private final List<int[]>  sectionHeaders     = new ArrayList<>();
+    private final List<String> sectionHeadersText = new ArrayList<>();
 
-    /** Maximum row index used while building widgets — drives scroll height. */
+    private int scrollY   = 0;
+    private int maxScroll = 0;
+    private int bodyTop   = 36;
+    private int bodyBottom = 0;
     private int maxRowUsed = 0;
 
     public TierConfigScreen(Screen parent) {
@@ -71,7 +67,6 @@ public class TierConfigScreen extends Screen {
         return startX + col * (BTN_W + BTN_GAP);
     }
 
-    /** Scrollable row-Y; rows scroll with the body, headers do too. */
     private int rowY(int row) {
         if (row > maxRowUsed) maxRowUsed = row;
         return bodyTop + 6 + row * ROW_H - scrollY;
@@ -85,9 +80,10 @@ public class TierConfigScreen extends Screen {
     protected void init() {
         lastInitError = null;
         sectionHeaders.clear();
+        sectionHeadersText.clear();
         maxRowUsed = 0;
-        bodyTop = 36;
-        bodyBottom = this.height - 32 - ROW_H;  // reserve two bottom rows
+        bodyTop    = 36;
+        bodyBottom = this.height - 32 - ROW_H;
         try { buildWidgets(); }
         catch (Throwable t) {
             TierTaggerCore.LOGGER.warn("[TierTagger] config screen init failed", t);
@@ -105,32 +101,29 @@ public class TierConfigScreen extends Screen {
         int prev = scrollY;
         scrollY = Math.max(0, Math.min(maxScroll, scrollY - (int)(vd * 16)));
         if (scrollY != prev) {
-            // Re-init so widget Y positions reflect the new scroll offset.
             this.clearChildren();
             try { buildWidgets(); } catch (Throwable ignored) {}
         }
         return true;
     }
 
-    /** Wraps a single widget-add in its own try/catch so one broken widget can't blow up the screen. */
     private void safeAdd(String label, Runnable build) {
         try { build.run(); }
         catch (Throwable t) {
-            TierTaggerCore.LOGGER.warn("[TierTagger] config widget '" + label + "' failed", t);
+            TierTaggerCore.LOGGER.warn("[TierTagger] config widget " + label + " failed", t);
         }
     }
 
     private void addSectionHeader(int row, String text) {
-        sectionHeaders.add(new int[] { rowY(row) - 2, 0 });
-        sectionHeaders.get(sectionHeaders.size() - 1)[1] = sectionHeaders.size();
+        sectionHeaders.add(new int[]{ rowY(row) - 2, 0 });
         sectionHeadersText.add(text);
     }
 
-    /** Parallel array to {@link #sectionHeaders} carrying the header label. */
-    private final List<String> sectionHeadersText = new ArrayList<>();
-
     private void buildWidgets() {
+        // CRITICAL: clear BOTH lists so headers do not accumulate on every scroll rebuild.
+        sectionHeaders.clear();
         sectionHeadersText.clear();
+
         TierConfig cfg = TierTaggerCore.config();
         if (cfg == null) {
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> closeSafely())
@@ -242,7 +235,6 @@ public class TierConfigScreen extends Screen {
             .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Fallback to Highest"),
                 (b, v) -> { cfg.fallthroughToHighest = v; cfg.save(); })));
         safeAdd("ttl", () -> {
-            // Cycle through a few sensible TTL values.
             List<Integer> ttls = Arrays.asList(60, 180, 300, 600, 1800, 3600);
             int initial = ttls.contains(cfg.cacheTtlSeconds) ? cfg.cacheTtlSeconds : 300;
             this.addDrawableChild(
@@ -294,6 +286,8 @@ public class TierConfigScreen extends Screen {
         rRef[0]++;
 
         // ── Bottom action bar (anchored, never scrolls) ────────────────────
+        // These are added last so super.render() draws them ON TOP of any
+        // scrollable widget that might leak into the bottom area.
         int bottomY = this.height - 27;
         safeAdd("refreshCache", () -> this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("Refresh Cache"),
@@ -302,9 +296,8 @@ public class TierConfigScreen extends Screen {
         safeAdd("done", () -> this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> closeSafely())
             .dimensions(colX(1), bottomY, BTN_W, BTN_H).build()));
 
-        // Compute scroll height: how many rows would be drawn vs how many fit.
         int contentH = (maxRowUsed + 2) * ROW_H;
-        int viewH = bodyBottom - bodyTop;
+        int viewH    = bodyBottom - bodyTop;
         maxScroll = Math.max(0, contentH - viewH);
         if (scrollY > maxScroll) scrollY = maxScroll;
     }
@@ -337,42 +330,48 @@ public class TierConfigScreen extends Screen {
             int totalW = BTN_W * 2 + BTN_GAP;
             int panelW = Math.min(PANEL_W_MAX, this.width - 24);
             panelW = Math.max(panelW, totalW + 24);
-            int panelX = (this.width - panelW) / 2;
-            int panelTop = 8;
+            int panelX  = (this.width  - panelW) / 2;
+            int panelTop    = 8;
             int panelBottomY = this.height - 8;
+
+            // 1. Panel background (full height).
             fillRect(ctx, panelX, panelTop, panelX + panelW, panelBottomY, BG_PANEL);
             outlineRect(ctx, panelX, panelTop, panelW, panelBottomY - panelTop, BG_PANEL_BORDER);
 
-            // Title strip
-            fillRect(ctx, panelX + 1, panelTop + 1, panelX + panelW - 1, panelTop + 26, BG_HEADER);
-            ctx.drawCenteredTextWithShadow(this.textRenderer,
-                this.title.copy().formatted(Formatting.WHITE, Formatting.BOLD),
-                this.width / 2, panelTop + 10, 0xFFFFFFFF);
-            ctx.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("v" + TierTaggerCore.MOD_VERSION + "  \u00B7  /tiertagger help for chat commands")
-                    .withColor(rgb(FG_FAINT)),
-                this.width / 2, panelTop + 18, FG_FAINT);
-
-            // Body scissor — keeps section headers and widgets clipped to the
-            // scrollable area so the title / bottom buttons stay legible.
+            // 2. Section-header TEXT inside scissor (scrolls with content).
             ctx.enableScissor(panelX + 1, bodyTop, panelX + panelW - 1, bodyBottom);
-            super.render(ctx, mouseX, mouseY, delta);
-            // Section headers ride along with the scroll position.
             for (int i = 0; i < sectionHeaders.size(); i++) {
                 int y = sectionHeaders.get(i)[0];
                 if (y < bodyTop - 8 || y > bodyBottom) continue;
-                String label = i < sectionHeadersText.size() ? sectionHeadersText.get(i) : "—";
+                String label = i < sectionHeadersText.size() ? sectionHeadersText.get(i) : "\u2014";
                 ctx.drawCenteredTextWithShadow(this.textRenderer,
                     Text.literal(label).formatted(Formatting.YELLOW),
                     this.width / 2, y, FG_SECTION);
             }
             ctx.disableScissor();
 
-            // Scroll indicator
+            // 3. All widgets rendered WITHOUT scissor so Done / Refresh are
+            //    never clipped. Widgets that briefly leak into the title strip
+            //    or bottom area are covered by the re-drawn strips below.
+            super.render(ctx, mouseX, mouseY, delta);
+
+            // 4. Re-draw the title strip ON TOP to cover any scrolled widget
+            //    that crept above bodyTop.
+            fillRect(ctx, panelX + 1, panelTop + 1, panelX + panelW - 1, bodyTop, BG_HEADER);
+            ctx.drawCenteredTextWithShadow(this.textRenderer,
+                this.title.copy().formatted(Formatting.WHITE, Formatting.BOLD),
+                this.width / 2, panelTop + 10, 0xFFFFFFFF);
+            ctx.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal("v" + TierTaggerCore.MOD_VERSION +
+                    "  \u00B7  /tiertagger help for chat commands")
+                    .withColor(rgb(FG_FAINT)),
+                this.width / 2, panelTop + 18, FG_FAINT);
+
+            // 5. Scroll indicator.
             if (maxScroll > 0) {
-                int trackX = panelX + panelW - 5;
+                int trackX  = panelX + panelW - 5;
                 int trackTop = bodyTop;
-                int trackH = bodyBottom - bodyTop;
+                int trackH  = bodyBottom - bodyTop;
                 fillRect(ctx, trackX, trackTop, trackX + 3, trackTop + trackH, 0x40FFFFFF);
                 int thumbH = Math.max(20, trackH * trackH / Math.max(1, trackH + maxScroll));
                 int thumbY = trackTop + (int)((long)(trackH - thumbH) * scrollY / Math.max(1, maxScroll));
@@ -386,14 +385,15 @@ public class TierConfigScreen extends Screen {
             TierTaggerCore.LOGGER.warn("[TierTagger] config screen render", t);
             try { drawErrorOverlay(ctx, "Config render failed",
                 t.getClass().getSimpleName() + ": " +
-                (t.getMessage() == null ? "(no message)" : t.getMessage())); } catch (Throwable ignored) {}
+                (t.getMessage() == null ? "(no message)" : t.getMessage())); }
+            catch (Throwable ignored) {}
         }
     }
 
     private void drawErrorOverlay(DrawContext ctx, String title, String detail) {
         int cx = this.width / 2;
         int cy = this.height / 2;
-        int w = Math.min(this.width - 40, 360);
+        int w  = Math.min(this.width - 40, 360);
         fillRect(ctx, cx - w / 2, cy - 30, cx + w / 2, cy + 30, 0xCC110000);
         outlineRect(ctx, cx - w / 2, cy - 30, w, 60, 0xFFFF5555);
         ctx.drawCenteredTextWithShadow(this.textRenderer,
@@ -426,7 +426,7 @@ public class TierConfigScreen extends Screen {
     @Override
     public void close() { closeSafely(); }
 
-    // Suppress warning for unused import side-effect.
     @SuppressWarnings("unused")
     private static final Set<String> _USED = new LinkedHashSet<>();
 }
+
