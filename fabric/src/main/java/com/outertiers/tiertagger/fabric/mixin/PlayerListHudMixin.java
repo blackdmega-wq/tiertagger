@@ -24,7 +24,13 @@ public class PlayerListHudMixin {
     /** Logged at WARN once per session so a real bug is actually visible in latest.log. */
     private static final AtomicBoolean WARNED = new AtomicBoolean(false);
 
-    @Inject(method = "getPlayerName", at = @At("RETURN"), cancellable = true)
+    /**
+     * require = 0: if the {@code getPlayerName(PlayerListEntry)} signature ever
+     * shifts in a future MC version, the mixin silently no-ops instead of
+     * killing the client at apply time. Without this, the user sees a black
+     * screen with no useful error message instead of just "tab badges missing".
+     */
+    @Inject(method = "getPlayerName", at = @At("RETURN"), cancellable = true, require = 0)
     private void tiertagger$appendTier(PlayerListEntry entry, CallbackInfoReturnable<Text> cir) {
         try {
             TierConfig cfg = TierTaggerCore.config();

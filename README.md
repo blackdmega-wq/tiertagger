@@ -2,6 +2,13 @@
 
 A multi-loader Minecraft mod that displays player tiers from the [OuterTiers](https://outertiers.com) website right next to player names — both in the in-game **tab list** and as a **badge above each player's head**. Inspired by [tiertagger on Modrinth](https://modrinth.com/mod/tiertagger).
 
+## What's new in 1.7.6
+
+- **Fixed black screen on Minecraft launch (MC 1.21.5+).** Mixin injectors now degrade gracefully when a vanilla method signature drifts between MC versions instead of failing the entire client init. The mod stays loaded, falling features just no-op with a single `WARN` line in `latest.log`.
+- **Per-jar Minecraft version pinning.** Each per-MC jar's `fabric.mod.json` now declares the exact Minecraft version it was compiled against (e.g. `>=1.21.11 <=1.21.11`). This prevents Fabric from loading a 1.21.11-targeted jar on, say, 1.21.1 — which was the most common cause of "I installed the mod and now my game just shows a black screen".
+- **Bullet-proof `onInitializeClient`.** Each subsystem (config, core, screens, keybinds, commands) is now isolated; a single failure no longer aborts the whole mod load.
+- **Build heap restored to `-Xmx3G`** so CI builds for newer MC versions stop OOMing during Loom remap.
+
 ## What's new in 1.5.2
 
 - **„Profile of the targeted player" keybind.** Look at any player within 64 blocks and press the new bind (default **J**) to open their full tier profile. Rebindable under *Options → Controls → Key Binds → TierTagger*, or "Not bound" to disable.

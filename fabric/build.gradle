@@ -32,10 +32,22 @@ dependencies {
     include        project(':common')
 }
 
+// Pin the per-jar fabric.mod.json minecraft dependency to the EXACT MC
+// version the jar is compiled against. Per-MC jars publish with mappings &
+// mixins that are bytecode-bound to one yarn release; allowing them to load
+// on a different MC version produces hard-to-diagnose mixin apply failures
+// (which show up to the player as a black screen on launch).
+def mcVer = project.minecraft_version.toString()
+def mcRange = ">=${mcVer} <=${mcVer}"
+
 processResources {
-    inputs.property "version", project.version
+    inputs.property "version",          project.version
+    inputs.property "mc_version_range", mcRange
     filesMatching("fabric.mod.json") {
-        expand "version": project.version
+        expand(
+            "version":          project.version,
+            "mc_version_range": mcRange
+        )
     }
 }
 

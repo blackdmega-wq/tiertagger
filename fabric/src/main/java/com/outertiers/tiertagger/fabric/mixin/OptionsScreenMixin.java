@@ -1,5 +1,6 @@
 package com.outertiers.tiertagger.fabric.mixin;
 
+import com.outertiers.tiertagger.common.TierTaggerCore;
 import com.outertiers.tiertagger.fabric.screen.TierConfigScreen;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
@@ -31,17 +32,27 @@ public abstract class OptionsScreenMixin extends Screen {
         super(title);
     }
 
-    @Inject(method = "init", at = @At("TAIL"))
+    /**
+     * require = 0: if {@code init()} is ever renamed/refactored on a future MC
+     * version, the mixin silently no-ops (user just won't see the in-options
+     * shortcut button) instead of preventing the entire mod — and therefore
+     * the entire client — from loading.
+     */
+    @Inject(method = "init", at = @At("TAIL"), require = 0)
     private void tiertagger$addButton(CallbackInfo ci) {
-        this.addDrawableChild(
-            ButtonWidget.builder(
-                Text.literal("\u00a7e[TierTagger]"),
-                btn -> {
-                    MinecraftClient mc = MinecraftClient.getInstance();
-                    if (mc != null) mc.setScreen(new TierConfigScreen((Screen)(Object)this));
-                })
-            .dimensions(4, this.height - 24, 100, 20)
-            .build()
-        );
+        try {
+            this.addDrawableChild(
+                ButtonWidget.builder(
+                    Text.literal("\u00a7e[TierTagger]"),
+                    btn -> {
+                        MinecraftClient mc = MinecraftClient.getInstance();
+                        if (mc != null) mc.setScreen(new TierConfigScreen((Screen)(Object)this));
+                    })
+                .dimensions(4, this.height - 24, 100, 20)
+                .build()
+            );
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] could not add Options-screen button: {}", t.toString());
+        }
     }
 }
