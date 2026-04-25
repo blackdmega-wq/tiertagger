@@ -20,36 +20,40 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Wraps the player nametag (visible in F5 / when looking at other players) with
  *   [LEFT BADGE] <name> [RIGHT BADGE]
  *
- * MC 1.21.11 ships a render-state pipeline where the label text is read from
- * the {@link PlayerEntityRenderState#playerName} (and the parent
- * {@code EntityRenderState.displayName}) fields rather than passed in as a
- * method argument. {@code renderLabelIfPresent} now has the signature
- *
- *   renderLabelIfPresent(PlayerEntityRenderState state,
- *                        MatrixStack matrices,
- *                        OrderedRenderCommandQueue queue,
- *                        CameraRenderState camera)
- *
- * so we can't intercept the {@code Text} arg the way the old mod did. Instead
- * we mutate the state's name fields in-place at HEAD and the renderer happily
- * picks our wrapped text up.
- *
- * The injection is {@code require = 0} so the mod still loads if Mojang
- * ever changes the descriptor again — F5 badges will just stop appearing
- * until the mod is updated.
+ * Three @Inject variants (3-param, 4-param, 5-param after the state) cover all
+ * known renderLabelIfPresent signatures across MC 1.21.1–1.21.11. Exactly one
+ * variant will match at runtime; the others are silently skipped (require = 0).
  */
 @Mixin(PlayerEntityRenderer.class)
 public abstract class PlayerEntityRendererMixin {
 
-    /** Logged at WARN once per session so a real bug is actually visible in latest.log. */
     private static final AtomicBoolean WARNED = new AtomicBoolean(false);
 
+    // ── 3-param variant (some 1.21.x builds) ─────────────────────────────────
     @Inject(method = "renderLabelIfPresent*", at = @At("HEAD"), require = 0)
-    private void tiertagger$wrapNametag(PlayerEntityRenderState state,
-                                        Object matrices,
-                                        Object queue,
-                                        Object camera,
-                                        CallbackInfo ci) {
+    private void tiertagger$wrapNametag3(PlayerEntityRenderState state,
+                                         Object b, Object c,
+                                         CallbackInfo ci) {
+        applyNametag(state);
+    }
+
+    // ── 4-param variant ───────────────────────────────────────────────────────
+    @Inject(method = "renderLabelIfPresent*", at = @At("HEAD"), require = 0)
+    private void tiertagger$wrapNametag4(PlayerEntityRenderState state,
+                                         Object b, Object c, Object d,
+                                         CallbackInfo ci) {
+        applyNametag(state);
+    }
+
+    // ── 5-param variant (1.21.11+ added CameraRenderState or similar) ─────────
+    @Inject(method = "renderLabelIfPresent*", at = @At("HEAD"), require = 0)
+    private void tiertagger$wrapNametag5(PlayerEntityRenderState state,
+                                         Object b, Object c, Object d, Object e,
+                                         CallbackInfo ci) {
+        applyNametag(state);
+    }
+
+    private static void applyNametag(PlayerEntityRenderState state) {
         try {
             TierConfig cfg = TierTaggerCore.config();
             if (cfg == null || !cfg.showNametag) return;
@@ -64,9 +68,6 @@ public abstract class PlayerEntityRendererMixin {
             MutableText wrapped = BadgeRenderer.wrapNametag(cfg, opt.get(), state.playerName);
             if (wrapped == null) return;
 
-            // Mutate both the player-specific and the inherited display name
-            // so anything in the renderer that reads from either still sees
-            // the wrapped version.
             state.playerName = wrapped;
             try { state.displayName = wrapped; } catch (Throwable ignored) {}
         } catch (Throwable t) {
@@ -78,3 +79,4 @@ public abstract class PlayerEntityRendererMixin {
         }
     }
 }
+
