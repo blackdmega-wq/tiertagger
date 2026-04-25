@@ -49,51 +49,56 @@ public final class BadgeRenderer {
         java.lang.reflect.Method optM = null;
         Object wrInstance = null;
 
-        // 1) The simple public (Identifier) overload — present on 1.21.0–1.21.4
-        //    and re-added in many 1.21.5+ snapshots. Try public methods first.
+        // ── PRIMARY (1.21.11): direct compile-time reference to
+        // new net.minecraft.text.StyleSpriteSource.Font(Identifier).
+        // Loom remaps this at build time to the correct intermediary
+        // (class_11719$class_11721.<init>(Lamo;)V) so it works on production
+        // jars. Wrapped in try/catch so older snapshots that don't have
+        // StyleSpriteSource fall through to the reflection paths below.
         try {
-            idM = Style.class.getMethod("withFont", Identifier.class);
+            wrInstance = ModernFontSourceHolder.SOURCE;
+            wrM = Style.class.getMethod("withFont", ModernFontSourceHolder.SOURCE_TYPE);
         } catch (Throwable ignored) {}
-        // Some snapshots demoted the (Identifier) overload to package-private.
-        if (idM == null) {
+
+        // ── FALLBACKS (older 1.21.x, kept for cross-version source compat) ──
+
+        // 1) The simple public (Identifier) overload — present on 1.21.0–1.21.4.
+        if (wrM == null) {
             try {
-                java.lang.reflect.Method m = Style.class.getDeclaredMethod("withFont", Identifier.class);
-                m.setAccessible(true);
-                idM = m;
+                idM = Style.class.getMethod("withFont", Identifier.class);
             } catch (Throwable ignored) {}
+            if (idM == null) {
+                try {
+                    java.lang.reflect.Method m = Style.class.getDeclaredMethod("withFont", Identifier.class);
+                    m.setAccessible(true);
+                    idM = m;
+                } catch (Throwable ignored) {}
+            }
         }
 
         // 2) Optional<Identifier> overload — appeared briefly in 1.21.6 snapshots.
-        try {
-            java.lang.reflect.Method m = Style.class.getMethod("withFont", java.util.Optional.class);
-            optM = m;
-        } catch (Throwable ignored) {}
-
-        // 3) Single-arg public withFont(<wrapper>) used in the StyleSpriteSource era.
-        for (java.lang.reflect.Method m : Style.class.getMethods()) {
-            if (!"withFont".equals(m.getName()) || m.getParameterCount() != 1) continue;
-            Class<?> argType = m.getParameterTypes()[0];
-            if (argType == Identifier.class || argType == java.util.Optional.class) continue;
+        if (wrM == null && idM == null) {
             try {
-                // Most snapshots ship a record-style constructor that takes the Identifier directly.
-                java.lang.reflect.Constructor<?> ctor = argType.getConstructor(Identifier.class);
-                wrInstance = ctor.newInstance(ICON_FONT);
-                wrM = m;
-                break;
-            } catch (Throwable ignored) {
-                try {
-                    // Static factory: StyleSpriteSource.of(Identifier) or .create(Identifier).
-                    java.lang.reflect.Method factory = null;
-                    for (String name : new String[] { "of", "create", "from" }) {
-                        try { factory = argType.getMethod(name, Identifier.class); break; }
-                        catch (Throwable ignored2) {}
-                    }
-                    if (factory != null) {
-                        wrInstance = factory.invoke(null, ICON_FONT);
-                        wrM = m;
-                        break;
-                    }
-                } catch (Throwable ignored2) {}
+                optM = Style.class.getMethod("withFont", java.util.Optional.class);
+            } catch (Throwable ignored) {}
+        }
+
+        // 3) Generic single-arg public withFont(<wrapper>) reflective probe
+        //    that walks every nested class of the parameter type looking for
+        //    a (Identifier) constructor or factory. Catches StyleSpriteSource$Font
+        //    on snapshots where the holder above failed to load (e.g. in older
+        //    versions where the inner class name differs).
+        if (wrM == null && idM == null && optM == null) {
+            for (java.lang.reflect.Method m : Style.class.getMethods()) {
+                if (!"withFont".equals(m.getName()) || m.getParameterCount() != 1) continue;
+                Class<?> argType = m.getParameterTypes()[0];
+                if (argType == Identifier.class || argType == java.util.Optional.class) continue;
+                Object inst = tryBuildFontWrapper(argType);
+                if (inst != null) {
+                    wrInstance = inst;
+                    wrM = m;
+                    break;
+                }
             }
         }
 
@@ -106,20 +111,80 @@ public final class BadgeRenderer {
                 "[TierTagger] Could not resolve Style.withFont — gamemode icon glyphs disabled");
         } else {
             TierTaggerCore.LOGGER.info(
-                "[TierTagger] icon font binding: identifier={} wrapped={} optional={}",
+                "[TierTagger] icon font binding: identifier={} wrapped={} optional={} wrapperType={}",
                 WITH_FONT_IDENTIFIER != null,
                 WITH_FONT_WRAPPED    != null,
-                WITH_FONT_OPTIONAL   != null);
+                WITH_FONT_OPTIONAL   != null,
+                WRAPPED_FONT_INSTANCE == null ? "null" : WRAPPED_FONT_INSTANCE.getClass().getName());
         }
+    }
+
+    /**
+     * Walks the parameter type itself plus every declared/nested class looking
+     * for a constructor or static factory that takes a single {@link Identifier}
+     * and produces an instance assignable to {@code targetType}. Used as the
+     * last-ditch fallback for the {@code withFont(<wrapper>)} overload when the
+     * compile-time holder fails to load (e.g. on older 1.21.x).
+     */
+    private static Object tryBuildFontWrapper(Class<?> targetType) {
+        java.util.List<Class<?>> candidates = new java.util.ArrayList<>();
+        candidates.add(targetType);
+        try {
+            for (Class<?> nested : targetType.getDeclaredClasses()) {
+                if (targetType.isAssignableFrom(nested)) candidates.add(nested);
+            }
+            for (Class<?> nested : targetType.getClasses()) {
+                if (targetType.isAssignableFrom(nested) && !candidates.contains(nested)) candidates.add(nested);
+            }
+        } catch (Throwable ignored) {}
+        for (Class<?> c : candidates) {
+            try {
+                java.lang.reflect.Constructor<?> ctor = c.getConstructor(Identifier.class);
+                return ctor.newInstance(ICON_FONT);
+            } catch (Throwable ignored) {}
+            try {
+                java.lang.reflect.Constructor<?> ctor = c.getDeclaredConstructor(Identifier.class);
+                ctor.setAccessible(true);
+                return ctor.newInstance(ICON_FONT);
+            } catch (Throwable ignored) {}
+            for (String fname : new String[] { "of", "create", "from", "font" }) {
+                try {
+                    java.lang.reflect.Method f = c.getMethod(fname, Identifier.class);
+                    Object v = f.invoke(null, ICON_FONT);
+                    if (v != null && targetType.isInstance(v)) return v;
+                } catch (Throwable ignored) {}
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Isolated holder that resolves {@code StyleSpriteSource.Font(Identifier)}
+     * via a compile-time reference, which Loom remaps to the correct
+     * intermediary (class_11719$class_11721) at build time. This is the path
+     * that finally makes gamemode icons render on 1.21.11 — the previous
+     * reflection-only paths failed because StyleSpriteSource is an interface
+     * (no constructor) and has no static factory taking Identifier, so every
+     * probe returned null and applyIconFont silently no-op'd.
+     *
+     * <p>If the class doesn't exist on this MC version, accessing
+     * {@link #SOURCE} throws {@link NoClassDefFoundError} which the caller
+     * catches and falls back to the reflection probe.
+     */
+    private static final class ModernFontSourceHolder {
+        static final net.minecraft.text.StyleSpriteSource SOURCE =
+                new net.minecraft.text.StyleSpriteSource.Font(ICON_FONT);
+        static final Class<?> SOURCE_TYPE = net.minecraft.text.StyleSpriteSource.class;
     }
 
     private static Style applyIconFont(Style base) {
         try {
-            if (WITH_FONT_IDENTIFIER != null) {
-                return (Style) WITH_FONT_IDENTIFIER.invoke(base, ICON_FONT);
-            }
+            // Prefer the wrapper path on 1.21.5+ where (Identifier) is gone.
             if (WITH_FONT_WRAPPED != null && WRAPPED_FONT_INSTANCE != null) {
                 return (Style) WITH_FONT_WRAPPED.invoke(base, WRAPPED_FONT_INSTANCE);
+            }
+            if (WITH_FONT_IDENTIFIER != null) {
+                return (Style) WITH_FONT_IDENTIFIER.invoke(base, ICON_FONT);
             }
             if (WITH_FONT_OPTIONAL != null) {
                 return (Style) WITH_FONT_OPTIONAL.invoke(base, java.util.Optional.of(ICON_FONT));

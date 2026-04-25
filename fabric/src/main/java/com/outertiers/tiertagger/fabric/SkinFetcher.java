@@ -101,12 +101,20 @@ public final class SkinFetcher {
                 mc.execute(() -> {
                     try {
                         NativeImage img = NativeImage.read(new ByteArrayInputStream(bytes));
+                        String label = "tiertagger/skin/" + safeId(key);
                         NativeImageBackedTexture tex = com.outertiers.tiertagger.fabric.compat.Compat
-                                .makeNativeImageTex(img, "tiertagger/skin/" + safeId(key));
+                                .makeNativeImageTex(img, label);
                         if (tex == null) {
                             READY.put(key, FAILED);
                             return;
                         }
+                        // CRITICAL (MC 1.21.6+): the (Supplier<String>, NativeImage)
+                        // constructor stores the image but does NOT allocate a GPU
+                        // texture handle. Without these explicit createTexture +
+                        // upload calls, registerTexture binds an empty handle and
+                        // every drawn skin face renders as nothing. This is THE
+                        // reason mc-heads avatars were invisible in profile/compare.
+                        com.outertiers.tiertagger.fabric.compat.Compat.initGpuTexture(tex, label);
                         Identifier id = Identifier.of("tiertagger", "skins/" + safeId(key));
                         mc.getTextureManager().registerTexture(id, tex);
                         READY.put(key, id);

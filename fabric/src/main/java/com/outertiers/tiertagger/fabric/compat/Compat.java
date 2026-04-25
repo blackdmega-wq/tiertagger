@@ -398,12 +398,66 @@ public final class Compat {
     }
 
     /**
+     * Allocates the GPU texture handle for a freshly-constructed
+     * {@link NativeImageBackedTexture} and uploads its pixels.
+     *
+     * <p><b>Why this exists (MC 1.21.6+ regression):</b> earlier versions of
+     * {@code NativeImageBackedTexture} created the GL texture eagerly inside
+     * the constructor. Starting with the {@code Supplier<String>}-flavoured
+     * constructor in 1.21.5+, allocation was deferred to a separate
+     * {@code createTexture(...)} call and pixel upload to {@code upload()}.
+     * Mods that just construct + register a texture without these explicit
+     * calls end up binding an empty GPU handle, and every draw renders as
+     * nothing — exactly what hid mc-heads avatars in our profile/compare
+     * screens.
+     *
+     * <p>Both calls are reflective + best-effort so older 1.21.x builds (where
+     * allocation was implicit) silently no-op without breaking the texture.
+     */
+    public static void initGpuTexture(NativeImageBackedTexture tex, String label) {
+        if (tex == null) return;
+        // 1) createTexture(<name>) — exists on 1.21.5+ in two arities:
+        //    (String) and (Supplier<String>). Either is fine; we pick whichever
+        //    the runtime jar exposes.
+        boolean created = false;
+        try {
+            for (Method m : NativeImageBackedTexture.class.getMethods()) {
+                if (!"createTexture".equals(m.getName())) continue;
+                Class<?>[] p = m.getParameterTypes();
+                if (p.length != 1) continue;
+                Object arg;
+                if (p[0] == String.class) {
+                    arg = label;
+                } else if (Supplier.class.isAssignableFrom(p[0])) {
+                    final String l = label;
+                    arg = (Supplier<String>) () -> l;
+                } else {
+                    continue;
+                }
+                try {
+                    m.invoke(tex, arg);
+                    created = true;
+                    break;
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable ignored) {}
+        // 2) upload() — pushes the NativeImage pixels into the GPU texture.
+        //    Required after createTexture so the very first draw has real data.
+        try {
+            Method up = NativeImageBackedTexture.class.getMethod("upload");
+            up.invoke(tex);
+        } catch (Throwable ignored) {}
+        // Silently ignore if neither step exists — older 1.21.x had implicit
+        // allocation and upload, so the texture is already usable.
+        if (!created) return;
+    }
+
+    /**
      * Reflective {@link NativeImageBackedTexture} constructor that compiles
      * across mapping changes:
      * <ul>
      *   <li>1.21.1–1.21.4: {@code new NativeImageBackedTexture(NativeImage)}</li>
-     *   <li>1.21.5+: {@code new NativeImageBackedTexture(Supplier<String>, NativeImage)}
-     *       (a debug label used in renderdoc captures).</li>
+     *   <li>1.21.5+: {@code new NativeImageBackedTexture(Supplier<String>, NativeImage)}</li>
      * </ul>
      * Returns {@code null} on any failure — callers must null-check.
      */
