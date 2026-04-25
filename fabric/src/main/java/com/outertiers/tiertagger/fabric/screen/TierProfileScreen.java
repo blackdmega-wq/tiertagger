@@ -280,19 +280,22 @@ public class TierProfileScreen extends Screen {
      * Per-service mode blacklist requested by the user: hide gamemodes that
      * either duplicate a mainstream mode or aren't actively maintained on
      * that tier list.
-     *   MCTiers  — drop NethPot
-     *   PvPTiers — drop NethPot AND Vanilla
+     *   MCTiers  — drop NethPot (keep NethOP)
+     *   PvPTiers — drop Vanilla   (keep NethPot AND NethOP)
      *   SubTiers — drop Dia 2v2
      */
     private static boolean isModeHidden(TierService svc, String mode) {
         if (mode == null) return false;
+        // IMPORTANT: "nethpot" (Netherite Pot) and "nethop" (NethOP) are TWO
+        // DISTINCT gamemodes. Do NOT lump them together.
         String m = mode.toLowerCase(java.util.Locale.ROOT);
         switch (svc) {
             case MCTIERS:
-                return m.equals("nethpot") || m.equals("nethop") || m.equals("neth_pot");
+                // Hide only Netherite Pot. Keep NethOP and the regular Pot.
+                return m.equals("nethpot") || m.equals("neth_pot");
             case PVPTIERS:
-                return m.equals("nethpot") || m.equals("nethop") || m.equals("neth_pot")
-                    || m.equals("vanilla");
+                // Hide only Vanilla. Keep both Netherite Pot and NethOP.
+                return m.equals("vanilla");
             case SUBTIERS:
                 return m.equals("dia_2v2") || m.equals("dia2v2") || m.equals("2v2");
             default:
