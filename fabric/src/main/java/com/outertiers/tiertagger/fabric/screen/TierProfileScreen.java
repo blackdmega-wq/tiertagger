@@ -243,7 +243,10 @@ public class TierProfileScreen extends Screen {
 
         for (TierService svc : TierService.values()) {
             ServiceData sd = data.get(svc);
-            int rows = Math.max(1, sd.rankings.size());
+            // Always reserve a row for EVERY mode the service supports so the
+            // card lists the whole gamemode line-up (with icons) even when the
+            // player isn't ranked in some of them.
+            int rows = Math.max(1, svc.modes.size());
             int cardH = 22 + rows * ROW_H + 6;
             renderServiceCard(ctx, svc, sd, x, y, w, cardH);
             y += cardH + CARD_GAP;
@@ -290,17 +293,13 @@ public class TierProfileScreen extends Screen {
                 innerX, rowY + 2, 0x808080);
             return;
         }
-        if (sd.missing || sd.rankings.isEmpty()) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal("Player has no entry on this tier-list").formatted(Formatting.DARK_GRAY),
-                innerX, rowY + 2, 0x808080);
-            return;
-        }
 
+        // Render EVERY mode this service supports — ranked or not — so the
+        // user always sees the full gamemode line-up with icons. Unranked
+        // modes simply show a faint "—" on the right.
         boolean alt = false;
         for (String mode : svc.modes) {
             Ranking r = sd.rankings.get(mode);
-            if (r == null || r.tierLevel <= 0) continue;
             renderModeRow(ctx, mode, r, innerX, rowY, innerW, alt);
             rowY += ROW_H;
             alt = !alt;
@@ -338,23 +337,33 @@ public class TierProfileScreen extends Screen {
         }
         if (drewIcon) textX = x + ICON_SIZE + 4;
 
+        // Mode name (slightly dimmed when player isn't ranked in this mode so
+        // the eye is naturally drawn to the modes that do have a tier).
+        boolean ranked = r != null && r.tierLevel > 0;
         String label = TierIcons.labelFor(mode);
+        int labelCol = ranked ? FG_TEXT : FG_FAINT;
         ctx.drawTextWithShadow(this.textRenderer,
-            Text.literal(label).withColor(FG_TEXT),
-            textX, y + 3, FG_TEXT);
+            Text.literal(label).withColor(labelCol),
+            textX, y + 3, labelCol);
 
-        String cur = r.label();
-        int curColor = TierTaggerCore.argbFor(cur) & 0xFFFFFF;
-        MutableText tier = Text.literal(cur).withColor(curColor).copy().formatted(Formatting.BOLD);
-        if (r.peakDiffers()) {
-            String peak = r.peakLabel();
-            int peakC = TierTaggerCore.argbFor(peak) & 0xFFFFFF;
-            tier = tier.append(Text.literal(" \u00B7 peak ").formatted(Formatting.DARK_GRAY))
-                       .append(Text.literal(peak).withColor(peakC));
-        }
-        if (r.retired) {
-            tier = Text.literal("(").formatted(Formatting.DARK_GRAY).append(tier)
-                       .append(Text.literal(")").formatted(Formatting.DARK_GRAY));
+        // Right-hand side: tier badge, or a faint em-dash for unranked modes.
+        MutableText tier;
+        if (!ranked) {
+            tier = Text.literal("\u2014").formatted(Formatting.DARK_GRAY);
+        } else {
+            String cur = r.label();
+            int curColor = TierTaggerCore.argbFor(cur) & 0xFFFFFF;
+            tier = Text.literal(cur).withColor(curColor).copy().formatted(Formatting.BOLD);
+            if (r.peakDiffers()) {
+                String peak = r.peakLabel();
+                int peakC = TierTaggerCore.argbFor(peak) & 0xFFFFFF;
+                tier = tier.append(Text.literal(" \u00B7 peak ").formatted(Formatting.DARK_GRAY))
+                           .append(Text.literal(peak).withColor(peakC));
+            }
+            if (r.retired) {
+                tier = Text.literal("(").formatted(Formatting.DARK_GRAY).append(tier)
+                           .append(Text.literal(")").formatted(Formatting.DARK_GRAY));
+            }
         }
         int tw = this.textRenderer.getWidth(tier);
         ctx.drawTextWithShadow(this.textRenderer, tier, x + w - tw, y + 3, 0xFFFFFFFF);

@@ -2,6 +2,11 @@
 
 A multi-loader Minecraft mod that displays player tiers from the [OuterTiers](https://outertiers.com) website right next to player names — both in the in-game **tab list** and as a **badge above each player's head**. Inspired by [tiertagger on Modrinth](https://modrinth.com/mod/tiertagger).
 
+## What's new in 1.7.8
+
+- **`/tiertagger profile` now lists every gamemode of every tier-list, even unranked ones.** Previously the profile screen silently dropped any mode the player wasn't ranked in, which made the SubTiers / PvPTiers / OuterTiers cards look half-empty (or even completely empty) for casual players. Now every supported mode shows its icon and name, with a faint `—` on the right when the player has no tier in that mode. All four services (MCTiers, OuterTiers, PvPTiers, SubTiers) and all of their gamemode icons are always visible.
+- **Prettier tier colours, matching the OuterTiers website palette.** `argbFor` now distinguishes HT (vivid) from LT (slightly desaturated) within the same tier number, so HT3 and LT3 are clearly different shades of orange instead of the same yellow. Palette: T1 magenta → T2 red → T3 orange → T4 gold → T5 green, with HT a bright variant and LT a duskier one. Used everywhere — profile, compare, tab badges, nametag badges, `/tiertagger doctor`.
+
 ## What's new in 1.7.7
 
 - **Actually fixed the black screen on MC 1.21.5+.** The 1.7.6 release still crashed because `PlayerNametagMixin1215` declared its inject method with `Object`-typed render-pipeline parameters, and Mixin's descriptor validator rejects mismatching types *before* it even consults the `require=0` flag. Fix: the mixin is removed entirely — tab-list badges (the main feature) work as before, badges above player heads on 1.21.5+ are temporarily disabled until the runtime `WorldRenderEvents` replacement lands. No more `InvalidInjectionException` on launch.

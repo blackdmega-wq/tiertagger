@@ -8,7 +8,7 @@ public final class TierTaggerCore {
     public static final String MOD_ID  = "tiertagger";
     public static final String MOD_NAME = "TierTagger";
     public static final Logger LOGGER  = LoggerFactory.getLogger(MOD_NAME);
-    public static final String MOD_VERSION = "1.7.5";
+    public static final String MOD_VERSION = "1.7.8";
 
     private static TierConfig CONFIG;
     private static TierCache  CACHE;
@@ -116,14 +116,32 @@ public final class TierTaggerCore {
         return '7';
     }
 
+    /**
+     * OuterTiers-style colour palette. Distinguishes HT (vivid) from LT
+     * (slightly desaturated) so HT3 doesn't look identical to LT3 at a glance.
+     * Colours are tuned to match the tier badges shown on outertiers.com /
+     * mctiers.com / pvptiers.com — the universal Minecraft tier-list scheme:
+     * pink → red → orange → gold → green for tiers 1 → 5.
+     */
     public static int argbFor(String tier) {
-        char c = colourCodeFor(tier);
-        switch (c) {
-            case 'd': return 0xFFFF55FF;
-            case 'c': return 0xFFFF5555;
-            case '6': return 0xFFFFAA00;
-            case 'e': return 0xFFFFFF55;
-            case 'a': return 0xFF55FF55;
+        if (tier == null) return 0xFFAAAAAA;
+        String t = tier.toUpperCase();
+        boolean high;
+        char digit;
+        if (t.startsWith("HT") && t.length() >= 3) { high = true;  digit = t.charAt(2); }
+        else if (t.startsWith("LT") && t.length() >= 3) { high = false; digit = t.charAt(2); }
+        else if (t.length() >= 1 && Character.isDigit(t.charAt(t.length() - 1))) {
+            high  = true;
+            digit = t.charAt(t.length() - 1);
+        } else {
+            return 0xFFAAAAAA;
+        }
+        switch (digit) {
+            case '1': return high ? 0xFFED1AFF : 0xFFB048C2;   // T1: magenta / dusty pink
+            case '2': return high ? 0xFFFF3F3F : 0xFFB13838;   // T2: vivid red / burgundy
+            case '3': return high ? 0xFFFF9933 : 0xFFB97123;   // T3: orange / amber
+            case '4': return high ? 0xFFFFCD33 : 0xFFB59425;   // T4: gold / mustard
+            case '5': return high ? 0xFF58D352 : 0xFF3D8E3A;   // T5: lime / forest
             default:  return 0xFFAAAAAA;
         }
     }
