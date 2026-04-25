@@ -22,10 +22,16 @@ import java.util.Set;
  * {@code rawTiers} ("HT3", "LT4", …) and a top-level {@code peakTier}.
  */
 public enum TierService {
+    // NOTE on mode lists:
+    //   - "crystal" is intentionally OMITTED from MCTIERS / PVPTIERS because their
+    //     "vanilla" mode IS crystal-pvp (Vanilla == Crystal on those services).
+    //   - "sumo" is intentionally OMITTED — it's never been a real gamemode on
+    //     mctiers.com / pvptiers.com and showing it produced a permanent
+    //     "not on this list" row for every player.
     MCTIERS(
         "mctiers",  "MCTiers",   "MCT",  0xFFE53935,
         "https://mctiers.com/api/profile/",  Lookup.UUID_NODASH,
-        List.of("vanilla", "sword", "axe", "pot", "nethpot", "smp", "uhc", "crystal", "mace", "sumo")
+        List.of("vanilla", "sword", "axe", "pot", "nethpot", "smp", "uhc", "mace")
     ),
     OUTERTIERS(
         "outertiers", "OuterTiers", "OT",  0xFFFFB300,
@@ -35,12 +41,16 @@ public enum TierService {
     PVPTIERS(
         "pvptiers", "PvPTiers",  "PVP",  0xFF1E88E5,
         "https://pvptiers.com/api/profile/", Lookup.UUID_NODASH,
-        List.of("vanilla", "sword", "axe", "pot", "nethpot", "smp", "uhc", "crystal", "mace", "sumo")
+        List.of("vanilla", "sword", "axe", "pot", "nethpot", "smp", "uhc", "mace")
     ),
+    // SubTiers exposes the niche / community-driven gamemodes that mainline
+    // tier lists don't track. Order matches subtiers.net's own profile layout.
     SUBTIERS(
         "subtiers", "SubTiers",  "ST",   0xFF8E24AA,
         "https://subtiers.net/api/profile/", Lookup.UUID_NODASH,
-        List.of("og_vanilla", "vanilla", "sword", "axe", "mace", "uhc", "speed", "bed", "elytra")
+        List.of("og_vanilla", "sword", "axe", "mace", "uhc", "speed", "bed", "elytra",
+                "trident", "creeper", "minecart", "manhunt", "dia_smp", "dia_crystal",
+                "dia_2v2", "debuff", "bow")
     );
 
     public enum Lookup { USERNAME, UUID_NODASH }

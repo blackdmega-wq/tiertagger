@@ -11,22 +11,23 @@ import net.minecraft.client.gui.widget.CyclingButtonWidget;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * TierTagger settings screen.
  *
- * v1.7 redesign:
- *   - Solid panel background so the widgets are always legible regardless of
- *     what's behind the GUI.
- *   - Compact 2-column layout that always fits in 480p.
- *   - Per-service toggles live in their own clearly-labelled section.
- *   - Defensive {@code init()} so a single bad widget can't crash the screen.
+ * v1.21.11 redesign: scrollable two-column layout that exposes every option
+ * the mod actually has, not just the most common ones. The user can tweak
+ * badge appearance, per-service toggles, per-mode filters, animations and
+ * cache behaviour all from one place — no need to dig into the JSON file.
  *
- * Crash fix in v1.6.0 (preserved): {@code Style.withColor(int)} now requires a
- * pure RGB triplet (0..0xFFFFFF). Every {@code .withColor} call masks the
- * accent argb with {@code & 0xFFFFFF} so 1.21.5+ doesn't reject it.
+ * The previous "always fits in 480p" guarantee is preserved by clipping the
+ * widget area to a scissor and supporting mouse-wheel scrolling, so the
+ * Refresh / Done buttons stay anchored to the bottom of the panel.
  */
 public class TierConfigScreen extends Screen {
 
@@ -35,20 +36,29 @@ public class TierConfigScreen extends Screen {
     private static final int BTN_GAP = 6;
     private static final int ROW_H   = BTN_H + 4;
 
-    private static final int PANEL_W_MAX     = 360;
+    private static final int PANEL_W_MAX     = 380;
     private static final int BG_PANEL        = 0xF20E1116;
     private static final int BG_PANEL_BORDER = 0xFF2A2F38;
     private static final int BG_HEADER       = 0xFF181C24;
-    // Carry the 0xFF alpha byte — drawTextWithShadow on MC 1.21.5+ treats
-    // alpha == 0 as fully transparent and skips rendering the text entirely.
     private static final int FG_FAINT        = 0xFF9AA0AA;
     private static final int FG_SECTION      = 0xFFFFAA00;
 
     private final Screen parent;
     private boolean bgApplied = false;
 
-    /** y position where the per-service section starts (used by render()). */
-    private int servicesHeaderY = -1;
+    /** Section header positions discovered while building widgets. */
+    private final List<int[]> sectionHeaders = new ArrayList<>();
+    /** Vertical scroll offset (positive scrolls content up). */
+    private int scrollY = 0;
+    /** Maximum scroll offset, computed each frame. */
+    private int maxScroll = 0;
+    /** Top of the body region (below the title strip). */
+    private int bodyTop = 36;
+    /** Bottom of the body region (above the bottom button bar). */
+    private int bodyBottom = 0;
+
+    /** Maximum row index used while building widgets — drives scroll height. */
+    private int maxRowUsed = 0;
 
     public TierConfigScreen(Screen parent) {
         super(Text.literal("TierTagger \u2014 Settings"));
@@ -61,24 +71,28 @@ public class TierConfigScreen extends Screen {
         return startX + col * (BTN_W + BTN_GAP);
     }
 
+    /** Scrollable row-Y; rows scroll with the body, headers do too. */
     private int rowY(int row) {
-        return Math.max(40, this.height / 8) + row * ROW_H;
+        if (row > maxRowUsed) maxRowUsed = row;
+        return bodyTop + 6 + row * ROW_H - scrollY;
     }
 
     private static int rgb(int argb) { return argb & 0xFFFFFF; }
-    private static int opaque(int argb) { return argb | 0xFF000000; }
 
     private volatile String lastInitError = null;
 
     @Override
     protected void init() {
         lastInitError = null;
-        try { buildWidgets(); } catch (Throwable t) {
-            // Log full stack trace so users can paste it as a bug report
+        sectionHeaders.clear();
+        maxRowUsed = 0;
+        bodyTop = 36;
+        bodyBottom = this.height - 32 - ROW_H;  // reserve two bottom rows
+        try { buildWidgets(); }
+        catch (Throwable t) {
             TierTaggerCore.LOGGER.warn("[TierTagger] config screen init failed", t);
-            String simple = t.getClass().getSimpleName() + ": " +
+            lastInitError = t.getClass().getSimpleName() + ": " +
                 (t.getMessage() == null ? "(no message)" : t.getMessage());
-            lastInitError = simple;
             this.clearChildren();
             this.addDrawableChild(ButtonWidget.builder(
                     Text.literal("Done"), b -> closeSafely())
@@ -86,11 +100,19 @@ public class TierConfigScreen extends Screen {
         }
     }
 
-    /**
-     * Wraps a single widget-add in its own try/catch so one broken widget can't
-     * blow up the whole config screen. Any per-widget failure is logged at WARN
-     * with a full stack trace, but the rest of the screen still gets built.
-     */
+    @Override
+    public boolean mouseScrolled(double mx, double my, double hd, double vd) {
+        int prev = scrollY;
+        scrollY = Math.max(0, Math.min(maxScroll, scrollY - (int)(vd * 16)));
+        if (scrollY != prev) {
+            // Re-init so widget Y positions reflect the new scroll offset.
+            this.clearChildren();
+            try { buildWidgets(); } catch (Throwable ignored) {}
+        }
+        return true;
+    }
+
+    /** Wraps a single widget-add in its own try/catch so one broken widget can't blow up the screen. */
     private void safeAdd(String label, Runnable build) {
         try { build.run(); }
         catch (Throwable t) {
@@ -98,7 +120,17 @@ public class TierConfigScreen extends Screen {
         }
     }
 
+    private void addSectionHeader(int row, String text) {
+        sectionHeaders.add(new int[] { rowY(row) - 2, 0 });
+        sectionHeaders.get(sectionHeaders.size() - 1)[1] = sectionHeaders.size();
+        sectionHeadersText.add(text);
+    }
+
+    /** Parallel array to {@link #sectionHeaders} carrying the header label. */
+    private final List<String> sectionHeadersText = new ArrayList<>();
+
     private void buildWidgets() {
+        sectionHeadersText.clear();
         TierConfig cfg = TierTaggerCore.config();
         if (cfg == null) {
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> closeSafely())
@@ -106,13 +138,12 @@ public class TierConfigScreen extends Screen {
             return;
         }
 
-        // r is shared mutable state across the safeAdd lambdas; wrap in an int[1].
         final int[] rRef = { 0 };
 
-        // ── Left / right badge service ──
+        // ── Section 1: Badge sources ───────────────────────────────────────
+        addSectionHeader(rRef[0], "\u2014 Badge Services \u2014");
+        rRef[0]++;
         safeAdd("leftService", () -> this.addDrawableChild(
-            // 1.21.5+ removed Builder.initially(); the initial value is now
-            // passed as the second argument to CyclingButtonWidget.builder().
             CyclingButtonWidget.<TierService>builder(
                     s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)),
                     cfg.leftServiceEnum())
@@ -130,37 +161,54 @@ public class TierConfigScreen extends Screen {
                     (b, v) -> { cfg.rightService = v.id; cfg.save(); })));
         rRef[0]++;
 
-        // ── Tab / Nametag ──
+        safeAdd("primaryService", () -> this.addDrawableChild(
+            CyclingButtonWidget.<TierService>builder(
+                    s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)),
+                    cfg.primaryServiceEnum())
+                .values(TierService.values())
+                .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H,
+                    Text.literal("Primary Service"),
+                    (b, v) -> { cfg.primaryService = v.id; cfg.save(); })));
+        safeAdd("displayMode", () -> {
+            List<String> modes = new ArrayList<>();
+            modes.add("highest");
+            modes.addAll(TierService.allKnownModes());
+            String initial = cfg.displayMode == null ? "highest" : cfg.displayMode.toLowerCase();
+            if (!modes.contains(initial)) modes.add(initial);
+            this.addDrawableChild(
+                CyclingButtonWidget.<String>builder(s -> Text.literal(prettyMode(s)), initial)
+                    .values(modes)
+                    .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
+                        Text.literal("Display Mode"),
+                        (b, v) -> { cfg.displayMode = v; cfg.save(); }));
+        });
+        rRef[0]++;
+
+        // ── Section 2: Where badges show ───────────────────────────────────
+        addSectionHeader(rRef[0], "\u2014 Where to Show \u2014");
+        rRef[0]++;
         safeAdd("showInTab", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showInTab)
             .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Tab Badges"),
                 (b, v) -> { cfg.showInTab = v; cfg.save(); })));
         safeAdd("showNametag", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showNametag)
-            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Nametag"),
+            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Nametag (F5)"),
                 (b, v) -> { cfg.showNametag = v; cfg.save(); })));
         rRef[0]++;
 
-        // ── Dual badges / Coloured ──
         safeAdd("rightBadgeEnabled", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.rightBadgeEnabled)
             .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Dual Badges"),
                 (b, v) -> { cfg.rightBadgeEnabled = v; cfg.save(); })));
-        safeAdd("coloredBadges", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.coloredBadges)
-            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Coloured Badges"),
-                (b, v) -> { cfg.coloredBadges = v; cfg.save(); })));
-        rRef[0]++;
-
-        // ── Service tag / Mode icons ──
-        safeAdd("showServiceIcon", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showServiceIcon)
-            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Service Tag"),
-                (b, v) -> { cfg.showServiceIcon = v; cfg.save(); })));
-        safeAdd("modeIcons", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(!cfg.disableIcons)
-            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Mode Icons"),
-                (b, v) -> { cfg.disableIcons = !v; cfg.showModeIcon = v; cfg.save(); })));
-        rRef[0]++;
-
-        // ── Peak tier / Badge format ──
         safeAdd("showPeak", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showPeak)
-            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Peak Tier"),
+            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Use Peak Tier"),
                 (b, v) -> { cfg.showPeak = v; cfg.save(); })));
+        rRef[0]++;
+
+        // ── Section 3: Appearance ──────────────────────────────────────────
+        addSectionHeader(rRef[0], "\u2014 Appearance \u2014");
+        rRef[0]++;
+        safeAdd("coloredBadges", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.coloredBadges)
+            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Coloured Badges"),
+                (b, v) -> { cfg.coloredBadges = v; cfg.save(); })));
         safeAdd("badgeFormat", () -> {
             List<String> formats = Arrays.asList(TierConfig.BADGE_FORMATS);
             String initialFormat = (cfg.badgeFormat == null || !formats.contains(cfg.badgeFormat))
@@ -174,19 +222,46 @@ public class TierConfigScreen extends Screen {
         });
         rRef[0]++;
 
-        // Section break before per-service toggles
-        servicesHeaderY = rowY(rRef[0]) + 6;
+        safeAdd("showServiceIcon", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showServiceIcon)
+            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Service Tag"),
+                (b, v) -> { cfg.showServiceIcon = v; cfg.save(); })));
+        safeAdd("modeIcons", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(!cfg.disableIcons && cfg.showModeIcon)
+            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Gamemode Icons"),
+                (b, v) -> { cfg.disableIcons = !v; cfg.showModeIcon = v; cfg.save(); })));
         rRef[0]++;
 
-        // ── Per-service enable toggles (2 per row) ──
-        // Reserve space for the two bottom rows (mode-filter + refresh/done).
+        safeAdd("disableTiers", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(!cfg.disableTiers)
+            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Show Tier Text"),
+                (b, v) -> { cfg.disableTiers = !v; cfg.save(); })));
+        safeAdd("disableAnimations", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(!cfg.disableAnimations)
+            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Animations"),
+                (b, v) -> { cfg.disableAnimations = !v; cfg.save(); })));
+        rRef[0]++;
+
+        safeAdd("fallthrough", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.fallthroughToHighest)
+            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Fallback to Highest"),
+                (b, v) -> { cfg.fallthroughToHighest = v; cfg.save(); })));
+        safeAdd("ttl", () -> {
+            // Cycle through a few sensible TTL values.
+            List<Integer> ttls = Arrays.asList(60, 180, 300, 600, 1800, 3600);
+            int initial = ttls.contains(cfg.cacheTtlSeconds) ? cfg.cacheTtlSeconds : 300;
+            this.addDrawableChild(
+                CyclingButtonWidget.<Integer>builder(s -> Text.literal(prettyTtl(s)), initial)
+                    .values(ttls)
+                    .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
+                        Text.literal("Cache TTL"),
+                        (b, v) -> { cfg.cacheTtlSeconds = v; cfg.save(); }));
+        });
+        rRef[0]++;
+
+        // ── Section 4: Per-service enabled toggles ─────────────────────────
+        addSectionHeader(rRef[0], "\u2014 Enabled Services \u2014");
+        rRef[0]++;
         TierService[] svcs = TierService.values();
-        int bottomLimit = this.height - 32 - ROW_H * 2;
         for (int i = 0; i < svcs.length; i++) {
             final TierService svc = svcs[i];
             final int col = i % 2;
             if (col == 0 && i > 0) rRef[0]++;
-            if (rowY(rRef[0]) + BTN_H > bottomLimit) break;
             safeAdd("svc:" + svc.id, () -> this.addDrawableChild(
                 CyclingButtonWidget.onOffBuilder(cfg.isServiceEnabled(svc))
                     .build(colX(col), rowY(rRef[0]), BTN_W, BTN_H,
@@ -197,25 +272,28 @@ public class TierConfigScreen extends Screen {
                             try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
                         })));
         }
+        rRef[0]++;
 
-        // ── Mode-filter buttons (open the per-context mode picker) ──
-        int filterY = this.height - 27 - ROW_H;
+        // ── Section 5: Per-context mode filters ────────────────────────────
+        addSectionHeader(rRef[0], "\u2014 Mode Filters \u2014");
+        rRef[0]++;
         safeAdd("tabModes", () -> this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("Tab Modes\u2026"),
                 b -> {
                     MinecraftClient mc = this.client != null ? this.client : MinecraftClient.getInstance();
                     if (mc != null) mc.setScreen(new ModeFilterScreen(this, true));
                 })
-            .dimensions(colX(0), filterY, BTN_W, BTN_H).build()));
+            .dimensions(colX(0), rowY(rRef[0]), BTN_W, BTN_H).build()));
         safeAdd("nametagModes", () -> this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("Nametag Modes\u2026"),
                 b -> {
                     MinecraftClient mc = this.client != null ? this.client : MinecraftClient.getInstance();
                     if (mc != null) mc.setScreen(new ModeFilterScreen(this, false));
                 })
-            .dimensions(colX(1), filterY, BTN_W, BTN_H).build()));
+            .dimensions(colX(1), rowY(rRef[0]), BTN_W, BTN_H).build()));
+        rRef[0]++;
 
-        // ── Bottom buttons (always anchored to the bottom of the screen) ──
+        // ── Bottom action bar (anchored, never scrolls) ────────────────────
         int bottomY = this.height - 27;
         safeAdd("refreshCache", () -> this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("Refresh Cache"),
@@ -223,6 +301,24 @@ public class TierConfigScreen extends Screen {
             .dimensions(colX(0), bottomY, BTN_W, BTN_H).build()));
         safeAdd("done", () -> this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> closeSafely())
             .dimensions(colX(1), bottomY, BTN_W, BTN_H).build()));
+
+        // Compute scroll height: how many rows would be drawn vs how many fit.
+        int contentH = (maxRowUsed + 2) * ROW_H;
+        int viewH = bodyBottom - bodyTop;
+        maxScroll = Math.max(0, contentH - viewH);
+        if (scrollY > maxScroll) scrollY = maxScroll;
+    }
+
+    private static String prettyMode(String mode) {
+        if (mode == null || mode.isEmpty()) return "?";
+        if ("highest".equalsIgnoreCase(mode)) return "Highest";
+        return Character.toUpperCase(mode.charAt(0)) + mode.substring(1).replace('_', ' ');
+    }
+
+    private static String prettyTtl(int seconds) {
+        if (seconds < 60) return seconds + "s";
+        if (seconds < 3600) return (seconds / 60) + " min";
+        return (seconds / 3600) + " h";
     }
 
     @Override
@@ -238,15 +334,14 @@ public class TierConfigScreen extends Screen {
         try {
             this.renderBackground(ctx, mouseX, mouseY, delta);
 
-            // Solid centred backdrop so widgets stay legible.
             int totalW = BTN_W * 2 + BTN_GAP;
             int panelW = Math.min(PANEL_W_MAX, this.width - 24);
             panelW = Math.max(panelW, totalW + 24);
             int panelX = (this.width - panelW) / 2;
             int panelTop = 8;
-            int panelBottom = this.height - 8;
-            fillRect(ctx, panelX, panelTop, panelX + panelW, panelBottom, BG_PANEL);
-            outlineRect(ctx, panelX, panelTop, panelW, panelBottom - panelTop, BG_PANEL_BORDER);
+            int panelBottomY = this.height - 8;
+            fillRect(ctx, panelX, panelTop, panelX + panelW, panelBottomY, BG_PANEL);
+            outlineRect(ctx, panelX, panelTop, panelW, panelBottomY - panelTop, BG_PANEL_BORDER);
 
             // Title strip
             fillRect(ctx, panelX + 1, panelTop + 1, panelX + panelW - 1, panelTop + 26, BG_HEADER);
@@ -258,13 +353,32 @@ public class TierConfigScreen extends Screen {
                     .withColor(rgb(FG_FAINT)),
                 this.width / 2, panelTop + 18, FG_FAINT);
 
+            // Body scissor — keeps section headers and widgets clipped to the
+            // scrollable area so the title / bottom buttons stay legible.
+            ctx.enableScissor(panelX + 1, bodyTop, panelX + panelW - 1, bodyBottom);
             super.render(ctx, mouseX, mouseY, delta);
-
-            if (servicesHeaderY > 0 && servicesHeaderY < this.height - 40) {
+            // Section headers ride along with the scroll position.
+            for (int i = 0; i < sectionHeaders.size(); i++) {
+                int y = sectionHeaders.get(i)[0];
+                if (y < bodyTop - 8 || y > bodyBottom) continue;
+                String label = i < sectionHeadersText.size() ? sectionHeadersText.get(i) : "—";
                 ctx.drawCenteredTextWithShadow(this.textRenderer,
-                    Text.literal("\u2014 Enabled Services \u2014").formatted(Formatting.YELLOW),
-                    this.width / 2, servicesHeaderY, FG_SECTION);
+                    Text.literal(label).formatted(Formatting.YELLOW),
+                    this.width / 2, y, FG_SECTION);
             }
+            ctx.disableScissor();
+
+            // Scroll indicator
+            if (maxScroll > 0) {
+                int trackX = panelX + panelW - 5;
+                int trackTop = bodyTop;
+                int trackH = bodyBottom - bodyTop;
+                fillRect(ctx, trackX, trackTop, trackX + 3, trackTop + trackH, 0x40FFFFFF);
+                int thumbH = Math.max(20, trackH * trackH / Math.max(1, trackH + maxScroll));
+                int thumbY = trackTop + (int)((long)(trackH - thumbH) * scrollY / Math.max(1, maxScroll));
+                fillRect(ctx, trackX, thumbY, trackX + 3, thumbY + thumbH, 0xFFAAAAAA);
+            }
+
             if (lastInitError != null) {
                 drawErrorOverlay(ctx, "Config init failed", lastInitError);
             }
@@ -311,4 +425,8 @@ public class TierConfigScreen extends Screen {
 
     @Override
     public void close() { closeSafely(); }
+
+    // Suppress warning for unused import side-effect.
+    @SuppressWarnings("unused")
+    private static final Set<String> _USED = new LinkedHashSet<>();
 }

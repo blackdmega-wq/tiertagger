@@ -255,10 +255,17 @@ public class TierProfileScreen extends Screen {
 
         for (TierService svc : TierService.values()) {
             ServiceData sd = data.get(svc);
-            // Always reserve a row for EVERY mode the service supports so the
-            // card lists the whole gamemode line-up (with icons) even when the
-            // player isn't ranked in some of them.
-            int rows = Math.max(1, svc.modes.size());
+            // Union of the service's known modes plus any modes the API
+            // returned that we don't have in our static list — this is how
+            // SubTiers' niche modes (creeper, manhunt, dia_smp, …) actually
+            // show up after the user opens the profile.
+            int extra = 0;
+            if (sd != null && sd.rankings != null) {
+                for (String k : sd.rankings.keySet()) {
+                    if (!svc.modes.contains(k)) extra++;
+                }
+            }
+            int rows = Math.max(1, svc.modes.size() + extra);
             int cardH = 22 + rows * ROW_H + 6;
             renderServiceCard(ctx, svc, sd, x, y, w, cardH);
             y += cardH + CARD_GAP;
@@ -339,9 +346,13 @@ public class TierProfileScreen extends Screen {
 
         // Render EVERY mode this service supports — ranked or not — so the
         // user always sees the full gamemode line-up with icons. Unranked
-        // modes simply show a faint "—" on the right.
+        // modes simply show a faint "—" on the right. We also include any
+        // mode the API returned that's not in svc.modes (SubTiers regularly
+        // surfaces extra niche modes), so nothing is silently dropped.
+        java.util.LinkedHashSet<String> rowModes = new java.util.LinkedHashSet<>(svc.modes);
+        if (sd.rankings != null) rowModes.addAll(sd.rankings.keySet());
         boolean alt = false;
-        for (String mode : svc.modes) {
+        for (String mode : rowModes) {
             Ranking r = sd.rankings.get(mode);
             renderModeRow(ctx, mode, r, innerX, rowY, innerW, alt);
             rowY += ROW_H;

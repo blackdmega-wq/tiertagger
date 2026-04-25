@@ -85,6 +85,62 @@ public final class TierTaggerCore {
     }
 
     /**
+     * Lightweight value-class used by {@link #pickForService} so the badge
+     * renderer can show the winning mode's icon next to the tier badge —
+     * not just the tier text.
+     */
+    public static final class TierPick {
+        public final String mode;   // e.g. "vanilla"
+        public final String tier;   // e.g. "HT3"
+        public TierPick(String mode, String tier) { this.mode = mode; this.tier = tier; }
+    }
+
+    /**
+     * Same selection logic as {@link #tierForService(PlayerData, TierService,
+     * java.util.function.Predicate)} but additionally returns the winning
+     * mode so callers can render its icon. Returns {@code null} when no tier
+     * is available.
+     */
+    public static TierPick pickForService(PlayerData data, TierService service,
+                                          java.util.function.Predicate<String> modeFilter) {
+        if (data == null || service == null || CONFIG == null) return null;
+        ServiceData sd = data.get(service);
+        if (sd == null || sd.missing) return null;
+
+        String displayMode = CONFIG.displayMode == null ? "highest" : CONFIG.displayMode.toLowerCase();
+        if ("highest".equals(displayMode) || "overall".equals(displayMode)) {
+            String bestMode = null;
+            Ranking best = null;
+            for (java.util.Map.Entry<String, Ranking> me : sd.rankings.entrySet()) {
+                String k = me.getKey();
+                if (!CONFIG.isModeEnabled(k)) continue;
+                if (modeFilter != null && !modeFilter.test(k)) continue;
+                Ranking r = me.getValue();
+                if (r == null || r.tierLevel <= 0) continue;
+                if (best == null || r.score() > best.score()) { best = r; bestMode = k; }
+            }
+            return best == null ? null : new TierPick(bestMode, best.label());
+        }
+        if (modeFilter != null && !modeFilter.test(displayMode)) return null;
+        Ranking r = sd.rankings.get(displayMode);
+        if (r != null && r.tierLevel > 0) return new TierPick(displayMode, r.label());
+        if (CONFIG.fallthroughToHighest) {
+            String bestMode = null;
+            Ranking best = null;
+            for (java.util.Map.Entry<String, Ranking> me : sd.rankings.entrySet()) {
+                String k = me.getKey();
+                if (!CONFIG.isModeEnabled(k)) continue;
+                if (modeFilter != null && !modeFilter.test(k)) continue;
+                Ranking rr = me.getValue();
+                if (rr == null || rr.tierLevel <= 0) continue;
+                if (best == null || rr.score() > best.score()) { best = rr; bestMode = k; }
+            }
+            return best == null ? null : new TierPick(bestMode, best.label());
+        }
+        return null;
+    }
+
+    /**
      * Same as {@link #tierForService(PlayerData, TierService)} but additionally
      * filters which modes can win — used by the tab-list and nametag mixins so
      * the user can hide specific gamemodes per surface (e.g. show only Vanilla

@@ -22,23 +22,36 @@ public final class TierIcons {
     private static final Map<String, String> LABELS = new LinkedHashMap<>();
 
     static {
-        // mode id (canonical) -> minecraft item id
-        put("vanilla",     "minecraft:netherite_sword", "Vanilla");
-        put("ogvanilla",   "minecraft:iron_sword",      "OG Vanilla");
-        put("og_vanilla",  "minecraft:iron_sword",      "OG Vanilla");
-        put("uhc",         "minecraft:golden_apple",    "UHC");
-        put("pot",         "minecraft:splash_potion",   "Pot");
-        put("nethpot",     "minecraft:lingering_potion","NethPot");
-        put("nethop",      "minecraft:lingering_potion","NethOp");
+        // mode id (canonical) -> minecraft item id, human label
+        put("vanilla",     "minecraft:netherite_sword",   "Vanilla");
+        put("ogvanilla",   "minecraft:iron_sword",        "OG Vanilla");
+        put("og_vanilla",  "minecraft:iron_sword",        "OG Vanilla");
+        put("uhc",         "minecraft:golden_apple",      "UHC");
+        put("pot",         "minecraft:splash_potion",     "Pot");
+        put("nethpot",     "minecraft:lingering_potion",  "NethPot");
+        put("nethop",      "minecraft:lingering_potion",  "NethOp");
+        put("neth_pot",    "minecraft:lingering_potion",  "NethPot");
         put("smp",         "minecraft:diamond_chestplate","SMP");
-        put("sword",       "minecraft:diamond_sword",   "Sword");
-        put("axe",         "minecraft:diamond_axe",     "Axe");
-        put("mace",        "minecraft:mace",            "Mace");
-        put("speed",       "minecraft:feather",         "Speed");
-        put("bed",         "minecraft:red_bed",         "Bedwars");
-        put("elytra",      "minecraft:elytra",          "Elytra");
-        put("crystal",     "minecraft:end_crystal",     "Crystal");
-        put("sumo",        "minecraft:slime_block",     "Sumo");
+        put("sword",       "minecraft:diamond_sword",     "Sword");
+        put("axe",         "minecraft:diamond_axe",       "Axe");
+        put("mace",        "minecraft:mace",              "Mace");
+        put("speed",       "minecraft:feather",           "Speed");
+        put("bed",         "minecraft:red_bed",           "Bedwars");
+        put("elytra",      "minecraft:elytra",            "Elytra");
+        put("crystal",     "minecraft:end_crystal",       "Crystal");
+        put("sumo",        "minecraft:slime_block",       "Sumo");
+        // SubTiers-specific gamemodes
+        put("trident",     "minecraft:trident",           "Trident");
+        put("creeper",     "minecraft:creeper_head",      "Creeper");
+        put("minecart",    "minecraft:minecart",          "Minecart");
+        put("manhunt",     "minecraft:compass",           "Manhunt");
+        put("dia_smp",     "minecraft:diamond",           "Dia SMP");
+        put("dia_crystal", "minecraft:end_crystal",       "Dia Crystal");
+        put("dia_2v2",     "minecraft:diamond_axe",       "Dia 2v2");
+        put("debuff",      "minecraft:potion",            "Debuff");
+        put("bow",         "minecraft:bow",               "Bow");
+        put("2v2",         "minecraft:netherite_axe",     "2v2");
+        put("overall",     "minecraft:nether_star",       "Overall");
     }
 
     private static void put(String k, String item, String label) {

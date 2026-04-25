@@ -20,28 +20,42 @@ public final class ModeIcons {
     private static final Map<String, String> FILES = new HashMap<>();
 
     static {
-        // canonical id → png file name (without the .png suffix)
-        put("vanilla",   "vanilla");
-        put("ogvanilla", "ogvanilla");
-        put("og_vanilla","ogvanilla");
-        put("uhc",       "uhc");
-        put("pot",       "pot");
-        put("nethpot",   "nethop");
-        put("nethop",    "nethop");
-        put("smp",       "smp");
-        put("sword",     "sword");
-        put("axe",       "axe");
-        put("mace",      "mace");
-        put("speed",     "speed");
-        put("2v2",       "2v2");
-        put("dia2v2",    "2v2");
-        put("dia_2v2",   "2v2");
-        put("crystal",   "crystal");
-        put("sumo",      "sumo");
-        put("bed",       "bed");
-        put("bedwars",   "bed");
-        put("elytra",    "elytra");
-        put("overall",   "overall");
+        // canonical id → png file name (without the .png suffix).
+        // Aliases (e.g. "og_vanilla" / "ogvanilla", "nethpot" / "nethop") all
+        // resolve to the same canonical PNG so we don't ship duplicate art.
+        put("vanilla",     "vanilla");
+        put("ogvanilla",   "ogvanilla");
+        put("og_vanilla",  "og_vanilla");
+        put("uhc",         "uhc");
+        put("pot",         "pot");
+        put("nethpot",     "nethop");
+        put("nethop",      "nethop");
+        put("neth_pot",    "nethop");
+        put("smp",         "smp");
+        put("sword",       "sword");
+        put("axe",         "axe");
+        put("mace",        "mace");
+        put("speed",       "speed");
+        put("2v2",         "2v2");
+        put("dia2v2",      "2v2");
+        put("dia_2v2",     "2v2");
+        put("bed",         "bed");
+        put("bedwars",     "bed");
+        put("elytra",      "elytra");
+        put("overall",     "overall");
+        // SubTiers-specific gamemodes
+        put("trident",     "trident");
+        put("creeper",     "creeper");
+        put("minecart",    "minecart");
+        put("manhunt",     "manhunt");
+        put("dia_smp",     "dia_smp");
+        put("dia_crystal", "dia_crystal");
+        put("debuff",      "debuff");
+        put("bow",         "bow");
+        // Crystal & sumo retained as aliases in case a server still serves them
+        // — they just don't appear in the main mode lists any more.
+        put("crystal",     "crystal");
+        put("sumo",        "sumo");
     }
 
     private ModeIcons() {}

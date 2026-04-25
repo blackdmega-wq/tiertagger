@@ -18,6 +18,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Wraps the player's tab-list display name with:
+ *   [LEFT BADGE] <name> [RIGHT BADGE]
+ *
+ * Each badge contains the gamemode icon (rendered via the {@code tiertagger:icons}
+ * font) plus the tier label coloured by tier rank.
+ *
+ * v1.21.11 fix: previously both badges were appended to the right of the
+ * name. Now we prepend the left one so the badges actually sit on opposite
+ * sides like the user asked.
+ */
 @Mixin(PlayerListHud.class)
 public class PlayerListHudMixin {
 
@@ -27,11 +38,10 @@ public class PlayerListHudMixin {
     /**
      * require = 0: if the {@code getPlayerName(PlayerListEntry)} signature ever
      * shifts in a future MC version, the mixin silently no-ops instead of
-     * killing the client at apply time. Without this, the user sees a black
-     * screen with no useful error message instead of just "tab badges missing".
+     * killing the client at apply time.
      */
     @Inject(method = "getPlayerName", at = @At("RETURN"), cancellable = true, require = 0)
-    private void tiertagger$appendTier(PlayerListEntry entry, CallbackInfoReturnable<Text> cir) {
+    private void tiertagger$wrapTabName(PlayerListEntry entry, CallbackInfoReturnable<Text> cir) {
         try {
             TierConfig cfg = TierTaggerCore.config();
             if (cfg == null || !cfg.showInTab) return;
@@ -45,15 +55,18 @@ public class PlayerListHudMixin {
 
             Optional<PlayerData> opt = TierTaggerCore.cache().peekData(name);
             if (opt.isEmpty()) return;
-            MutableText badges = BadgeRenderer.buildTabSuffix(cfg, opt.get());
-            if (badges == null) return;
+
+            MutableText prefix = BadgeRenderer.buildTabPrefix(cfg, opt.get());
+            MutableText suffix = BadgeRenderer.buildTabSuffix(cfg, opt.get());
+            if (prefix == null && suffix == null) return;
 
             Text original = cir.getReturnValue();
-            cir.setReturnValue((original == null ? Text.empty() : original.copy()).append(badges));
+            MutableText out = Text.empty();
+            if (prefix != null) out.append(prefix);
+            out.append(original == null ? Text.empty() : original.copy());
+            if (suffix != null) out.append(suffix);
+            cir.setReturnValue(out);
         } catch (Throwable t) {
-            // The first time we hit a render error, log the full stack trace at WARN
-            // so users can actually see what's wrong. Subsequent errors stay at DEBUG
-            // so the log isn't spammed every tick.
             if (WARNED.compareAndSet(false, true)) {
                 TierTaggerCore.LOGGER.warn("[TierTagger] tab badge mixin failed (further errors suppressed)", t);
             } else {
