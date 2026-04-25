@@ -31,13 +31,24 @@ public final class Ranking {
         return new Ranking(tierLevel, high, tierLevel, high, false, 0L, 0);
     }
 
-    /** Returns "HT3", "LT4", "" if level == 0. */
+    /**
+     * Returns "HT3", "LT4", "" if level == 0. When the player has retired
+     * from this mode the label is prefixed with "R" (e.g. "RHT1", "RLT2")
+     * so the badge surfaces show the retired status inline.
+     */
     public String label() {
+        if (tierLevel <= 0) return "";
+        String base = (high ? "HT" : "LT") + tierLevel;
+        return retired ? "R" + base : base;
+    }
+
+    /** Same as {@link #label()} but never adds the retired "R" prefix. */
+    public String labelRaw() {
         if (tierLevel <= 0) return "";
         return (high ? "HT" : "LT") + tierLevel;
     }
 
-    /** Returns "HT3" / "LT4" for the peak. */
+    /** Returns "HT3" / "LT4" for the peak (never carries the retired "R" prefix). */
     public String peakLabel() {
         if (peakLevel <= 0) return "";
         return (peakHigh ? "HT" : "LT") + peakLevel;

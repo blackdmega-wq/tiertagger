@@ -260,17 +260,44 @@ public class TierProfileScreen extends Screen {
             // SubTiers' niche modes (creeper, manhunt, dia_smp, …) actually
             // show up after the user opens the profile.
             int extra = 0;
+            int hidden = 0;
+            for (String m : svc.modes) if (isModeHidden(svc, m)) hidden++;
             if (sd != null && sd.rankings != null) {
                 for (String k : sd.rankings.keySet()) {
+                    if (isModeHidden(svc, k)) continue;
                     if (!svc.modes.contains(k)) extra++;
                 }
             }
-            int rows = Math.max(1, svc.modes.size() + extra);
+            int rows = Math.max(1, svc.modes.size() - hidden + extra);
             int cardH = 22 + rows * ROW_H + 6;
             renderServiceCard(ctx, svc, sd, x, y, w, cardH);
             y += cardH + CARD_GAP;
         }
         return y;
+    }
+
+    /**
+     * Per-service mode blacklist requested by the user: hide gamemodes that
+     * either duplicate a mainstream mode or aren't actively maintained on
+     * that tier list.
+     *   MCTiers  — drop NethPot
+     *   PvPTiers — drop NethPot AND Vanilla
+     *   SubTiers — drop Dia 2v2
+     */
+    private static boolean isModeHidden(TierService svc, String mode) {
+        if (mode == null) return false;
+        String m = mode.toLowerCase(java.util.Locale.ROOT);
+        switch (svc) {
+            case MCTIERS:
+                return m.equals("nethpot") || m.equals("nethop") || m.equals("neth_pot");
+            case PVPTIERS:
+                return m.equals("nethpot") || m.equals("nethop") || m.equals("neth_pot")
+                    || m.equals("vanilla");
+            case SUBTIERS:
+                return m.equals("dia_2v2") || m.equals("dia2v2") || m.equals("2v2");
+            default:
+                return false;
+        }
     }
 
     private void renderServiceCard(DrawContext ctx, TierService svc, ServiceData sd,
@@ -353,6 +380,7 @@ public class TierProfileScreen extends Screen {
         if (sd.rankings != null) rowModes.addAll(sd.rankings.keySet());
         boolean alt = false;
         for (String mode : rowModes) {
+            if (isModeHidden(svc, mode)) continue;
             Ranking r = sd.rankings.get(mode);
             renderModeRow(ctx, mode, r, innerX, rowY, innerW, alt);
             rowY += ROW_H;
@@ -423,9 +451,8 @@ public class TierProfileScreen extends Screen {
                 tier = tier.append(Text.literal("  \u25B2").formatted(Formatting.DARK_GRAY))
                            .append(Text.literal(peak).withColor(rgb(peakC)));
             }
-            if (r.retired) {
-                tier = tier.copy().append(Text.literal(" \u2022 ret").formatted(Formatting.DARK_GRAY));
-            }
+            // Retired status now lives inline as the leading "R" in r.label()
+            // (e.g. "RHT3"), so no extra " • ret" suffix is needed.
         }
         int tw = this.textRenderer.getWidth(tier);
         ctx.drawTextWithShadow(this.textRenderer, tier, x + w - tw, y + 3, 0xFFFFFFFF);

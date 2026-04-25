@@ -8,7 +8,7 @@ public final class TierTaggerCore {
     public static final String MOD_ID  = "tiertagger";
     public static final String MOD_NAME = "TierTagger";
     public static final Logger LOGGER  = LoggerFactory.getLogger(MOD_NAME);
-    public static final String MOD_VERSION = "1.21.11.4";
+    public static final String MOD_VERSION = "1.21.11.5";
 
     private static TierConfig CONFIG;
     private static TierCache  CACHE;
@@ -189,6 +189,9 @@ public final class TierTaggerCore {
     public static char colourCodeFor(String tier) {
         if (tier == null) return '7';
         String t = tier.toUpperCase();
+        // Strip the optional retired "R" prefix added by Ranking.label() so the
+        // ending-digit heuristic still works for "RHT3" / "RLT4" etc.
+        if (t.startsWith("R") && t.length() > 1) t = t.substring(1);
         if (t.endsWith("1")) return 'd';
         if (t.endsWith("2")) return 'c';
         if (t.endsWith("3")) return '6';
@@ -207,6 +210,9 @@ public final class TierTaggerCore {
     public static int argbFor(String tier) {
         if (tier == null) return 0xFFAAAAAA;
         String t = tier.toUpperCase();
+        // Strip the optional retired "R" prefix added by Ranking.label() so the
+        // HT/LT detection works for retired-player labels like "RHT1" / "RLT2".
+        if (t.startsWith("R") && t.length() > 1) t = t.substring(1);
         boolean high;
         char digit;
         if (t.startsWith("HT") && t.length() >= 3) { high = true;  digit = t.charAt(2); }

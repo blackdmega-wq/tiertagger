@@ -333,6 +333,7 @@ public class TierCompareScreen extends Screen {
             Set<String> allModes = new LinkedHashSet<>(svc.modes);
             if (sdA != null) allModes.addAll(sdA.rankings.keySet());
             if (sdB != null) allModes.addAll(sdB.rankings.keySet());
+            allModes.removeIf(m -> isModeHidden(svc, m));
 
             // Always render every mode the service exposes (even when neither
             // player is ranked) so users can see e.g. NethOP / Netherite Pot /
@@ -467,6 +468,30 @@ public class TierCompareScreen extends Screen {
     private static Text tierComp(Ranking r, int argb) {
         if (r == null || r.tierLevel <= 0) return Text.literal("\u2014").formatted(Formatting.DARK_GRAY);
         return Text.literal(r.label()).withColor(argb & 0xFFFFFF).copy().formatted(Formatting.BOLD);
+    }
+
+    /**
+     * Per-service mode blacklist requested by the user: hide gamemodes that
+     * either duplicate a mainstream mode or aren't actively maintained on
+     * that tier list.
+     *   MCTiers  — drop NethPot
+     *   PvPTiers — drop NethPot AND Vanilla
+     *   SubTiers — drop Dia 2v2
+     */
+    private static boolean isModeHidden(TierService svc, String mode) {
+        if (mode == null) return false;
+        String m = mode.toLowerCase(java.util.Locale.ROOT);
+        switch (svc) {
+            case MCTIERS:
+                return m.equals("nethpot") || m.equals("nethop") || m.equals("neth_pot");
+            case PVPTIERS:
+                return m.equals("nethpot") || m.equals("nethop") || m.equals("neth_pot")
+                    || m.equals("vanilla");
+            case SUBTIERS:
+                return m.equals("dia_2v2") || m.equals("dia2v2") || m.equals("2v2");
+            default:
+                return false;
+        }
     }
 
     private static String regionPair(ServiceData a, ServiceData b) {

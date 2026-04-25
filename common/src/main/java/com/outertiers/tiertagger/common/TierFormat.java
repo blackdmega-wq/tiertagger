@@ -4,19 +4,16 @@ package com.outertiers.tiertagger.common;
 public final class TierFormat {
     private TierFormat() {}
 
-    /** Returns the inner display text for a tier, e.g. "HT3" or "H3". */
+    /**
+     * Returns the inner display text for a tier, e.g. "HT3".
+     * Always preserves the full "HT" / "LT" prefix so the player tab list
+     * never collapses to ambiguous "H3" / "L3" labels. Retired tiers come
+     * in as "RHT3" / "RLT2" from {@link Ranking#label()} and are passed
+     * through unchanged.
+     */
     public static String label(String tier) {
         if (tier == null) return "";
-        String t = tier.toUpperCase();
-        if (TierTaggerCore.config() == null) return t;
-        switch (TierTaggerCore.config().badgeFormat == null ? "bracket" : TierTaggerCore.config().badgeFormat) {
-            case "short":
-                if (t.startsWith("HT")) return "H" + t.substring(2);
-                if (t.startsWith("LT")) return "L" + t.substring(2);
-                return t;
-            default:
-                return t;
-        }
+        return tier.toUpperCase();
     }
 
     /** Whether to wrap the inner text in []. */
