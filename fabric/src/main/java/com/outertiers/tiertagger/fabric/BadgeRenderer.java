@@ -40,43 +40,76 @@ public final class BadgeRenderer {
     private static final java.lang.reflect.Method WITH_FONT_IDENTIFIER;
     private static final java.lang.reflect.Method WITH_FONT_WRAPPED;
     private static final Object WRAPPED_FONT_INSTANCE;
+    /** Optional-of-Identifier variant added in 1.21.6 snapshots. */
+    private static final java.lang.reflect.Method WITH_FONT_OPTIONAL;
 
     static {
         java.lang.reflect.Method idM = null;
         java.lang.reflect.Method wrM = null;
+        java.lang.reflect.Method optM = null;
         Object wrInstance = null;
+
+        // 1) The simple public (Identifier) overload — present on 1.21.0–1.21.4
+        //    and re-added in many 1.21.5+ snapshots. Try public methods first.
         try {
             idM = Style.class.getMethod("withFont", Identifier.class);
         } catch (Throwable ignored) {}
+        // Some snapshots demoted the (Identifier) overload to package-private.
         if (idM == null) {
-            // 1.21.5+ — find the only public withFont(...) and build its argument reflectively.
-            for (java.lang.reflect.Method m : Style.class.getMethods()) {
-                if (!"withFont".equals(m.getName()) || m.getParameterCount() != 1) continue;
-                Class<?> argType = m.getParameterTypes()[0];
-                if (argType == Identifier.class) continue;
+            try {
+                java.lang.reflect.Method m = Style.class.getDeclaredMethod("withFont", Identifier.class);
+                m.setAccessible(true);
+                idM = m;
+            } catch (Throwable ignored) {}
+        }
+
+        // 2) Optional<Identifier> overload — appeared briefly in 1.21.6 snapshots.
+        try {
+            java.lang.reflect.Method m = Style.class.getMethod("withFont", java.util.Optional.class);
+            optM = m;
+        } catch (Throwable ignored) {}
+
+        // 3) Single-arg public withFont(<wrapper>) used in the StyleSpriteSource era.
+        for (java.lang.reflect.Method m : Style.class.getMethods()) {
+            if (!"withFont".equals(m.getName()) || m.getParameterCount() != 1) continue;
+            Class<?> argType = m.getParameterTypes()[0];
+            if (argType == Identifier.class || argType == java.util.Optional.class) continue;
+            try {
+                // Most snapshots ship a record-style constructor that takes the Identifier directly.
+                java.lang.reflect.Constructor<?> ctor = argType.getConstructor(Identifier.class);
+                wrInstance = ctor.newInstance(ICON_FONT);
+                wrM = m;
+                break;
+            } catch (Throwable ignored) {
                 try {
-                    // Most snapshots ship a record-style constructor that takes the Identifier directly.
-                    java.lang.reflect.Constructor<?> ctor = argType.getConstructor(Identifier.class);
-                    wrInstance = ctor.newInstance(ICON_FONT);
-                    wrM = m;
-                    break;
-                } catch (Throwable ignored) {
-                    // Try a static factory like StyleSpriteSource.of(Identifier).
-                    try {
-                        java.lang.reflect.Method factory = argType.getMethod("of", Identifier.class);
+                    // Static factory: StyleSpriteSource.of(Identifier) or .create(Identifier).
+                    java.lang.reflect.Method factory = null;
+                    for (String name : new String[] { "of", "create", "from" }) {
+                        try { factory = argType.getMethod(name, Identifier.class); break; }
+                        catch (Throwable ignored2) {}
+                    }
+                    if (factory != null) {
                         wrInstance = factory.invoke(null, ICON_FONT);
                         wrM = m;
                         break;
-                    } catch (Throwable ignored2) {}
-                }
+                    }
+                } catch (Throwable ignored2) {}
             }
         }
+
         WITH_FONT_IDENTIFIER = idM;
         WITH_FONT_WRAPPED = wrM;
         WRAPPED_FONT_INSTANCE = wrInstance;
-        if (WITH_FONT_IDENTIFIER == null && WITH_FONT_WRAPPED == null) {
+        WITH_FONT_OPTIONAL = optM;
+        if (WITH_FONT_IDENTIFIER == null && WITH_FONT_WRAPPED == null && WITH_FONT_OPTIONAL == null) {
             TierTaggerCore.LOGGER.warn(
                 "[TierTagger] Could not resolve Style.withFont — gamemode icon glyphs disabled");
+        } else {
+            TierTaggerCore.LOGGER.info(
+                "[TierTagger] icon font binding: identifier={} wrapped={} optional={}",
+                WITH_FONT_IDENTIFIER != null,
+                WITH_FONT_WRAPPED    != null,
+                WITH_FONT_OPTIONAL   != null);
         }
     }
 
@@ -87,6 +120,9 @@ public final class BadgeRenderer {
             }
             if (WITH_FONT_WRAPPED != null && WRAPPED_FONT_INSTANCE != null) {
                 return (Style) WITH_FONT_WRAPPED.invoke(base, WRAPPED_FONT_INSTANCE);
+            }
+            if (WITH_FONT_OPTIONAL != null) {
+                return (Style) WITH_FONT_OPTIONAL.invoke(base, java.util.Optional.of(ICON_FONT));
             }
         } catch (Throwable ignored) {}
         return base;

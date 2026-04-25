@@ -65,15 +65,53 @@ public class TierCache {
     }
 
     private static final HttpClient HTTP = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
+            .connectTimeout(Duration.ofSeconds(4))
             .build();
-    // 8 threads = 4 services × 2 simultaneous players (the worst case is the
-    // /tiertagger compare screen, which kicks off both players in parallel).
-    private static final ExecutorService EXEC = Executors.newFixedThreadPool(8, r -> {
+    // 16 threads — 4 services × 2 players for /compare PLUS room for tab-list
+    // pre-fetch of nearby player slots. The previous 8-thread cap meant the
+    // compare screen filled the queue and tab-list lookups for other players
+    // had to wait until one of those 8 fetches finished, making "loading…"
+    // labels in the tab list visibly stick around for several seconds.
+    private static final ExecutorService EXEC = Executors.newFixedThreadPool(16, r -> {
         Thread t = new Thread(r, "TierTagger-Fetcher");
         t.setDaemon(true);
         return t;
     });
+
+    /**
+     * Per-MC-version aliases for upstream gamemode JSON keys.  Some tier-list
+     * APIs (notably PvPTiers) have shipped the same gamemode under more than
+     * one key over time — e.g. Netherite Pot has been seen as
+     * {@code "nethpot"}, {@code "neth_pot"}, {@code "netheritepot"} and
+     * {@code "netherite_pot"} in different snapshots.  We map our canonical
+     * mode id to every alias the parser should also accept so a single
+     * upstream rename doesn't silently drop the player's tier from the
+     * profile / compare screens.
+     */
+    private static final java.util.Map<String, String[]> MODE_ALIASES = java.util.Map.of(
+            "nethpot",  new String[] { "nethpot", "neth_pot", "netheritepot", "netherite_pot" },
+            "nethop",   new String[] { "nethop", "neth_op", "netherite_op", "netheriteop" },
+            "smp",      new String[] { "smp", "mace_smp" },
+            "crystal",  new String[] { "crystal", "crystalpvp", "crystal_pvp" },
+            "ogvanilla",new String[] { "ogvanilla", "og_vanilla" },
+            "og_vanilla", new String[] { "og_vanilla", "ogvanilla" },
+            "dia_2v2",  new String[] { "dia_2v2", "dia2v2", "diamond_2v2" }
+    );
+
+    /** First non-null JSON object child found under any of the provided keys, or {@code null}. */
+    private static JsonElement firstAlias(JsonObject parent, String mode) {
+        if (parent == null || mode == null) return null;
+        String[] keys = MODE_ALIASES.get(mode.toLowerCase(Locale.ROOT));
+        if (keys == null) {
+            JsonElement v = parent.get(mode);
+            return v == null ? null : v;
+        }
+        for (String k : keys) {
+            JsonElement v = parent.get(k);
+            if (v != null && !v.isJsonNull()) return v;
+        }
+        return null;
+    }
 
     private final TierConfig cfg;
     private final ConcurrentHashMap<String, PlayerData> entries  = new ConcurrentHashMap<>();
@@ -223,7 +261,7 @@ public class TierCache {
             }
             url = service.apiBase + urlSuffix;
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofSeconds(20))
+                    .timeout(Duration.ofSeconds(12))
                     .header("User-Agent", "TierTagger/" + TierTaggerCore.MOD_VERSION + " (+https://github.com/blackdmega-wq/tiertagger)")
                     .header("Accept", "application/json")
                     .GET().build();
@@ -299,7 +337,7 @@ public class TierCache {
 
             String url = service.apiBase + urlSuffix;
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofSeconds(20))
+                    .timeout(Duration.ofSeconds(12))
                     .header("User-Agent", "TierTagger/" + TierTaggerCore.MOD_VERSION + " (+https://github.com/blackdmega-wq/tiertagger)")
                     .header("Accept", "application/json")
                     .GET().build();
@@ -339,7 +377,11 @@ public class TierCache {
             if (rEl != null && rEl.isJsonObject()) {
                 JsonObject r = rEl.getAsJsonObject();
                 for (String mode : service.modes) {
-                    JsonElement m = r.get(mode);
+                    // firstAlias() falls back through known upstream key
+                    // synonyms (e.g. "nethpot" → "neth_pot" → "netherite_pot")
+                    // so a single PvPTiers JSON-key rename doesn't silently
+                    // drop a player's tier.
+                    JsonElement m = firstAlias(r, mode);
                     if (m == null || !m.isJsonObject()) continue;
                     JsonObject mo = m.getAsJsonObject();
                     int tier = optInt(mo, "tier", 0);
@@ -378,8 +420,10 @@ public class TierCache {
 
             java.util.LinkedHashMap<String, Ranking> rankings = new java.util.LinkedHashMap<>();
             for (String mode : service.modes) {
-                String s = optStr(raw, mode);
-                if (s == null) s = optStr(tArr, mode);
+                // Walk the alias list so the OuterTiers parser also accepts
+                // upstream key renames without losing data.
+                String s = optStrAlias(raw, mode);
+                if (s == null) s = optStrAlias(tArr, mode);
                 Ranking r = parseHtLt(s);
                 if (r != null) rankings.put(mode, r);
             }
@@ -431,6 +475,22 @@ public class TierCache {
         if (v == null || v.isJsonNull()) return null;
         try { String s = v.getAsString(); return (s == null || s.isBlank()) ? null : s; }
         catch (Exception ignored) { return null; }
+    }
+
+    /**
+     * Alias-aware {@link #optStr}: tries the canonical mode key first, then
+     * falls through every alias registered in {@link #MODE_ALIASES}. Used by
+     * the OuterTiers parser so renamed upstream JSON keys don't drop tiers.
+     */
+    private static String optStrAlias(JsonObject o, String mode) {
+        if (o == null || mode == null) return null;
+        String[] keys = MODE_ALIASES.get(mode.toLowerCase(Locale.ROOT));
+        if (keys == null) return optStr(o, mode);
+        for (String k : keys) {
+            String s = optStr(o, k);
+            if (s != null) return s;
+        }
+        return null;
     }
 
     private static int optInt(JsonObject o, String k, int dflt) {
