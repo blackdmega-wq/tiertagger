@@ -158,14 +158,14 @@ jobs:
             java: 21
             neoforge: '21.10.0-beta'
             moddev: '2.0.141'
-            gradle: '8.10'
+            gradle: '8.14'
             experimental: true
           - loader: neoforge
             mc: '1.21.11'
             java: 21
             neoforge: '21.11.0-beta'
             moddev: '2.0.141'
-            gradle: '8.10'
+            gradle: '8.14'
             experimental: true
 
     steps:

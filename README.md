@@ -2,6 +2,15 @@
 
 A multi-loader Minecraft mod that displays player tiers from the [OuterTiers](https://outertiers.com) website right next to player names — both in the in-game **tab list** and as a **badge above each player's head**. Inspired by [tiertagger on Modrinth](https://modrinth.com/mod/tiertagger).
 
+## What's new in 1.21.11.1
+
+- **Fixed black screen on Minecraft 1.21.11 launch.** The Fabric `PlayerEntityRendererMixin` was re-introduced with `Object`-typed render-pipeline parameters, but Mixin's descriptor validator rejects mismatching types *before* it consults `require=0` — the exact bug that 1.7.7 had originally fixed by removing the mixin entirely. The mixin is removed again from `fabric.mixins.json` and the now-unused class deleted; tab-list badges (the main feature) work as before, badges above player heads on 1.21.5+ remain temporarily disabled until the runtime `WorldRenderEvents` replacement lands. No more `InvalidInjectionException` on launch.
+- **Built-in update notifier.** On launch the mod asks GitHub once for the latest TierTagger release (`api.github.com/repos/blackdmega-wq/tiertagger/releases`), picks the newest tag that targets the running Minecraft version, and — the first time you join a world or server while running an outdated jar — sends a single chat line:
+  > `[TierTagger] A new version is available — 1.21.11.2 (you have 1.21.11.1). [Download here]`
+
+  The `[Download here]` text is clickable and jumps straight to the matching jar (or to the release page if the per-MC asset can't be matched). The check runs on a background daemon thread, swallows all network/parse errors, and only fires the notice once per session. It's a soft notice, not a hard block.
+- **`notifyOnUpdate` config flag.** Defaults to `true`. Set it to `false` in `tiertagger.json` (or via the in-game config screen on a future release) to silence the notice without disabling the rest of the mod.
+
 ## What's new in 1.7.9
 
 - **Gamemode icons actually render now.** The bundled icon PNGs were saved as 16-bit RGBA (and one as 16-bit gray+alpha), which Minecraft's `NativeImage` silently rejects — so every mode row in the profile screen fell back to either an item icon or nothing at all. All 12 existing icons were re-encoded as 8-bit RGBA, and four previously-missing icons (`crystal`, `sumo`, `bed`, `elytra`) were added so every mode of every tier-list now shows a proper website-style emblem.

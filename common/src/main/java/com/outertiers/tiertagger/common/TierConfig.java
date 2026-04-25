@@ -71,6 +71,13 @@ public class TierConfig {
     public boolean disableIcons      = false;
     public boolean disableAnimations = false;
 
+    /**
+     * When {@code true} (default) the mod checks GitHub for a newer release
+     * on launch and tells the player in chat the first time they join a
+     * world while running an outdated jar. Disable to silence the notice.
+     */
+    public boolean notifyOnUpdate    = true;
+
     private static Map<String, Boolean> defaultServices() {
         Map<String, Boolean> m = new LinkedHashMap<>();
         for (TierService s : TierService.values()) m.put(s.id, true);

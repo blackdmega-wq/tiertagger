@@ -8,7 +8,7 @@ public final class TierTaggerCore {
     public static final String MOD_ID  = "tiertagger";
     public static final String MOD_NAME = "TierTagger";
     public static final Logger LOGGER  = LoggerFactory.getLogger(MOD_NAME);
-    public static final String MOD_VERSION = "1.7.10";
+    public static final String MOD_VERSION = "1.21.11.1";
 
     private static TierConfig CONFIG;
     private static TierCache  CACHE;

@@ -30,6 +30,12 @@ public class TierTaggerNeoForge {
         }
 
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
+
+        try {
+            UpdateNotifier.register();
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] update-notifier register failed: {}", t.toString());
+        }
     }
 
     private void onRegisterCommands(RegisterClientCommandsEvent event) {
