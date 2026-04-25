@@ -2,6 +2,12 @@
 
 A multi-loader Minecraft mod that displays player tiers from the [OuterTiers](https://outertiers.com) website right next to player names — both in the in-game **tab list** and as a **badge above each player's head**. Inspired by [tiertagger on Modrinth](https://modrinth.com/mod/tiertagger).
 
+## What's new in 1.7.9
+
+- **Gamemode icons actually render now.** The bundled icon PNGs were saved as 16-bit RGBA (and one as 16-bit gray+alpha), which Minecraft's `NativeImage` silently rejects — so every mode row in the profile screen fell back to either an item icon or nothing at all. All 12 existing icons were re-encoded as 8-bit RGBA, and four previously-missing icons (`crystal`, `sumo`, `bed`, `elytra`) were added so every mode of every tier-list now shows a proper website-style emblem.
+- **Profile screen got a real visual upgrade.** Each service card now shows the player's **highest tier as an outlined coloured pill** in the card header (so OuterTiers' "HT2" is instantly visible without scanning the rows), the accent stripe on the left edge has a subtle glow, every ranked mode shows its **`#position`** within the tier next to the mode name (e.g. "Vanilla #42"), and peak tiers are displayed with a tighter `▲HT3` indicator instead of the verbose "· peak HT3" suffix. Retired tiers get a discreet `• ret` tag instead of being wrapped in parentheses.
+- **Cleaner empty state.** When a player isn't on a tier-list at all, the card now reads "not on this list" in the header and the body simply lists the gamemodes with em-dashes — no more redundant "Player has no entry on this tier-list" line, and the gamemode icons are still visible so you can see what each list covers.
+
 ## What's new in 1.7.8
 
 - **`/tiertagger profile` now lists every gamemode of every tier-list, even unranked ones.** Previously the profile screen silently dropped any mode the player wasn't ranked in, which made the SubTiers / PvPTiers / OuterTiers cards look half-empty (or even completely empty) for casual players. Now every supported mode shows its icon and name, with a faint `—` on the right when the player has no tier in that mode. All four services (MCTiers, OuterTiers, PvPTiers, SubTiers) and all of their gamemode icons are always visible.

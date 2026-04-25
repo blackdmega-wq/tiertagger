@@ -36,7 +36,11 @@ public final class ModeIcons {
         put("2v2",       "2v2");
         put("dia2v2",    "2v2");
         put("dia_2v2",   "2v2");
-        put("crystal",   "2v2");
+        put("crystal",   "crystal");
+        put("sumo",      "sumo");
+        put("bed",       "bed");
+        put("bedwars",   "bed");
+        put("elytra",    "elytra");
         put("overall",   "overall");
     }
 

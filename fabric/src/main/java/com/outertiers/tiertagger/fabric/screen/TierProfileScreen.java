@@ -258,11 +258,14 @@ public class TierProfileScreen extends Screen {
                                    int x, int y, int w, int h) {
         int accent = svc.accentArgb;
 
+        // Card background with a subtle accent glow on the left edge.
         fillRect(ctx, x, y, x + w, y + h, BG_CARD);
         outlineRect(ctx, x, y, w, h, 0xFF2A2F38);
         fillRect(ctx, x, y, x + 3, y + h, accent);
+        fillRect(ctx, x + 3, y, x + 6, y + h, (accent & 0x00FFFFFF) | 0x33000000);
         fillRect(ctx, x + 3, y, x + w, y + 22, BG_CARD_BAR);
 
+        // Title: "OT  OuterTiers"
         ctx.drawTextWithShadow(this.textRenderer,
             Text.literal(svc.shortLabel).withColor(accent & 0xFFFFFF).copy().formatted(Formatting.BOLD),
             x + 10, y + 7, accent & 0xFFFFFF);
@@ -270,18 +273,46 @@ public class TierProfileScreen extends Screen {
             Text.literal(svc.displayName).formatted(Formatting.WHITE),
             x + 10 + this.textRenderer.getWidth(svc.shortLabel) + 6, y + 7, FG_TEXT);
 
-        String rightStr;
-        int rightCol;
-        if (sd.fetchedAt == 0L)      { rightStr = "loading\u2026";  rightCol = FG_FAINT; }
-        else if (sd.missing)         { rightStr = "not ranked";     rightCol = FG_FAINT; }
-        else {
-            String reg = (sd.region == null || sd.region.isBlank()) ? "??" : sd.region;
-            rightStr = reg + (sd.overall > 0 ? "  \u00B7  #" + sd.overall : "");
-            rightCol = 0xFFD27A;
+        // Right-hand header content:
+        //   loading…                            (still fetching)
+        //   not on this list                    (404 / no entry)
+        //   [HT2]   EU · #137                   (ranked: best-tier pill + region/overall rank)
+        int rightX = x + w - 10;
+        if (sd.fetchedAt == 0L) {
+            String s = "loading\u2026";
+            int sw = this.textRenderer.getWidth(s);
+            ctx.drawTextWithShadow(this.textRenderer,
+                Text.literal(s).withColor(FG_FAINT), rightX - sw, y + 7, FG_FAINT);
+        } else if (sd.missing || sd.rankedCount() == 0) {
+            String s = "not on this list";
+            int sw = this.textRenderer.getWidth(s);
+            ctx.drawTextWithShadow(this.textRenderer,
+                Text.literal(s).withColor(FG_FAINT), rightX - sw, y + 7, FG_FAINT);
+        } else {
+            String reg = (sd.region == null || sd.region.isBlank()) ? "" : sd.region;
+            String tail = reg + (sd.overall > 0
+                ? (reg.isEmpty() ? "#" + sd.overall : "  \u00B7  #" + sd.overall)
+                : "");
+            int tailW = tail.isEmpty() ? 0 : this.textRenderer.getWidth(tail);
+            if (!tail.isEmpty()) {
+                ctx.drawTextWithShadow(this.textRenderer,
+                    Text.literal(tail).withColor(0xFFD27A), rightX - tailW, y + 7, 0xFFD27A);
+            }
+            // Best-tier pill, right of the title and left of the region/rank tail.
+            Ranking best = sd.highest();
+            if (best != null) {
+                String pill = best.label();
+                int pillTextW = this.textRenderer.getWidth(pill);
+                int pillW = pillTextW + 8;
+                int pillX = rightX - tailW - (tail.isEmpty() ? 0 : 8) - pillW;
+                int color = TierTaggerCore.argbFor(pill);
+                fillRect(ctx, pillX, y + 4, pillX + pillW, y + 18, (color & 0x00FFFFFF) | 0x33000000);
+                outlineRect(ctx, pillX, y + 4, pillW, 14, color);
+                ctx.drawTextWithShadow(this.textRenderer,
+                    Text.literal(pill).withColor(color & 0xFFFFFF).copy().formatted(Formatting.BOLD),
+                    pillX + 4, y + 7, color & 0xFFFFFF);
+            }
         }
-        int rw = this.textRenderer.getWidth(rightStr);
-        ctx.drawTextWithShadow(this.textRenderer, Text.literal(rightStr).withColor(rightCol & 0xFFFFFF),
-            x + w - 10 - rw, y + 7, rightCol & 0xFFFFFF);
 
         int rowY = y + 24;
         int innerX = x + 10;
@@ -346,7 +377,16 @@ public class TierProfileScreen extends Screen {
             Text.literal(label).withColor(labelCol),
             textX, y + 3, labelCol);
 
-        // Right-hand side: tier badge, or a faint em-dash for unranked modes.
+        // Inline #position next to the mode name when known (e.g. "Vanilla #42").
+        if (ranked && r.posInTier > 0) {
+            String pos = "#" + r.posInTier;
+            int posX = textX + this.textRenderer.getWidth(label) + 5;
+            ctx.drawTextWithShadow(this.textRenderer,
+                Text.literal(pos).formatted(Formatting.DARK_GRAY),
+                posX, y + 3, 0x707070);
+        }
+
+        // Right-hand side: tier badge, peak, retired marker, or em-dash if unranked.
         MutableText tier;
         if (!ranked) {
             tier = Text.literal("\u2014").formatted(Formatting.DARK_GRAY);
@@ -357,12 +397,11 @@ public class TierProfileScreen extends Screen {
             if (r.peakDiffers()) {
                 String peak = r.peakLabel();
                 int peakC = TierTaggerCore.argbFor(peak) & 0xFFFFFF;
-                tier = tier.append(Text.literal(" \u00B7 peak ").formatted(Formatting.DARK_GRAY))
+                tier = tier.append(Text.literal("  \u25B2").formatted(Formatting.DARK_GRAY))
                            .append(Text.literal(peak).withColor(peakC));
             }
             if (r.retired) {
-                tier = Text.literal("(").formatted(Formatting.DARK_GRAY).append(tier)
-                           .append(Text.literal(")").formatted(Formatting.DARK_GRAY));
+                tier = tier.copy().append(Text.literal(" \u2022 ret").formatted(Formatting.DARK_GRAY));
             }
         }
         int tw = this.textRenderer.getWidth(tier);
