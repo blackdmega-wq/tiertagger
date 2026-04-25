@@ -30,6 +30,8 @@ public final class MojangResolver {
             .build();
 
     private static final ConcurrentHashMap<String, String> CACHE = new ConcurrentHashMap<>();
+    /** Per-username locks so concurrent service fetches for the same player share one HTTP resolve. */
+    private static final ConcurrentHashMap<String, java.util.concurrent.locks.ReentrantLock> LOCKS = new ConcurrentHashMap<>();
     /** Marker used to remember "definitely unknown" so we don't keep retrying. */
     private static final String UNKNOWN = "__UNKNOWN__";
 
@@ -58,6 +60,27 @@ public final class MojangResolver {
         String cached = CACHE.get(key);
         if (cached != null) return UNKNOWN.equals(cached) ? null : cached;
 
+        // De-dupe concurrent resolves for the same player. Without this lock,
+        // every parallel service fetch (MCT, PVPT, SUBT, OT) for the same
+        // freshly-looked-up player races to hit ashcon/Mojang at the same
+        // moment — wasting bandwidth and adding ~5-15 s of redundant API
+        // round-trips to the very first compare/profile after joining a server.
+        java.util.concurrent.locks.ReentrantLock lock =
+                LOCKS.computeIfAbsent(key, k -> new java.util.concurrent.locks.ReentrantLock());
+        lock.lock();
+        try {
+            cached = CACHE.get(key);
+            if (cached != null) return UNKNOWN.equals(cached) ? null : cached;
+            return doResolve(key);
+        } finally {
+            lock.unlock();
+            // Keep the lock object around — it's tiny and guarantees later
+            // calls for the same name keep deduping. The CACHE result is
+            // what protects us from re-running HTTP regardless.
+        }
+    }
+
+    private static String doResolve(String key) {
         // 1) ashcon.app (preferred)
         try {
             HttpRequest req = HttpRequest.newBuilder(URI.create("https://api.ashcon.app/mojang/v2/user/" + key))

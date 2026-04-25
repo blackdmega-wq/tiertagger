@@ -140,33 +140,47 @@ public final class Compat {
                                    int x, int y, float u, float v,
                                    int w, int h, int texW, int texH) {
         if (ctx == null || tex == null) return;
-        // Prefer the newer overloads first (modern MC); fall back to the older 9-arg form.
+
+        // We try multiple method names because Mojang has shuffled them over
+        // 1.21.x: "drawTexture" (1.21.1-1.21.10), and some snapshots renamed
+        // the GUI variant to "drawGuiTexture". Both signatures are otherwise
+        // identical, so we accept either.
+        Method best = null;
+        int bestArity = -1;
+        for (Method m : DrawContext.class.getMethods()) {
+            String n = m.getName();
+            if (!"drawTexture".equals(n) && !"drawGuiTexture".equals(n)) continue;
+            Class<?>[] p = m.getParameterTypes();
+            int arity = p.length;
+            // Acceptable: 9 (legacy), 10 (1.21.2+), 11 (1.21.5+ with color tint),
+            // 12 (defensive — some snapshots add another scalar).
+            if (arity < 9 || arity > 12) continue;
+            // The Identifier must appear at index 0 (legacy) or 1 (modern).
+            boolean hasIdentifier = (arity == 9 && p[0] == Identifier.class)
+                                  || (arity >= 10 && p[1] == Identifier.class);
+            if (!hasIdentifier) continue;
+            // Prefer the highest-arity match (newer signature) so we don't
+            // accidentally pick a deprecated overload that was kept for compat.
+            if (arity > bestArity) { best = m; bestArity = arity; }
+        }
+        if (best == null) return;
+
         try {
-            Method best = null;
-            int bestArity = -1;
-            for (Method m : DrawContext.class.getMethods()) {
-                if (!"drawTexture".equals(m.getName())) continue;
-                Class<?>[] p = m.getParameterTypes();
-                int arity = p.length;
-                // Acceptable: 9 (legacy), 10 (1.21.2+), 11 (1.21.5+ with color tint),
-                // 12 (defensive — some snapshots add another scalar).
-                if (arity < 9 || arity > 12) continue;
-                // The Identifier must appear at index 0 (legacy) or 1 (modern).
-                boolean hasIdentifier = (arity == 9 && p[0] == Identifier.class)
-                                      || (arity >= 10 && p[1] == Identifier.class);
-                if (!hasIdentifier) continue;
-                // Prefer the highest-arity match (newer signature) so we don't
-                // accidentally pick a deprecated overload that was kept for compat.
-                if (arity > bestArity) { best = m; bestArity = arity; }
-            }
-            if (best == null) return;
             Class<?>[] p = best.getParameterTypes();
             Object[] args;
             if (bestArity == 9) {
                 args = new Object[] { tex, x, y, u, v, w, h, texW, texH };
             } else {
+                Object pipelineOrLayer = defaultGuiRenderLayer(p[0], tex);
+                // CRITICAL: the modern (1.21.6+) overload has a primitive
+                // RenderPipeline first parameter. Reflection.invoke throws
+                // NullPointerException if we pass null for it — which is
+                // exactly the silent failure mode that hid every gamemode
+                // icon in compare / profile. Bail out cleanly here so the
+                // caller's item-icon fallback gets a chance to draw.
+                if (pipelineOrLayer == null) return;
                 args = new Object[bestArity];
-                args[0] = defaultGuiRenderLayer(p[0], tex);
+                args[0] = pipelineOrLayer;
                 args[1] = tex;
                 args[2] = x; args[3] = y;
                 args[4] = u; args[5] = v;
@@ -187,32 +201,117 @@ public final class Compat {
         }
     }
 
+    /**
+     * Resolves the value to pass for the first non-Identifier parameter of the
+     * modern {@code drawTexture}/{@code drawGuiTexture} overloads. The MC API
+     * went through three incompatible shapes in the 1.21.x line:
+     *
+     * <ul>
+     *   <li>1.21.1: single overload with no extra leading parameter (handled
+     *       by the 9-arg branch in {@link #drawTexture}).</li>
+     *   <li>1.21.2-1.21.5: leading {@code Function<Identifier, RenderLayer>}
+     *       — typical value is {@code RenderLayer::getGuiTextured}.</li>
+     *   <li>1.21.6+ (incl. 1.21.11): leading {@code RenderPipeline} —
+     *       typical value is {@code RenderPipelines.GUI_TEXTURED}. This is
+     *       the variant our prior reflection failed to satisfy, which made
+     *       every gamemode icon on the compare/profile screens silently
+     *       disappear.</li>
+     * </ul>
+     */
     private static Object defaultGuiRenderLayer(Class<?> firstParamType, Identifier tex) {
-        // 1.21.2 added an explicit Function<Identifier, RenderLayer> first
-        // parameter. The standard choice is RenderLayer::getGuiTextured.
+        // ── Path 1: RenderPipeline (1.21.6+ inc. 1.21.11) ────────────────
         try {
-            Class<?> renderLayerCls = Class.forName("net.minecraft.client.render.RenderLayer");
-            Method factory = null;
-            // Method name varies a tiny bit between mappings; try the common ones.
-            for (String name : new String[] { "getGuiTextured", "getGuiTexturedOverlay" }) {
-                try { factory = renderLayerCls.getMethod(name, Identifier.class); break; }
-                catch (Throwable ignored) {}
-            }
-            if (factory == null) return null;
-            // If the parameter type is Function-like, return a method ref;
-            // if it's already RenderLayer, return the resolved instance.
-            if (firstParamType.isAssignableFrom(renderLayerCls)) {
-                return factory.invoke(null, tex);
-            }
-            if (java.util.function.Function.class.isAssignableFrom(firstParamType)) {
-                final Method f = factory;
-                return (java.util.function.Function<Identifier, Object>) (id -> {
-                    try { return f.invoke(null, id); }
-                    catch (Throwable t) { return null; }
-                });
+            Class<?> rp = tryClass("com.mojang.blaze3d.pipeline.RenderPipeline");
+            if (rp != null && firstParamType.isAssignableFrom(rp)) {
+                Object pipeline = lookupRenderPipeline(rp);
+                if (pipeline != null) return pipeline;
             }
         } catch (Throwable ignored) {}
+
+        // ── Path 2: RenderLayer / Function<Identifier,RenderLayer> (1.21.2-1.21.5) ──
+        try {
+            Class<?> renderLayerCls = tryClass("net.minecraft.client.render.RenderLayer");
+            if (renderLayerCls != null) {
+                Method factory = null;
+                for (String name : new String[] { "getGuiTextured", "getGuiTexturedOverlay", "guiTextured" }) {
+                    try { factory = renderLayerCls.getMethod(name, Identifier.class); break; }
+                    catch (Throwable ignored) {}
+                }
+                if (factory != null) {
+                    if (firstParamType.isAssignableFrom(renderLayerCls)) {
+                        return factory.invoke(null, tex);
+                    }
+                    if (java.util.function.Function.class.isAssignableFrom(firstParamType)) {
+                        final Method f = factory;
+                        return (java.util.function.Function<Identifier, Object>) (id -> {
+                            try { return f.invoke(null, id); }
+                            catch (Throwable t) { return null; }
+                        });
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
         return null;
+    }
+
+    /** Cached so we don't pay reflection cost on every drawn icon. */
+    private static volatile Object CACHED_GUI_PIPELINE;
+
+    /**
+     * Looks up {@code RenderPipelines.GUI_TEXTURED} (or its closest equivalent)
+     * across the package locations Mojang has shipped it from in 1.21.6+. The
+     * field name is stable across snapshots ({@code GUI_TEXTURED}) but its
+     * containing class moved between {@code net.minecraft.client.gl.*},
+     * {@code net.minecraft.client.render.*}, and {@code com.mojang.blaze3d.*}
+     * between yarn builds.
+     */
+    private static Object lookupRenderPipeline(Class<?> renderPipelineCls) {
+        Object cached = CACHED_GUI_PIPELINE;
+        if (cached != null) return cached;
+        String[] containers = {
+            "net.minecraft.client.gl.RenderPipelines",
+            "net.minecraft.client.render.RenderPipelines",
+            "com.mojang.blaze3d.pipeline.RenderPipelines"
+        };
+        String[] preferredFields = {
+            // Listed best-first: GUI_TEXTURED is the standard for opaque GUI sprites.
+            "GUI_TEXTURED",
+            "GUI_TEXTURED_PREMULTIPLIED_ALPHA",
+            "GUI_TEXTURED_OVERLAY",
+            "GUI"
+        };
+        for (String cls : containers) {
+            Class<?> c = tryClass(cls);
+            if (c == null) continue;
+            for (String fn : preferredFields) {
+                try {
+                    java.lang.reflect.Field f = c.getField(fn);
+                    Object v = f.get(null);
+                    if (v != null && renderPipelineCls.isInstance(v)) {
+                        CACHED_GUI_PIPELINE = v;
+                        return v;
+                    }
+                } catch (Throwable ignored) {}
+            }
+            // Last resort: any public static field whose declared type is RenderPipeline.
+            for (java.lang.reflect.Field f : c.getFields()) {
+                if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                if (!renderPipelineCls.isAssignableFrom(f.getType())) continue;
+                try {
+                    Object v = f.get(null);
+                    if (v != null) {
+                        CACHED_GUI_PIPELINE = v;
+                        return v;
+                    }
+                } catch (Throwable ignored) {}
+            }
+        }
+        return null;
+    }
+
+    private static Class<?> tryClass(String name) {
+        try { return Class.forName(name); } catch (Throwable t) { return null; }
     }
 
     /**

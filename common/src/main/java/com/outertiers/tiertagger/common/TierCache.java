@@ -67,7 +67,9 @@ public class TierCache {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
-    private static final ExecutorService EXEC = Executors.newFixedThreadPool(4, r -> {
+    // 8 threads = 4 services × 2 simultaneous players (the worst case is the
+    // /tiertagger compare screen, which kicks off both players in parallel).
+    private static final ExecutorService EXEC = Executors.newFixedThreadPool(8, r -> {
         Thread t = new Thread(r, "TierTagger-Fetcher");
         t.setDaemon(true);
         return t;
