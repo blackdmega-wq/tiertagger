@@ -5,6 +5,7 @@
   "client": [
     "PlayerListHudMixin",
     "PlayerEntityRendererMixin",
+    "LivingEntityRendererMixin",
     "OptionsScreenMixin"
   ],
   "injectors": {

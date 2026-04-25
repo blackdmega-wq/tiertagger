@@ -298,10 +298,22 @@ public final class Compat {
      * Looks up {@code RenderPipelines.GUI_TEXTURED} (or its closest equivalent)
      * across all package locations Mojang has used in 1.21.6+.
      *
-     * <p>The field name ({@code GUI_TEXTURED}) is stable across snapshots, but
-     * its containing class moved between {@code net.minecraft.client.gl.*},
-     * {@code net.minecraft.client.render.*}, and {@code com.mojang.blaze3d.*}
-     * between Yarn builds.
+     * <p><b>v1.21.11.12 root-cause fix — INVISIBLE SKINS &amp; SCREEN ICONS:</b>
+     * The previous reflection-only path tried {@code Class.forName} with the
+     * <em>Yarn</em> class names (e.g. {@code net.minecraft.client.gl.RenderPipelines}).
+     * In production / launcher builds the mod jar is remapped from Yarn to
+     * intermediary, so at runtime that class is named {@code net.minecraft.class_XXXX}
+     * — the {@code Class.forName} call returned {@code null} every single time, the
+     * {@code drawTexture} reflection silently skipped, and every face / icon /
+     * skin in the profile + compare screens was invisible.
+     *
+     * <p><b>Fix:</b> the primary lookup is now a direct compile-time field
+     * reference to {@code RenderPipelines.GUI_TEXTURED} inside a tiny isolated
+     * holder class.  Loom remaps that reference to the correct intermediary name
+     * at build time, so it works on every per-MC-version jar regardless of what
+     * Yarn calls it next snapshot.  The existing reflection paths are kept as a
+     * fallback in case the holder fails to initialise (e.g. on a future MC
+     * version that drops {@code RenderPipelines} again).
      *
      * <p>{@code renderPipelineCls} must be the <em>actual runtime type</em> that
      * the method parameter expects (i.e. {@code firstParamType} from
@@ -311,6 +323,18 @@ public final class Compat {
         Object cached = CACHED_GUI_PIPELINE;
         if (cached != null && renderPipelineCls.isInstance(cached)) return cached;
 
+        // ── PRIMARY: direct compile-time field reference (Loom remaps to intermediary) ──
+        // Wrapped in try/catch so a missing class on a future MC build doesn't kill
+        // the lookup — we still have the reflection fallbacks below.
+        try {
+            Object v = ModernPipelineHolder.GUI_TEXTURED;
+            if (v != null && renderPipelineCls.isInstance(v)) {
+                CACHED_GUI_PIPELINE = v;
+                return v;
+            }
+        } catch (Throwable ignored) {}
+
+        // ── FALLBACK: name-based reflection (legacy, still works on some builds) ──
         String[] containers = {
             "net.minecraft.client.gl.RenderPipelines",
             "net.minecraft.client.render.RenderPipelines",
@@ -326,7 +350,6 @@ public final class Compat {
         for (String cls : containers) {
             Class<?> c = tryClass(cls);
             if (c == null) continue;
-            // Try the preferred field names first.
             for (String fn : preferredFields) {
                 try {
                     java.lang.reflect.Field f = c.getField(fn);
@@ -337,7 +360,6 @@ public final class Compat {
                     }
                 } catch (Throwable ignored) {}
             }
-            // Last resort: any public static field of the right type.
             for (java.lang.reflect.Field f : c.getFields()) {
                 if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
                 if (!renderPipelineCls.isAssignableFrom(f.getType())) continue;
@@ -351,6 +373,24 @@ public final class Compat {
             }
         }
         return null;
+    }
+
+    /**
+     * Isolated holder so {@code net.minecraft.client.gl.RenderPipelines} is only
+     * loaded the first time something actually asks for the GUI pipeline.  If
+     * the class doesn't exist on this MC version, accessing
+     * {@link #GUI_TEXTURED} throws {@link NoClassDefFoundError} which the
+     * caller catches — the reflection fallback then takes over.
+     *
+     * <p>Critically, the static field reference here is a <em>compile-time</em>
+     * Yarn reference: Loom rewrites it to the correct intermediary
+     * ({@code net.minecraft.class_XXXX#field_YYYYY}) at build time, so it
+     * resolves correctly in production launchers where the runtime
+     * namespace is intermediary.
+     */
+    private static final class ModernPipelineHolder {
+        static final Object GUI_TEXTURED =
+                net.minecraft.client.gl.RenderPipelines.GUI_TEXTURED;
     }
 
     private static Class<?> tryClass(String name) {
