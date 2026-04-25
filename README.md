@@ -2,6 +2,10 @@
 
 A multi-loader Minecraft mod that displays player tiers from the [OuterTiers](https://outertiers.com) website right next to player names — both in the in-game **tab list** and as a **badge above each player's head**. Inspired by [tiertagger on Modrinth](https://modrinth.com/mod/tiertagger).
 
+## What's new in 1.21.11.11
+
+- **Fixed black screen on launch (regression of the 1.7.7 bug).** The Fabric `PlayerEntityRendererMixin` shipped in 1.21.11.10 declared three `@Inject` variants targeting `renderLabelIfPresent*` with `Object`-typed render-pipeline parameters as a "fits any MC version" hack. Mixin's descriptor validator rejects mismatching parameter types **before** it even consults the `require = 0` flag (exactly the bug already documented in v1.7.7), so the mod failed to load and the player was greeted with a permanent black screen on launch. The mixin has been rewritten as a single, properly-typed `@Inject` into the much more stable `PlayerEntityRenderer.updateRenderState(AbstractClientPlayerEntity, PlayerEntityRenderState, float)`, with `require = 0` kept as a belt-and-braces safety net. Nametag badges above player heads work exactly as before — no feature was removed.
+
 ## What's new in 1.7.9
 
 - **Gamemode icons actually render now.** The bundled icon PNGs were saved as 16-bit RGBA (and one as 16-bit gray+alpha), which Minecraft's `NativeImage` silently rejects — so every mode row in the profile screen fell back to either an item icon or nothing at all. All 12 existing icons were re-encoded as 8-bit RGBA, and four previously-missing icons (`crystal`, `sumo`, `bed`, `elytra`) were added so every mode of every tier-list now shows a proper website-style emblem.

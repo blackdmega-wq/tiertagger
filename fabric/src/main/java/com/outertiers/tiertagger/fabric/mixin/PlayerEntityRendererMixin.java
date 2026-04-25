@@ -4,10 +4,10 @@ import com.outertiers.tiertagger.common.PlayerData;
 import com.outertiers.tiertagger.common.TierConfig;
 import com.outertiers.tiertagger.common.TierTaggerCore;
 import com.outertiers.tiertagger.fabric.BadgeRenderer;
+import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.render.entity.PlayerEntityRenderer;
 import net.minecraft.client.render.entity.state.PlayerEntityRenderState;
 import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -18,38 +18,52 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Wraps the player nametag (visible in F5 / when looking at other players) with
- *   [LEFT BADGE] <name> [RIGHT BADGE]
+ *   [LEFT BADGE] &lt;name&gt; [RIGHT BADGE]
  *
- * Three @Inject variants (3-param, 4-param, 5-param after the state) cover all
- * known renderLabelIfPresent signatures across MC 1.21.1–1.21.11. Exactly one
- * variant will match at runtime; the others are silently skipped (require = 0).
+ * v1.21.11.11 fix — BLACK SCREEN ON LAUNCH:
+ * Earlier versions (1.21.11.10 and below) declared three @Inject variants
+ * targeting {@code renderLabelIfPresent*} with {@code Object}-typed
+ * render-pipeline parameters as a "fits any MC version" hack. This bug was
+ * already documented in v1.7.7 of the README: Mixin's descriptor validator
+ * rejects mismatching parameter types BEFORE it even consults the
+ * {@code require = 0} flag, so the entire mod fails to load and the player
+ * sees a permanent black screen on launch with no clear error in chat.
+ *
+ * This rewrite uses a single, properly-typed @Inject into the much more
+ * stable {@code updateRenderState(AbstractClientPlayerEntity,
+ * PlayerEntityRenderState, float)} method on PlayerEntityRenderer. That
+ * signature has been stable since the EntityRenderState refactor in MC
+ * 1.21.5 and is what every per-MC-version jar actually targets. The
+ * functionality is identical: we still mutate {@code state.playerName} (and
+ * {@code state.displayName} when present) so the badge is rendered above
+ * the player's head exactly as before.
+ *
+ * {@code require = 0} is kept as a belt-and-braces safety net — if a future
+ * MC version renames or refactors {@code updateRenderState}, the mod
+ * silently no-ops the nametag feature instead of crashing the client.
  */
 @Mixin(PlayerEntityRenderer.class)
 public abstract class PlayerEntityRendererMixin {
 
     private static final AtomicBoolean WARNED = new AtomicBoolean(false);
 
-    // ── 3-param variant (some 1.21.x builds) ─────────────────────────────────
-    @Inject(method = "renderLabelIfPresent*", at = @At("HEAD"), require = 0)
-    private void tiertagger$wrapNametag3(PlayerEntityRenderState state,
-                                         Object b, Object c,
-                                         CallbackInfo ci) {
-        applyNametag(state);
-    }
-
-    // ── 4-param variant ───────────────────────────────────────────────────────
-    @Inject(method = "renderLabelIfPresent*", at = @At("HEAD"), require = 0)
-    private void tiertagger$wrapNametag4(PlayerEntityRenderState state,
-                                         Object b, Object c, Object d,
-                                         CallbackInfo ci) {
-        applyNametag(state);
-    }
-
-    // ── 5-param variant (1.21.11+ added CameraRenderState or similar) ─────────
-    @Inject(method = "renderLabelIfPresent*", at = @At("HEAD"), require = 0)
-    private void tiertagger$wrapNametag5(PlayerEntityRenderState state,
-                                         Object b, Object c, Object d, Object e,
-                                         CallbackInfo ci) {
+    /**
+     * Inject at TAIL of {@code updateRenderState} so {@code state.playerName}
+     * has already been populated by vanilla before we wrap it. Explicit
+     * descriptor in {@code method = ...} so Mixin matches by exact signature
+     * instead of trying to infer one from the inject method's parameter types
+     * (which is what produced the InvalidInjectionException black-screen
+     * crash in 1.21.11.10).
+     */
+    @Inject(
+        method = "updateRenderState(Lnet/minecraft/client/network/AbstractClientPlayerEntity;Lnet/minecraft/client/render/entity/state/PlayerEntityRenderState;F)V",
+        at = @At("TAIL"),
+        require = 0
+    )
+    private void tiertagger$wrapNametag(AbstractClientPlayerEntity player,
+                                        PlayerEntityRenderState state,
+                                        float tickDelta,
+                                        CallbackInfo ci) {
         applyNametag(state);
     }
 
@@ -69,6 +83,9 @@ public abstract class PlayerEntityRendererMixin {
             if (wrapped == null) return;
 
             state.playerName = wrapped;
+            // displayName is the field actually consumed by renderLabelIfPresent
+            // in 1.21.5+ — keep it in sync. Wrapped in try/catch because the
+            // field name has historically drifted across snapshots.
             try { state.displayName = wrapped; } catch (Throwable ignored) {}
         } catch (Throwable t) {
             if (WARNED.compareAndSet(false, true)) {
@@ -79,4 +96,3 @@ public abstract class PlayerEntityRendererMixin {
         }
     }
 }
-
