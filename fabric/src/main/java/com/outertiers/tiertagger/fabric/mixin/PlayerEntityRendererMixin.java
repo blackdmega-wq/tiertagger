@@ -5,6 +5,7 @@ import com.outertiers.tiertagger.common.PlayerData;
 import com.outertiers.tiertagger.common.TierConfig;
 import com.outertiers.tiertagger.common.TierTaggerCore;
 import com.outertiers.tiertagger.fabric.BadgeRenderer;
+import com.outertiers.tiertagger.fabric.compat.Profiles;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.PlayerEntityRenderer;
@@ -41,12 +42,11 @@ public abstract class PlayerEntityRendererMixin {
             TierConfig cfg = TierTaggerCore.config();
             if (cfg == null || !cfg.showNametag) return original;
             if (entity == null || entity.getGameProfile() == null) return original;
-            String name = entity.getGameProfile().getName();
+            String name = Profiles.name(entity.getGameProfile());
             if (name == null || name.isBlank()) return original;
             try {
-                if (entity.getGameProfile().getId() != null) {
-                    MojangResolver.cache(name, entity.getGameProfile().getId().toString().replace("-", ""));
-                }
+                String hex = Profiles.idHex(entity.getGameProfile());
+                if (hex != null) MojangResolver.cache(name, hex);
             } catch (Throwable ignored) {}
 
             Optional<PlayerData> opt = TierTaggerCore.cache().peekData(name);

@@ -13,7 +13,6 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.client.util.SkinTextures;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.text.MutableText;
@@ -367,13 +366,20 @@ public class TierProfileScreen extends Screen {
         // Border / shadow plate
         ctx.fill(x - 2, y - 2, x + size + 2, y + size + 2, 0xFF1A1A1A);
 
-        // 1) Live skin from the local player tab list (online only).
-        SkinTextures st = null;
+        // 1) Live skin from the local player tab list (online only). Resolved
+        // reflectively so this source compiles whether SkinTextures lives in
+        // {@code net.minecraft.client.util} (1.21.1-1.21.4) or
+        // {@code net.minecraft.entity.player} (1.21.5+).
+        Object st = null;
         try {
             MinecraftClient mc = MinecraftClient.getInstance();
             if (mc != null && mc.getNetworkHandler() != null) {
                 PlayerListEntry e = mc.getNetworkHandler().getPlayerListEntry(name);
-                if (e != null) st = e.getSkinTextures();
+                if (e != null) {
+                    try {
+                        st = PlayerListEntry.class.getMethod("getSkinTextures").invoke(e);
+                    } catch (Throwable ignored) {}
+                }
             }
         } catch (Throwable ignored) {}
         if (st != null) {

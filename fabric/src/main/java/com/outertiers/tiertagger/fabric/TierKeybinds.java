@@ -49,13 +49,13 @@ public final class TierKeybinds {
                     "key.tiertagger.config",
                     InputUtil.Type.KEYSYM,
                     GLFW.GLFW_KEY_K,
-                    "key.categories.tiertagger"
+                    KeyBinding.Category.MISC
             ));
             openProfile = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                     "key.tiertagger.profile",
                     InputUtil.Type.KEYSYM,
                     GLFW.GLFW_KEY_J,
-                    "key.categories.tiertagger"
+                    KeyBinding.Category.MISC
             ));
             ClientTickEvents.END_CLIENT_TICK.register(TierKeybinds::onTick);
         } catch (Throwable t) {
@@ -76,7 +76,7 @@ public final class TierKeybinds {
             PlayerEntity target = findTargetedPlayer(client);
             if (target == null) continue;
             String name = target.getGameProfile() != null
-                    ? target.getGameProfile().getName()
+                    ? com.outertiers.tiertagger.fabric.compat.Profiles.name(target.getGameProfile())
                     : target.getName().getString();
             if (name == null || name.isEmpty()) continue;
             PendingScreen.open(new TierProfileScreen(null, name));

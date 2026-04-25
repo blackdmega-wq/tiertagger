@@ -5,6 +5,7 @@ import com.outertiers.tiertagger.common.PlayerData;
 import com.outertiers.tiertagger.common.TierConfig;
 import com.outertiers.tiertagger.common.TierTaggerCore;
 import com.outertiers.tiertagger.fabric.BadgeRenderer;
+import com.outertiers.tiertagger.fabric.compat.Profiles;
 import net.minecraft.client.gui.hud.PlayerListHud;
 import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.text.MutableText;
@@ -29,12 +30,11 @@ public class PlayerListHudMixin {
             TierConfig cfg = TierTaggerCore.config();
             if (cfg == null || !cfg.showInTab) return;
             if (entry == null || entry.getProfile() == null) return;
-            String name = entry.getProfile().getName();
+            String name = Profiles.name(entry.getProfile());
             if (name == null || name.isBlank()) return;
             try {
-                if (entry.getProfile().getId() != null) {
-                    MojangResolver.cache(name, entry.getProfile().getId().toString().replace("-", ""));
-                }
+                String hex = Profiles.idHex(entry.getProfile());
+                if (hex != null) MojangResolver.cache(name, hex);
             } catch (Throwable ignored) {}
 
             Optional<PlayerData> opt = TierTaggerCore.cache().peekData(name);

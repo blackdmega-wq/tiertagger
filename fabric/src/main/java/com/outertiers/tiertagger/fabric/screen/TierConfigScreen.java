@@ -107,16 +107,20 @@ public class TierConfigScreen extends Screen {
 
         // ── Left / right badge service ──
         safeAdd("leftService", () -> this.addDrawableChild(
-            CyclingButtonWidget.<TierService>builder(s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)))
+            // 1.21.5+ removed Builder.initially(); the initial value is now
+            // passed as the second argument to CyclingButtonWidget.builder().
+            CyclingButtonWidget.<TierService>builder(
+                    s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)),
+                    cfg.leftServiceEnum())
                 .values(TierService.values())
-                .initially(cfg.leftServiceEnum())
                 .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H,
                     Text.literal("Left Badge"),
                     (b, v) -> { cfg.leftService = v.id; cfg.save(); })));
         safeAdd("rightService", () -> this.addDrawableChild(
-            CyclingButtonWidget.<TierService>builder(s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)))
+            CyclingButtonWidget.<TierService>builder(
+                    s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)),
+                    cfg.rightServiceEnum())
                 .values(TierService.values())
-                .initially(cfg.rightServiceEnum())
                 .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
                     Text.literal("Right Badge"),
                     (b, v) -> { cfg.rightService = v.id; cfg.save(); })));
@@ -158,9 +162,8 @@ public class TierConfigScreen extends Screen {
             String initialFormat = (cfg.badgeFormat == null || !formats.contains(cfg.badgeFormat))
                 ? "bracket" : cfg.badgeFormat;
             this.addDrawableChild(
-                CyclingButtonWidget.<String>builder(Text::literal)
+                CyclingButtonWidget.<String>builder(Text::literal, initialFormat)
                     .values(formats)
-                    .initially(initialFormat)
                     .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
                         Text.literal("Badge Format"),
                         (b, v) -> { cfg.badgeFormat = v; cfg.save(); }));

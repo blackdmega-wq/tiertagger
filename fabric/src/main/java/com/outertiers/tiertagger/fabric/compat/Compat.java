@@ -4,7 +4,6 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.PlayerSkinDrawer;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
-import net.minecraft.client.util.SkinTextures;
 import net.minecraft.item.Item;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
@@ -35,19 +34,30 @@ public final class Compat {
 
     /**
      * Draws a player face onto {@code ctx}. Tries the 1.21.2+ overload
-     * (accepting {@link SkinTextures}) first and falls back to the 1.21.1
+     * (accepting {@code SkinTextures}) first and falls back to the 1.21.1
      * overload (accepting {@link Identifier}). When {@code skin} is
      * {@code null} only the {@code Identifier} fallback can be used.
+     *
+     * <p>{@code skin} is typed as {@link Object} so this source compiles
+     * unchanged across MC versions where {@code SkinTextures} lives in
+     * different packages (1.21.1-1.21.4: {@code net.minecraft.client.util};
+     * 1.21.5+: {@code net.minecraft.entity.player}).
      */
-    public static void drawPlayerFace(DrawContext ctx, SkinTextures skin,
+    public static void drawPlayerFace(DrawContext ctx, Object skin,
                                       Identifier fallback, int x, int y, int size) {
-        Identifier tex = (skin != null && skin.texture() != null) ? skin.texture() : fallback;
+        Identifier tex = fallback;
+        if (skin != null) {
+            try {
+                Object t = skin.getClass().getMethod("texture").invoke(skin);
+                if (t instanceof Identifier id) tex = id;
+            } catch (Throwable ignored) {}
+        }
         try {
             for (Method m : PlayerSkinDrawer.class.getDeclaredMethods()) {
                 if (!"draw".equals(m.getName())) continue;
                 Class<?>[] p = m.getParameterTypes();
                 if (p.length != 5) continue;
-                if (skin != null && p[1].isAssignableFrom(SkinTextures.class)) {
+                if (skin != null && p[1].isInstance(skin)) {
                     m.invoke(null, ctx, skin, x, y, size);
                     return;
                 }
