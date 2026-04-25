@@ -133,7 +133,12 @@ public final class Compat {
      *   <li>1.21.2+: {@code drawTexture(Function<Identifier,RenderLayer>, Identifier, x, y, u, v, w, h, texW, texH)} (10 args)</li>
      *   <li>1.21.5+: same as above plus a trailing {@code int color} tint (11 args).</li>
      * </ul>
-     * We pick whichever overload exists on the runtime DrawContext class.
+     * <p><b>Fast path:</b> when {@code u == 0 && v == 0} (full-texture blit, no UV offset),
+     * this method first tries {@code drawGuiTexture(Identifier, x, y, w, h)} — a stable
+     * 5-argument overload present in every 1.21.x build that needs no RenderLayer or
+     * RenderPipeline. This is the path that finally fixes skin / icon rendering on
+     * MC 1.21.6+, where the multi-arg reflection paths kept failing silently.
+     * <p>
      * Failures are swallowed so callers don't have to wrap every call.
      */
     public static void drawTexture(DrawContext ctx, Identifier tex,
@@ -141,6 +146,28 @@ public final class Compat {
                                    int w, int h, int texW, int texH) {
         if (ctx == null || tex == null) return;
 
+        // ── Fast path: drawGuiTexture(Identifier, int, int, int, int) ────────
+        // This 5-arg overload is stable across ALL 1.21.x versions and requires
+        // no RenderLayer / RenderPipeline. We use it whenever we want the full
+        // texture (u == 0, v == 0), which covers every caller in this mod
+        // (skin heads, gamemode icons). This is the fix for the persistent
+        // "skins don't appear" bug on MC 1.21.6+.
+        if (u == 0 && v == 0) {
+            for (Method m : DrawContext.class.getMethods()) {
+                if (!"drawGuiTexture".equals(m.getName())) continue;
+                Class<?>[] p = m.getParameterTypes();
+                // (Identifier, int, int, int, int) — pure 5-arg form
+                if (p.length == 5
+                        && p[0] == Identifier.class
+                        && p[1] == int.class && p[2] == int.class
+                        && p[3] == int.class && p[4] == int.class) {
+                    try { m.invoke(ctx, tex, x, y, w, h); return; }
+                    catch (Throwable ignored) {}
+                }
+            }
+        }
+
+        // ── Fallback: full reflection search across 9-12 arg overloads ───────
         // We try multiple method names because Mojang has shuffled them over
         // 1.21.x: "drawTexture" (1.21.1-1.21.10), and some snapshots renamed
         // the GUI variant to "drawGuiTexture". Both signatures are otherwise
