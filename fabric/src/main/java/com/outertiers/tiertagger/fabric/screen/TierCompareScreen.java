@@ -475,7 +475,7 @@ public class TierCompareScreen extends Screen {
      * either duplicate a mainstream mode or aren't actively maintained on
      * that tier list.
      *   MCTiers  — drop NethPot (keep NethOP)
-     *   PvPTiers — drop Vanilla   (keep NethPot AND NethOP)
+     *   PvPTiers — drop NethOP   (keep Vanilla AND NethPot)
      *   SubTiers — drop Dia 2v2
      *
      * IMPORTANT: "nethpot" (Netherite Pot) and "nethop" (NethOP) are TWO
@@ -488,7 +488,7 @@ public class TierCompareScreen extends Screen {
             case MCTIERS:
                 return m.equals("nethpot") || m.equals("neth_pot");
             case PVPTIERS:
-                return m.equals("vanilla");
+                return m.equals("nethop");
             case SUBTIERS:
                 return m.equals("dia_2v2") || m.equals("dia2v2") || m.equals("2v2");
             default:
@@ -507,44 +507,28 @@ public class TierCompareScreen extends Screen {
     private void drawHead(DrawContext ctx, String name, int x, int y, int size) {
         ctx.fill(x - 2, y - 2, x + size + 2, y + size + 2, 0xFF1A1A1A);
 
-        // 1) Live skin from the local player tab list (online only). Resolved
-        // reflectively because SkinTextures lives in different packages
-        // depending on MC version (1.21.1-1.21.4 vs 1.21.5+).
-        Object st = null;
-        try {
-            MinecraftClient mc = MinecraftClient.getInstance();
-            if (mc != null && mc.getNetworkHandler() != null) {
-                PlayerListEntry e = mc.getNetworkHandler().getPlayerListEntry(name);
-                if (e != null) {
-                    try {
-                        st = PlayerListEntry.class.getMethod("getSkinTextures").invoke(e);
-                    } catch (Throwable ignored) {}
-                }
-            }
-        } catch (Throwable ignored) {}
-        if (st != null) {
-            try {
-                Compat.drawPlayerFace(ctx, st, STEVE, x, y, size);
-                return;
-            } catch (Throwable ignored) {}
-        }
-
-        // 2) Fetched offline avatar (mc-heads.net).
+        // Use mc-heads.net via SkinFetcher for ALL players (online + offline).
+        // The PlayerSkinDrawer.draw reflective path silently broke on
+        // MC 1.21.6+ (added a RenderPipeline first arg) and rendered nothing.
+        // The fetched 64x64 PNG already has the hat overlay baked in, so we
+        // can blit it via the proven Compat.drawTexture path that the
+        // gamemode icons also use.
         Optional<Identifier> fetched = Optional.empty();
         try { fetched = SkinFetcher.headFor(name); } catch (Throwable ignored) {}
         if (fetched.isPresent()) {
             try {
-                Compat.drawTexture(ctx, fetched.get(), x, y, 0, 0, size, size, size, size);
+                Compat.drawTexture(ctx, fetched.get(), x, y, 0, 0, size, size, 64, 64);
                 return;
             } catch (Throwable ignored) {}
         }
 
-        // 3) Steve fallback.
+        // Placeholder while the skin is downloading or if mc-heads.net is
+        // unreachable. Stable layout, no empty box.
         try {
-            Compat.drawPlayerFace(ctx, null, STEVE, x, y, size);
-        } catch (Throwable t) {
             ctx.fill(x, y, x + size, y + size, 0xFF6E4A2A);
-        }
+            ctx.fill(x + size / 4, y + size / 3,
+                     x + size * 3 / 4, y + size * 2 / 3, 0xFF3F2A18);
+        } catch (Throwable ignored) {}
     }
 
     private static void fillRect(DrawContext ctx, int x1, int y1, int x2, int y2, int argb) {

@@ -281,7 +281,7 @@ public class TierProfileScreen extends Screen {
      * either duplicate a mainstream mode or aren't actively maintained on
      * that tier list.
      *   MCTiers  — drop NethPot (keep NethOP)
-     *   PvPTiers — drop Vanilla   (keep NethPot AND NethOP)
+     *   PvPTiers — drop NethOP   (keep Vanilla AND NethPot)
      *   SubTiers — drop Dia 2v2
      */
     private static boolean isModeHidden(TierService svc, String mode) {
@@ -294,8 +294,8 @@ public class TierProfileScreen extends Screen {
                 // Hide only Netherite Pot. Keep NethOP and the regular Pot.
                 return m.equals("nethpot") || m.equals("neth_pot");
             case PVPTIERS:
-                // Hide only Vanilla. Keep both Netherite Pot and NethOP.
-                return m.equals("vanilla");
+                // Hide only NethOP. Keep Vanilla and Netherite Pot.
+                return m.equals("nethop");
             case SUBTIERS:
                 return m.equals("dia_2v2") || m.equals("dia2v2") || m.equals("2v2");
             default:
@@ -467,45 +467,35 @@ public class TierProfileScreen extends Screen {
         // Border / shadow plate
         ctx.fill(x - 2, y - 2, x + size + 2, y + size + 2, 0xFF1A1A1A);
 
-        // 1) Live skin from the local player tab list (online only). Resolved
-        // reflectively so this source compiles whether SkinTextures lives in
-        // {@code net.minecraft.client.util} (1.21.1-1.21.4) or
-        // {@code net.minecraft.entity.player} (1.21.5+).
-        Object st = null;
-        try {
-            MinecraftClient mc = MinecraftClient.getInstance();
-            if (mc != null && mc.getNetworkHandler() != null) {
-                PlayerListEntry e = mc.getNetworkHandler().getPlayerListEntry(name);
-                if (e != null) {
-                    try {
-                        st = PlayerListEntry.class.getMethod("getSkinTextures").invoke(e);
-                    } catch (Throwable ignored) {}
-                }
-            }
-        } catch (Throwable ignored) {}
-        if (st != null) {
-            try {
-                Compat.drawPlayerFace(ctx, st, STEVE, x, y, size);
-                return;
-            } catch (Throwable ignored) {}
-        }
-
-        // 2) Fetched offline avatar (mc-heads.net).
+        // Use mc-heads.net via SkinFetcher for ALL players (online + offline).
+        // This avoids the brittle PlayerSkinDrawer.draw reflective path whose
+        // signature changed incompatibly in MC 1.21.6+ (added RenderPipeline
+        // first arg) and silently failed, leaving the head box empty. The
+        // fetched PNG is a flat 64x64 head sprite already baked with hat
+        // overlay, so we can blit it straight to the screen using the same
+        // Compat.drawTexture path that successfully renders the gamemode
+        // icons elsewhere on this screen.
         Optional<Identifier> fetched = Optional.empty();
         try { fetched = SkinFetcher.headFor(name); } catch (Throwable ignored) {}
         if (fetched.isPresent()) {
             try {
-                Compat.drawTexture(ctx, fetched.get(), x, y, 0, 0, size, size, size, size);
+                // Pass the actual mc-heads.net PNG dimensions (64x64) for the
+                // texW/texH UV-normalisation slots so the full sprite is
+                // sampled and scaled to `size`, regardless of whether `size`
+                // happens to equal 64.
+                Compat.drawTexture(ctx, fetched.get(), x, y, 0, 0, size, size, 64, 64);
                 return;
             } catch (Throwable ignored) {}
         }
 
-        // 3) Last-resort Steve fallback so we never render an empty box.
+        // Placeholder while the skin is still downloading (or if mc-heads.net
+        // is unreachable). A subtle Steve-skin-tone rectangle keeps the layout
+        // stable and tells the user the slot belongs to a player.
         try {
-            Compat.drawPlayerFace(ctx, null, STEVE, x, y, size);
-        } catch (Throwable t) {
             ctx.fill(x, y, x + size, y + size, 0xFF6E4A2A);
-        }
+            ctx.fill(x + size / 4, y + size / 3,
+                     x + size * 3 / 4, y + size * 2 / 3, 0xFF3F2A18);
+        } catch (Throwable ignored) {}
     }
 
     private static void fillRect(DrawContext ctx, int x1, int y1, int x2, int y2, int argb) {
