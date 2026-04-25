@@ -76,11 +76,16 @@ public abstract class LivingEntityRendererMixin {
             TierConfig cfg = TierTaggerCore.config();
             if (cfg == null || !cfg.showNametag) return;
 
-            String name;
-            try {
-                name = player.getGameProfile().getName();
-            } catch (Throwable t) {
-                return;
+            // Use getNameForScoreboard() — stable since MC 1.20, returns the raw
+            // username string. Avoids the GameProfile API drift between
+            // versions of com.mojang.authlib (which became a Java record in
+            // recent releases and dropped the legacy getName() accessor).
+            String name = null;
+            try { name = player.getNameForScoreboard(); } catch (Throwable ignored) {}
+            if (name == null || name.isBlank()) {
+                // Last-ditch fallback: derive the username from the entity's
+                // Text name (works on every MC version that has this mixin).
+                try { name = entity.getName().getString(); } catch (Throwable ignored) {}
             }
             if (name == null || name.isBlank()) return;
 
