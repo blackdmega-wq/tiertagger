@@ -2,6 +2,10 @@
 
 A multi-loader Minecraft mod that displays player tiers from the [OuterTiers](https://outertiers.com) website right next to player names — both in the in-game **tab list** and as a **badge above each player's head**. Inspired by [tiertagger on Modrinth](https://modrinth.com/mod/tiertagger).
 
+## What's new in 1.7.7
+
+- **Actually fixed the black screen on MC 1.21.5+.** The 1.7.6 release still crashed because `PlayerNametagMixin1215` declared its inject method with `Object`-typed render-pipeline parameters, and Mixin's descriptor validator rejects mismatching types *before* it even consults the `require=0` flag. Fix: the mixin is removed entirely — tab-list badges (the main feature) work as before, badges above player heads on 1.21.5+ are temporarily disabled until the runtime `WorldRenderEvents` replacement lands. No more `InvalidInjectionException` on launch.
+
 ## What's new in 1.7.6
 
 - **Fixed black screen on Minecraft launch (MC 1.21.5+).** Mixin injectors now degrade gracefully when a vanilla method signature drifts between MC versions instead of failing the entire client init. The mod stays loaded, falling features just no-op with a single `WARN` line in `latest.log`.
