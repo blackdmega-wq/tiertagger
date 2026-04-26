@@ -146,6 +146,76 @@ public final class TierKeybinds {
         }
     }
 
+    // ── In-config keybind picker support ───────────────────────────────────
+
+    /** GLFW key codes offered in the in-config Cycle Mode Key picker. */
+    private static final int[] PICKER_KEYS = {
+        GLFW.GLFW_KEY_I, GLFW.GLFW_KEY_K, GLFW.GLFW_KEY_O, GLFW.GLFW_KEY_T,
+        GLFW.GLFW_KEY_U, GLFW.GLFW_KEY_Y, GLFW.GLFW_KEY_H, GLFW.GLFW_KEY_N,
+        GLFW.GLFW_KEY_M, GLFW.GLFW_KEY_B, GLFW.GLFW_KEY_V, GLFW.GLFW_KEY_P,
+        GLFW.GLFW_KEY_L, GLFW.GLFW_KEY_R, GLFW.GLFW_KEY_G, GLFW.GLFW_KEY_Z,
+        GLFW.GLFW_KEY_X
+    };
+
+    /**
+     * Returns the GLFW key currently bound to the cycle-mode keybind. Falls
+     * back to {@code GLFW_KEY_I} when the keybind isn't initialised yet
+     * (e.g. when called before {@link #register()} on early-init paths).
+     */
+    public static int getCycleKeyCode() {
+        try {
+            if (cycleRightMode == null) return GLFW.GLFW_KEY_I;
+            String tk = cycleRightMode.getBoundKeyTranslationKey();
+            if (tk == null || tk.isEmpty()) return GLFW.GLFW_KEY_I;
+            InputUtil.Key k = InputUtil.fromTranslationKey(tk);
+            if (k == null) return GLFW.GLFW_KEY_I;
+            int code = k.getCode();
+            return code <= 0 ? GLFW.GLFW_KEY_I : code;
+        } catch (Throwable t) {
+            return GLFW.GLFW_KEY_I;
+        }
+    }
+
+    /**
+     * Re-binds the cycle-mode keybind to the given GLFW key code and
+     * persists the change to {@code options.txt} so it survives a restart.
+     * Silently ignored when {@link #register()} hasn't run yet.
+     */
+    public static void setCycleKeyCode(int glfwKey) {
+        try {
+            if (cycleRightMode == null) return;
+            cycleRightMode.setBoundKey(InputUtil.Type.KEYSYM.createFromCode(glfwKey));
+            KeyBinding.updateKeysByCode();
+            MinecraftClient mc = MinecraftClient.getInstance();
+            if (mc != null && mc.options != null) {
+                try { mc.options.write(); } catch (Throwable ignored) {}
+            }
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] could not rebind cycle key: {}", t.toString());
+        }
+    }
+
+    /**
+     * Returns the picker's value list. Always includes the user's current
+     * key (even if it isn't in the default {@link #PICKER_KEYS} table) so
+     * the cycling button can display whatever they had before.
+     */
+    public static List<Integer> commonKeyCodes(int currentCode) {
+        List<Integer> out = new ArrayList<>(PICKER_KEYS.length + 1);
+        for (int k : PICKER_KEYS) out.add(k);
+        if (!out.contains(currentCode) && currentCode > 0) out.add(currentCode);
+        return out;
+    }
+
+    /** Pretty label for a GLFW key code, used by the cycling button. */
+    public static String keyLabel(int glfwKey) {
+        try {
+            String s = InputUtil.Type.KEYSYM.createFromCode(glfwKey).getLocalizedText().getString();
+            if (s != null && !s.isEmpty()) return s.toUpperCase(Locale.ROOT);
+        } catch (Throwable ignored) {}
+        return "KEY " + glfwKey;
+    }
+
     /**
      * Returns the {@link PlayerEntity} the local camera is currently pointed
      * at within {@link #PROFILE_RANGE} blocks, or {@code null} if no player

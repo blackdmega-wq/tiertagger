@@ -5,7 +5,6 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.outertiers.tiertagger.common.PlayerData;
 import com.outertiers.tiertagger.common.Ranking;
 import com.outertiers.tiertagger.common.ServiceData;
-import com.outertiers.tiertagger.common.TierCache;
 import com.outertiers.tiertagger.common.TierConfig;
 import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
@@ -15,7 +14,6 @@ import com.outertiers.tiertagger.fabric.screen.TierProfileScreen;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
@@ -195,13 +193,6 @@ public class TierTaggerFabricCommand {
                             ctx.getSource().sendFeedback(Text.literal("§7[TierTagger] §rSearching for §e" + name + "§r…"));
                             return 1;
                         })))
-                .then(ClientCommandManager.literal("doctor")
-                    .executes(ctx -> { runDoctor(ctx.getSource(), null); return 1; })
-                    .then(ClientCommandManager.argument("player", StringArgumentType.word())
-                        .executes(ctx -> {
-                            runDoctor(ctx.getSource(), StringArgumentType.getString(ctx, "player"));
-                            return 1;
-                        })))
                 .executes(ctx -> { sendStatus(ctx.getSource()); return 1; })
             );
         });
@@ -229,76 +220,6 @@ public class TierTaggerFabricCommand {
         to.disableTiers = from.disableTiers;
         to.disableIcons = from.disableIcons;
         to.disableAnimations = from.disableAnimations;
-    }
-
-    // ---------- doctor (one-shot self-test) ----------
-
-    private static void runDoctor(FabricClientCommandSource src, String requested) {
-        String name = requested == null ? "" : requested.trim();
-        if (name.isEmpty()) {
-            try {
-                MinecraftClient mc = MinecraftClient.getInstance();
-                if (mc != null && mc.getSession() != null) {
-                    name = mc.getSession().getUsername();
-                }
-            } catch (Throwable ignored) {}
-        }
-        if (name == null || name.isEmpty()) {
-            src.sendError(Text.literal("Cannot determine local player — pass a name: /tiertagger doctor <player>"));
-            return;
-        }
-        final String target = name;
-        src.sendFeedback(Text.literal("§7[TierTagger] §rRunning doctor for §e" + target + "§r — this can take a few seconds…"));
-        Thread t = new Thread(() -> {
-            TierCache.DoctorReport report;
-            try {
-                report = TierTaggerCore.cache().diagnoseBlocking(target);
-            } catch (Throwable err) {
-                MinecraftClient.getInstance().execute(() ->
-                    src.sendError(Text.literal("[TierTagger] Doctor failed: " + err)));
-                return;
-            }
-            MinecraftClient.getInstance().execute(() -> printDoctorReport(src, report));
-        }, "TierTagger-Doctor");
-        t.setDaemon(true);
-        t.start();
-    }
-
-    private static void printDoctorReport(FabricClientCommandSource src, TierCache.DoctorReport r) {
-        TierConfig c = TierTaggerCore.config();
-        src.sendFeedback(Text.literal("§6§l━━━━━━━━━ §f§lTierTagger Doctor §6§l━━━━━━━━━"));
-        src.sendFeedback(Text.literal(" §7mod§r: §av" + TierTaggerCore.MOD_VERSION
-            + "§r  §7player§r: §b" + r.username));
-        String uuidStr = r.uuidNoDash == null
-            ? "§cFAILED §7(Mojang/ashcon unreachable)"
-            : "§a" + r.uuidNoDash + " §8(" + r.uuidSource + ")";
-        src.sendFeedback(Text.literal(" §7uuid§r: " + uuidStr));
-        src.sendFeedback(Text.literal("§8─────────────────────────────────────"));
-        for (TierService svc : TierService.values()) {
-            TierCache.ServiceReport sr = r.services.get(svc);
-            String httpStr;
-            if (sr.httpStatus < 0)            httpStr = "§cERR ";
-            else if (sr.httpStatus / 100 == 2) httpStr = "§a" + sr.httpStatus;
-            else if (sr.httpStatus == 404)     httpStr = "§e404 ";
-            else                               httpStr = "§c" + sr.httpStatus;
-            String tierStr;
-            if (sr.errorMessage != null)       tierStr = "§c" + sr.errorMessage;
-            else if (sr.missing)               tierStr = "§8not listed";
-            else if (sr.parsedTier == null)    tierStr = "§8unranked";
-            else                               tierStr = "§" + TierTaggerCore.colourCodeFor(sr.parsedTier)
-                                                       + "§l" + sr.parsedTier;
-            src.sendFeedback(Text.literal(String.format(" §f%-12s §7HTTP §r%s §r %s §8(%dms)",
-                svc.displayName, httpStr, tierStr, sr.elapsedMs)));
-        }
-        src.sendFeedback(Text.literal("§8─────────────────────────────────────"));
-        src.sendFeedback(Text.literal(" §7config§r:"
-            + " showInTab=" + (c.showInTab ? "§aon" : "§coff")
-            + "§r showNametag=" + (c.showNametag ? "§aon" : "§coff")
-            + "§r leftService=§e" + c.leftService
-            + "§r rightService=§e" + c.rightService
-            + "§r (right " + (c.rightBadgeEnabled ? "§aon" : "§coff") + "§r)"));
-        src.sendFeedback(Text.literal("§7Copy this output into your bug report:"
-            + " §9https://github.com/blackdmega-wq/tiertagger/issues"));
     }
 
     // ---------- chat helpers ----------

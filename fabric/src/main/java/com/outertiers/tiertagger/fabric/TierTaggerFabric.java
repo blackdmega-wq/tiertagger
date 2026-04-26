@@ -42,5 +42,10 @@ public class TierTaggerFabric implements ClientModInitializer {
         } catch (Throwable t) {
             TierTaggerCore.LOGGER.warn("[TierTagger] command register failed: {}", t.toString());
         }
+        try {
+            TierChatDecorator.register();
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] chat decorator register failed: {}", t.toString());
+        }
     }
 }

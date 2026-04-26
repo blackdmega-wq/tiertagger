@@ -543,11 +543,16 @@ public class TierCompareScreen extends Screen {
      */
     private void drawHead(DrawContext ctx, String name, int x, int y,
                           int boxW, int boxH, boolean mirror) {
-        // Use mc-heads.net via SkinFetcher for ALL players (online + offline).
-        // The /body/ endpoint returns a 2D full-body render (~1:2.4 aspect)
-        // matching the OuterTiers website player cards. We honour the actual
-        // decoded image dimensions so the body keeps its real aspect — fit
-        // inside the box, centered horizontally, anchored to the bottom.
+        // v1.21.11.39: render the TOP HALF of the skin (head + chest +
+        // arms) cropped via UV math, scaled to fill the SQUARE box, and
+        // anchored to the bottom so its baseline (the waist cut) sits
+        // flush against the bottom edge of the box — no gap. The
+        // {@code mirror} flag is intentionally ignored: the matrix-mirror
+        // trick used in v1.21.11.37/38 was unreliable across the
+        // Matrix3x2fStack mapping shifts (which is why the right-hand
+        // skin sometimes vanished entirely). Both compare slots now
+        // render the same orientation, which the user explicitly
+        // accepted in the v1.21.11.39 brief.
         Optional<SkinFetcher.Skin> fetched = Optional.empty();
         try { fetched = SkinFetcher.skinFor(name); } catch (Throwable ignored) {}
         if (fetched.isPresent()) {
@@ -555,65 +560,38 @@ public class TierCompareScreen extends Screen {
                 SkinFetcher.Skin sk = fetched.get();
                 int iw = Math.max(1, sk.width);
                 int ih = Math.max(1, sk.height);
-                // Fit-inside scaling using the FULL image — head, chest,
-                // arms, legs all visible head-to-toe (no UV crop).
-                double sx = (double) boxW / iw;
-                double sy = (double) boxH / ih;
-                double scale = Math.min(sx, sy);
+                int halfH = Math.max(1, ih / 2);
+                // Fit-inside scaling for the TOP HALF (iw × halfH). The
+                // half-image aspect ≈ iw/halfH ≈ 2*iw/ih ≈ 0.83, so it
+                // sits comfortably inside a square box.
+                double scale = Math.min((double) boxW / iw, (double) boxH / halfH);
                 int dw = Math.max(1, (int) Math.floor(iw * scale));
-                int dh = Math.max(1, (int) Math.floor(ih * scale));
+                int dh = Math.max(1, (int) Math.floor(halfH * scale));
                 int dx = x + (boxW - dw) / 2;
-                int dy = y + (boxH - dh);     // anchor to bottom (feet down)
-                if (mirror) {
-                    // Horizontal flip via 2D matrix scale(-1, 1). MC 1.21.11+
-                    // exposes a Matrix3x2fStack (2D) on DrawContext, so we
-                    // use pushMatrix()/popMatrix() and the 2-arg translate/scale
-                    // methods. We translate to (dx+dw) first so the mirrored
-                    // image lands back in the same screen rect. Wrapped in
-                    // try/catch so a matrix-API mismatch on a future MC
-                    // version can't crash the screen — falls back to an
-                    // unmirrored draw.
-                    boolean pushed = false;
-                    try {
-                        ctx.getMatrices().pushMatrix();
-                        pushed = true;
-                        ctx.getMatrices().translate((float)(dx + dw), 0f);
-                        ctx.getMatrices().scale(-1f, 1f);
-                        Compat.drawTexture(ctx, sk.id, 0, dy, 0, 0, dw, dh, dw, dh);
-                    } catch (Throwable t) {
-                        try { Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh); }
-                        catch (Throwable ignored) {}
-                    } finally {
-                        if (pushed) {
-                            try { ctx.getMatrices().popMatrix(); } catch (Throwable ignored) {}
-                        }
-                    }
-                } else {
-                    Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh);
-                }
+                int dy = y + (boxH - dh);     // anchor to bottom (waist cut at floor)
+                // textureHeight = 2*dh tells MC the texture is twice the
+                // displayed height, so the (u=0, v=0, w=dw, h=dh) sub-rect
+                // samples only the TOP HALF of the source image.
+                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh * 2);
                 return;
             } catch (Throwable ignored) {}
         }
 
-        // Loading placeholder — still anchored to the bottom of the box
-        // and respecting the mirror flag, so the layout doesn't jump
-        // when the real skin finishes downloading.
+        // Loading placeholder — head + chest + arms only (matches the
+        // top-half crop), anchored to the bottom of the box so the
+        // layout doesn't shift when the real skin arrives.
         try {
-            int cx = x + boxW / 2;
-            int feetY = y + boxH;
-            int legH   = Math.max(6, boxH * 5 / 16);
-            int torsoH = Math.max(8, boxH * 6 / 16);
-            int headH  = Math.max(6, boxH * 4 / 16);
-            int torsoBot = feetY - legH;
-            int torsoTop = torsoBot - torsoH;
+            int cx     = x + boxW / 2;
+            int botY   = y + boxH;
+            int torsoH = Math.max(12, boxH * 9 / 16);
+            int headH  = Math.max(10, boxH * 7 / 16);
+            int torsoTop = botY - torsoH;
             int headBot  = torsoTop;
             int headTop  = headBot - headH;
-            ctx.fill(cx - 4, torsoBot, cx,     feetY,    0xFF1E2A45);
-            ctx.fill(cx,     torsoBot, cx + 4, feetY,    0xFF1E2A45);
-            ctx.fill(cx - 6, torsoTop, cx + 6, torsoBot, 0xFF4A6FA5);
-            ctx.fill(cx - 9, torsoTop, cx - 6, torsoBot, 0xFFB78462);
-            ctx.fill(cx + 6, torsoTop, cx + 9, torsoBot, 0xFFB78462);
-            ctx.fill(cx - 4, headTop,  cx + 4, headBot,  0xFFB78462);
+            ctx.fill(cx - 8, torsoTop, cx + 8, botY,     0xFF4A6FA5);
+            ctx.fill(cx - 12, torsoTop, cx - 8, botY,    0xFFB78462);
+            ctx.fill(cx + 8,  torsoTop, cx + 12, botY,   0xFFB78462);
+            ctx.fill(cx - 6, headTop,  cx + 6, headBot,  0xFFB78462);
         } catch (Throwable ignored) {}
     }
 

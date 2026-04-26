@@ -8,6 +8,7 @@ import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
 import com.outertiers.tiertagger.fabric.BadgeRenderer;
 import com.outertiers.tiertagger.fabric.SkinFetcher;
+import com.outertiers.tiertagger.fabric.TierKeybinds;
 import com.outertiers.tiertagger.fabric.compat.Compat;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -24,6 +25,8 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.Util;
+
+import java.util.Set;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -138,6 +141,17 @@ public class TierConfigScreen extends Screen {
      * or the OuterTiers logo texture overlaid on top of the vanilla button.
      */
     private final List<Object[]> headerLinks = new ArrayList<>();
+
+    /**
+     * Identity-set of header link {@link ButtonWidget}s. Used by
+     * {@link #clipScrollableWidgets()} to exempt the Discord / OuterTiers /
+     * Linktree buttons from the body-clip — they sit at y &lt; bodyTop so
+     * the strict containment check would otherwise mark them invisible /
+     * inactive (which is the v1.21.11.38 bug where the header link
+     * buttons looked clickable but did nothing).
+     */
+    private final Set<ClickableWidget> pinnedWidgets =
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
 
     /** Identifier for the bundled OuterTiers logo PNG used in the header. */
     private static final Identifier OT_LOGO = Identifier.of("tiertagger", "textures/logo/outertiers.png");
@@ -273,6 +287,7 @@ public class TierConfigScreen extends Screen {
                 continue;
             }
             headerLinks.add(new Object[]{ btn, color, label, tx });
+            pinnedWidgets.add(btn);
         }
     }
 
@@ -375,6 +390,7 @@ public class TierConfigScreen extends Screen {
         maxRowUsed = 0;
         iconOverlays.clear();
         headerLinks.clear();
+        pinnedWidgets.clear();
         // Disable preview by default; only the Tiers Config tab (and its
         // Advanced Settings sub-screen) re-enables it by setting positive
         // bounds at the end of its builder.
@@ -469,6 +485,17 @@ public class TierConfigScreen extends Screen {
         for (net.minecraft.client.gui.Element el : this.children()) {
             if (!(el instanceof ClickableWidget cw)) continue;
             int wy = cw.getY();
+            // Pinned widgets (header link buttons) live OUTSIDE the body
+            // viewport by design — they sit in the title strip at y=12
+            // which is well above bodyTop. Without this exemption the
+            // strict containment check below sets them visible=false
+            // AND active=false, so the user sees the brand-coloured square
+            // (drawn manually in render()) but every click is dropped.
+            if (pinnedWidgets.contains(cw)) {
+                cw.visible = true;
+                cw.active  = true;
+                continue;
+            }
             if (wy == TAB_STRIP_TOP) continue;        // tab strip — always live
             if (wy == bottomY)        continue;        // bottom action bar — always live
             int wh = cw.getHeight();
@@ -815,7 +842,29 @@ public class TierConfigScreen extends Screen {
                     (b, v) -> { cfg.autoKitDetect = v; cfg.save(); });
             addTipped(w,
                 "Tiers will always scan your inventory to display the right gamemode " +
-                "(instead of having to press 'Z' / 'I').");
+                "(instead of having to press 'I').");
+        });
+        rRef[0]++;
+
+        // ── Row 4b: Cycle-mode keybind picker ─────────────────────────────
+        // Small in-config picker so the user can re-bind the "cycle right
+        // gamemode" key without diving into vanilla Controls. Default is
+        // 'I'; the value is persisted in Minecraft's options.txt
+        // automatically by KeyBinding#setBoundKey (see TierKeybinds).
+        final int rowKeyY = rowY(rRef[0]);
+        safeAdd("cycleKey", () -> {
+            int currentCode = TierKeybinds.getCycleKeyCode();
+            List<Integer> keys = TierKeybinds.commonKeyCodes(currentCode);
+            ClickableWidget w = CyclingButtonWidget.<Integer>builder(
+                    code -> Text.literal(TierKeybinds.keyLabel(code)),
+                    currentCode)
+                .values(keys)
+                .build(rowX(), rowKeyY, rowW(), BTN_H,
+                    Text.literal("Cycle Mode Key"),
+                    (b, v) -> { try { TierKeybinds.setCycleKeyCode(v); } catch (Throwable ignored) {} });
+            addTipped(w,
+                "Which key cycles the right-side gamemode in-game. " +
+                "Default is 'I'. You can also rebind this in Options \u2192 Controls \u2192 TierTagger.");
         });
         rRef[0]++;
 
@@ -1200,9 +1249,11 @@ public class TierConfigScreen extends Screen {
             int slotTop = previewY + topPad + tagBoxH + 4;
             int slotBot = previewY + previewH - bottomPad;
             int slotH   = Math.max(40, slotBot - slotTop);
-            // Body render is ≈ 1:2.4; pick a width that keeps that aspect
-            // (slightly wider than ih/2.4 so the arms have breathing room).
-            int slotW   = Math.max(36, slotH * 5 / 12);
+            // Body render is ≈ 1:2.4; v1.21.11.39 widens the slot so the
+            // user can see the full skin (head, body, legs) without the
+            // figure shrinking to a tiny silhouette in the middle of the
+            // preview card.
+            int slotW   = Math.max(56, slotH * 9 / 16);
             int slotX   = previewX + (previewW - slotW) / 2;
             int slotY   = slotTop;
 
@@ -1528,15 +1579,20 @@ public class TierConfigScreen extends Screen {
                 fillRect(ctx, aX1, aY + 1, aX2, aY + 2, ACCENT_SOFT);
             }
 
-            // 7. Scroll indicator.
+            // 7. Scroll indicator. Wider (6 px) and brighter than the
+            //    pre-v1.21.11.39 hairline so users actually notice the
+            //    Live Preview is below the fold and can be scrolled to.
             if (maxScroll > 0) {
-                int trackX  = panelX + panelW - 5;
+                int trackW = 6;
+                int trackX  = panelX + panelW - trackW - 2;
                 int trackTop = bodyTop;
                 int trackH  = bodyBottom - bodyTop;
-                fillRect(ctx, trackX, trackTop, trackX + 3, trackTop + trackH, 0x40FFFFFF);
-                int thumbH = Math.max(20, trackH * trackH / Math.max(1, trackH + maxScroll));
+                fillRect(ctx, trackX, trackTop, trackX + trackW, trackTop + trackH, 0x60000000);
+                outlineRect(ctx, trackX, trackTop, trackW, trackH, 0x80FFFFFF);
+                int thumbH = Math.max(24, trackH * trackH / Math.max(1, trackH + maxScroll));
                 int thumbY = trackTop + (int)((long)(trackH - thumbH) * scrollY / Math.max(1, maxScroll));
-                fillRect(ctx, trackX, thumbY, trackX + 3, thumbY + thumbH, 0xFFAAAAAA);
+                fillRect(ctx, trackX + 1, thumbY + 1, trackX + trackW - 1, thumbY + thumbH - 1, ACCENT);
+                outlineRect(ctx, trackX + 1, thumbY + 1, trackW - 2, thumbH - 2, 0xFFFFFFFF);
             }
 
             if (lastInitError != null) {

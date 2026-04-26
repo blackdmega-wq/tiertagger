@@ -484,16 +484,11 @@ public class TierProfileScreen extends Screen {
     // ── helpers ─────────────────────────────────────────────────────────────
 
     private void drawHead(DrawContext ctx, String name, int x, int y, int boxW, int boxH) {
-        // v1.21.11.37: TRANSPARENT square slot — no backdrop fill, no
-        // border plate. The skin keeps its natural aspect ratio inside
-        // the box and is anchored to the BOTTOM so the feet always
-        // touch the bottom edge (matches the new compare layout).
-
-        // Use mc-heads.net via SkinFetcher for ALL players (online + offline).
-        // The /body/ endpoint returns a 2D full-body render (~1:2.4 aspect).
-        // We honour the actual decoded image dimensions so the body keeps
-        // its real aspect — fit-inside the box, centered horizontally,
-        // anchored bottom.
+        // v1.21.11.39: render the TOP HALF of the skin (head + chest +
+        // arms) cropped via UV math, scaled to fill the SQUARE slot,
+        // anchored to the BOTTOM so the waist cut sits flush with the
+        // bottom edge of the box (no gap). Matches the new compare
+        // layout exactly.
         Optional<SkinFetcher.Skin> fetched = Optional.empty();
         try { fetched = SkinFetcher.skinFor(name); } catch (Throwable ignored) {}
         if (fetched.isPresent()) {
@@ -501,39 +496,33 @@ public class TierProfileScreen extends Screen {
                 SkinFetcher.Skin sk = fetched.get();
                 int iw = Math.max(1, sk.width);
                 int ih = Math.max(1, sk.height);
-                // Use the FULL image (no UV crop) so the user sees the
-                // full body head-to-toe, matching the OuterTiers cards.
-                double sx = (double) boxW / iw;
-                double sy = (double) boxH / ih;
-                double scale = Math.min(sx, sy);
+                int halfH = Math.max(1, ih / 2);
+                double scale = Math.min((double) boxW / iw, (double) boxH / halfH);
                 int dw = Math.max(1, (int) Math.floor(iw * scale));
-                int dh = Math.max(1, (int) Math.floor(ih * scale));
+                int dh = Math.max(1, (int) Math.floor(halfH * scale));
                 int dx = x + (boxW - dw) / 2;
-                int dy = y + (boxH - dh);   // anchor to bottom (feet down)
-                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh);
+                int dy = y + (boxH - dh);   // anchor to bottom
+                // textureHeight = 2*dh tells MC the texture is twice as
+                // tall as the drawn rect, so we sample only the TOP HALF.
+                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh * 2);
                 return;
             } catch (Throwable ignored) {}
         }
 
-        // Loading placeholder — head + torso + arms + legs anchored to the
-        // bottom of the slot, so the layout stays stable when the real
-        // skin finishes downloading.
+        // Loading placeholder — head + chest + arms (top-half preview),
+        // anchored to the bottom edge.
         try {
-            int cx = x + boxW / 2;
-            int feetY = y + boxH;
-            int legH   = Math.max(6, boxH * 5 / 16);
-            int torsoH = Math.max(8, boxH * 6 / 16);
-            int headH  = Math.max(6, boxH * 4 / 16);
-            int torsoBot = feetY - legH;
-            int torsoTop = torsoBot - torsoH;
+            int cx     = x + boxW / 2;
+            int botY   = y + boxH;
+            int torsoH = Math.max(12, boxH * 9 / 16);
+            int headH  = Math.max(10, boxH * 7 / 16);
+            int torsoTop = botY - torsoH;
             int headBot  = torsoTop;
             int headTop  = headBot - headH;
-            ctx.fill(cx - 4, torsoBot, cx,     feetY,    0xFF1E2A45);
-            ctx.fill(cx,     torsoBot, cx + 4, feetY,    0xFF1E2A45);
-            ctx.fill(cx - 6, torsoTop, cx + 6, torsoBot, 0xFF4A6FA5);
-            ctx.fill(cx - 9, torsoTop, cx - 6, torsoBot, 0xFFB78462);
-            ctx.fill(cx + 6, torsoTop, cx + 9, torsoBot, 0xFFB78462);
-            ctx.fill(cx - 4, headTop,  cx + 4, headBot,  0xFFB78462);
+            ctx.fill(cx - 8, torsoTop, cx + 8, botY,     0xFF4A6FA5);
+            ctx.fill(cx - 12, torsoTop, cx - 8, botY,    0xFFB78462);
+            ctx.fill(cx + 8,  torsoTop, cx + 12, botY,   0xFFB78462);
+            ctx.fill(cx - 6, headTop,  cx + 6, headBot,  0xFFB78462);
         } catch (Throwable ignored) {}
     }
 
