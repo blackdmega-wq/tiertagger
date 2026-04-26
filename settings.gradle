@@ -1,3 +1,15 @@
+// Build target switching: BUILD_TARGET env var selects which Fabric module
+// (and which Loom plugin) is configured. This is critical because:
+//   • the legacy `fabric-loom` plugin needed for the :fabric module pins
+//     Gradle 8.14 and Java 21, but
+//   • the modern `net.fabricmc.fabric-loom` plugin needed for :fabric-modern
+//     pins Gradle 9.4+ and Java 25.
+// Pulling both plugins into ONE Gradle invocation tries to satisfy both
+// constraint sets at once and fails with "no matching variant" — even with
+// configureondemand=true. Splitting per-build via env var keeps each
+// invocation single-purpose.
+def target = (System.getenv('BUILD_TARGET') ?: 'fabric').trim()
+
 pluginManagement {
     repositories {
         maven { url = 'https://maven.fabricmc.net/' }
@@ -5,18 +17,23 @@ pluginManagement {
         mavenCentral()
     }
     plugins {
-        // Legacy Yarn-based Loom for MC 1.21.x. Version selected per-MC by
-        // build-release.yml via -Ploom_version=... ; default for local dev is
-        // taken from gradle.properties (loom_version).
-        id 'fabric-loom' version "${loom_version}"
-        // Modern non-remapping Loom for MC 26.1+ (year.drop.hotfix unobfuscated).
-        // Version is in gradle.properties (loom_modern_version).
-        id 'net.fabricmc.fabric-loom' version "${loom_modern_version}"
+        if (target == 'fabric') {
+            // Legacy Yarn-based Loom for MC 1.21.x. Loom version is selected
+            // per-MC by build-release.yml via -Ploom_version=... ; default
+            // for local dev is taken from gradle.properties (loom_version).
+            id 'fabric-loom' version "${loom_version}"
+        } else if (target == 'fabric-modern') {
+            // Modern non-remapping Loom for MC 26.1+ (year.drop.hotfix unobfuscated).
+            id 'net.fabricmc.fabric-loom' version "${loom_modern_version}"
+        }
     }
 }
 
 rootProject.name = 'tiertagger'
 
 include 'common'
-include 'fabric'
-include 'fabric-modern'
+if (target == 'fabric') {
+    include 'fabric'
+} else if (target == 'fabric-modern') {
+    include 'fabric-modern'
+}

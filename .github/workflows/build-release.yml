@@ -18,6 +18,13 @@ jobs:
   build:
     name: ${{ matrix.loader }} · MC ${{ matrix.mc }}
     runs-on: ubuntu-latest
+    env:
+      # Tells settings.gradle which subproject + Loom plugin to configure.
+      # Without this, settings.gradle would try to resolve BOTH the legacy
+      # `fabric-loom` (Gradle 8.14 / Java 21) and the modern
+      # `net.fabricmc.fabric-loom` (Gradle 9.4+ / Java 25) plugins in a
+      # single Gradle invocation, which fails with "no matching variant".
+      BUILD_TARGET: ${{ matrix.module }}
     strategy:
       fail-fast: false
       matrix:
