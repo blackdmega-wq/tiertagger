@@ -30,6 +30,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 
 /**
  * TierTagger settings screen.
@@ -112,6 +113,18 @@ public class TierConfigScreen extends Screen {
      *  every service so {@link BadgeRenderer#wrapNametag} always has something
      *  to display regardless of which left/right service the user picks. */
     private static volatile PlayerData PREVIEW_DATA = null;
+
+    /**
+     * Image-icon overlays drawn on top of plain {@link ButtonWidget}s after
+     * {@code super.render(...)}. Each entry is {@code [button, itemStack, dimmedSupplier]}
+     * — the supplier may be {@code null} for "always-on" action buttons
+     * (e.g. reload cache). Subclassing {@code ButtonWidget} directly to add
+     * the icon doesn't work cleanly across MC 1.21.5+ because the
+     * {@code drawIcon} abstract method and the nested {@code ButtonWidget.Text}
+     * type shadow the {@code net.minecraft.text.Text} import — overlay-after
+     * is the simplest cross-version-friendly approach.
+     */
+    private final List<Object[]> iconOverlays = new ArrayList<>();
 
     public TierConfigScreen(Screen parent) {
         super(Text.literal("TierTagger \u2014 Settings"));
@@ -256,6 +269,7 @@ public class TierConfigScreen extends Screen {
         sectionHeaders.clear();
         sectionHeadersText.clear();
         maxRowUsed = 0;
+        iconOverlays.clear();
         // Disable preview by default; only the Tiers Config tab (and its
         // Advanced Settings sub-screen) re-enables it by setting positive
         // bounds at the end of its builder.
@@ -720,21 +734,17 @@ public class TierConfigScreen extends Screen {
         // [Clock] Reload tier cache.
         safeAdd("reloadCache", () -> {
             int x = rowX();
-            ClickableWidget w = new ItemIconButton(
-                    x, iconRowY, iconBtnW, iconBtnH,
-                    new ItemStack(Items.CLOCK), null,
-                    Text.literal("Reload tier cache"),
-                    b -> { try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {} });
-            addTipped(w, "Reload the tier cache.");
+            ButtonWidget btn = ButtonWidget.builder(Text.empty(),
+                    b -> { try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {} })
+                .dimensions(x, iconRowY, iconBtnW, iconBtnH).build();
+            iconOverlays.add(new Object[]{ btn, new ItemStack(Items.CLOCK), null });
+            addTipped(btn, "Reload the tier cache.");
         });
 
         // [Ender Eye] Cycle active right gamemode (in-game "I" hotkey).
         safeAdd("cycleRightMode", () -> {
             int x = rowX() + (iconBtnW + iconGap);
-            ClickableWidget w = new ItemIconButton(
-                    x, iconRowY, iconBtnW, iconBtnH,
-                    new ItemStack(Items.ENDER_EYE), null,
-                    Text.literal("Cycle right gamemode"),
+            ButtonWidget btn = ButtonWidget.builder(Text.empty(),
                     b -> {
                         TierService rightSvc = cfg.rightServiceEnum();
                         if (rightSvc == null) return;
@@ -746,58 +756,57 @@ public class TierConfigScreen extends Screen {
                         cfg.rightMode = modes.get((idx < 0 ? 0 : (idx + 1) % modes.size()));
                         cfg.save();
                         rebuildKeepingScroll();
-                    });
-            addTipped(w, "Cycle the active right gamemode (press 'I' in game).");
+                    })
+                .dimensions(x, iconRowY, iconBtnW, iconBtnH).build();
+            iconOverlays.add(new Object[]{ btn, new ItemStack(Items.ENDER_EYE), null });
+            addTipped(btn, "Cycle the active right gamemode (press 'I' in game).");
         });
 
         // [Iron Sword] Gamemode-icon visibility toggle.
         safeAdd("toggleGameModeIcon", () -> {
             int x = rowX() + 2 * (iconBtnW + iconGap);
-            ClickableWidget w = new ItemIconButton(
-                    x, iconRowY, iconBtnW, iconBtnH,
-                    new ItemStack(Items.IRON_SWORD),
-                    () -> cfg.disableIcons || !cfg.showModeIcon,
-                    Text.literal("Toggle gamemode icon"),
+            ButtonWidget btn = ButtonWidget.builder(Text.empty(),
                     b -> {
                         boolean nowOn = !(!cfg.disableIcons && cfg.showModeIcon);
                         cfg.disableIcons = !nowOn;
                         cfg.showModeIcon = nowOn;
                         cfg.save();
                         rebuildKeepingScroll();
-                    });
-            addTipped(w, "Show / hide the small gamemode icon next to the tier.");
+                    })
+                .dimensions(x, iconRowY, iconBtnW, iconBtnH).build();
+            BooleanSupplier dim = () -> cfg.disableIcons || !cfg.showModeIcon;
+            iconOverlays.add(new Object[]{ btn, new ItemStack(Items.IRON_SWORD), dim });
+            addTipped(btn, "Show / hide the small gamemode icon next to the tier.");
         });
 
         // [Paper] Tab-list visibility toggle.
         safeAdd("toggleTablist", () -> {
             int x = rowX() + 3 * (iconBtnW + iconGap);
-            ClickableWidget w = new ItemIconButton(
-                    x, iconRowY, iconBtnW, iconBtnH,
-                    new ItemStack(Items.PAPER),
-                    () -> !cfg.showInTab,
-                    Text.literal("Toggle tab list tiers"),
+            ButtonWidget btn = ButtonWidget.builder(Text.empty(),
                     b -> {
                         cfg.showInTab = !cfg.showInTab;
                         cfg.save();
                         rebuildKeepingScroll();
-                    });
-            addTipped(w, "Show / hide Tiers on the tab list.");
+                    })
+                .dimensions(x, iconRowY, iconBtnW, iconBtnH).build();
+            BooleanSupplier dim = () -> !cfg.showInTab;
+            iconOverlays.add(new Object[]{ btn, new ItemStack(Items.PAPER), dim });
+            addTipped(btn, "Show / hide Tiers on the tab list.");
         });
 
         // [Writable Book] Chat visibility toggle.
         safeAdd("toggleChat", () -> {
             int x = rowX() + 4 * (iconBtnW + iconGap);
-            ClickableWidget w = new ItemIconButton(
-                    x, iconRowY, iconBtnW, iconBtnH,
-                    new ItemStack(Items.WRITABLE_BOOK),
-                    () -> cfg.disableInChat,
-                    Text.literal("Toggle chat tiers"),
+            ButtonWidget btn = ButtonWidget.builder(Text.empty(),
                     b -> {
                         cfg.disableInChat = !cfg.disableInChat;
                         cfg.save();
                         rebuildKeepingScroll();
-                    });
-            addTipped(w, "Show / hide Tiers in chat.");
+                    })
+                .dimensions(x, iconRowY, iconBtnW, iconBtnH).build();
+            BooleanSupplier dim = () -> cfg.disableInChat;
+            iconOverlays.add(new Object[]{ btn, new ItemStack(Items.WRITABLE_BOOK), dim });
+            addTipped(btn, "Show / hide Tiers in chat.");
         });
 
         // The icon row uses iconBtnH (28 px) which is taller than ROW_H (24 px),
@@ -1209,6 +1218,40 @@ public class TierConfigScreen extends Screen {
             //    by the title strip / tab strip below.
             super.render(ctx, mouseX, mouseY, delta);
 
+            // 3a. Image-icon overlays for the 5 action buttons (reload /
+            //     cycle / G / T / C). The buttons themselves render with an
+            //     empty label; we paint the vanilla item icon centered over
+            //     the button face here, then overlay a translucent dimmer
+            //     + red diagonal slash for OFF toggles. This sidesteps the
+            //     PressableWidget#drawIcon abstract-method requirement and
+            //     the ButtonWidget$Text nested-type shadowing issues that
+            //     made a clean ButtonWidget subclass impractical across MC
+            //     1.21.5+ Yarn mappings.
+            try {
+                for (Object[] oo : iconOverlays) {
+                    ButtonWidget btn = (ButtonWidget) oo[0];
+                    ItemStack stack = (ItemStack) oo[1];
+                    BooleanSupplier dim = (BooleanSupplier) oo[2];
+                    if (btn == null || stack == null || stack.isEmpty()) continue;
+                    int ix = btn.getX() + (btn.getWidth()  - 16) / 2;
+                    int iy = btn.getY() + (btn.getHeight() - 16) / 2;
+                    ctx.drawItem(stack, ix, iy);
+                    if (dim != null && dim.getAsBoolean()) {
+                        // Translucent grey wash over the icon.
+                        ctx.fill(btn.getX() + 1, btn.getY() + 1,
+                                 btn.getX() + btn.getWidth()  - 1,
+                                 btn.getY() + btn.getHeight() - 1,
+                                 0xA00C0F14);
+                        // Diagonal red "/" so the OFF state reads at a glance.
+                        int x1 = btn.getX() + 4;
+                        int y1 = btn.getY() + btn.getHeight() - 5;
+                        int x2 = btn.getX() + btn.getWidth() - 4;
+                        int y2 = btn.getY() + 4;
+                        drawDiagonalSlash(ctx, x1, y1, x2, y2, 0xFFE74C3C);
+                    }
+                }
+            } catch (Throwable ignored) {}
+
             // 3b. Live nametag preview (Tiers Config tab only). Drawn AFTER
             //     widgets so its translucent backdrop sits on top of any
             //     buttons whose body region overlaps the preview slot.
@@ -1352,6 +1395,25 @@ public class TierConfigScreen extends Screen {
 
     private static void fillRect(DrawContext ctx, int x1, int y1, int x2, int y2, int argb) {
         try { ctx.fill(x1, y1, x2, y2, argb); } catch (Throwable ignored) {}
+    }
+
+    /**
+     * Draws a 1-pixel-wide diagonal line from (x0,y0) to (x1,y1) by stamping
+     * single-pixel rects along a Bresenham trace. Used to overlay a red "/"
+     * slash on OFF toggle buttons so users can read their state at a glance.
+     */
+    private static void drawDiagonalSlash(DrawContext ctx, int x0, int y0, int x1, int y1, int argb) {
+        int dx =  Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+        int dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+        int err = dx + dy;
+        int x = x0, y = y0;
+        for (int safety = 0; safety < 2048; safety++) {
+            try { ctx.fill(x, y, x + 1, y + 1, argb); } catch (Throwable ignored) {}
+            if (x == x1 && y == y1) break;
+            int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; x += sx; }
+            if (e2 <= dx) { err += dx; y += sy; }
+        }
     }
 
     private static void outlineRect(DrawContext ctx, int x, int y, int w, int h, int argb) {
