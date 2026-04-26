@@ -565,24 +565,27 @@ public class TierCompareScreen extends Screen {
                 int dx = x + (boxW - dw) / 2;
                 int dy = y + (boxH - dh);     // anchor to bottom (feet down)
                 if (mirror) {
-                    // Horizontal flip via matrix scale(-1,1,1). We translate
-                    // to (dx+dw, dy) first so the mirrored image lands back
-                    // in the same screen rect. Wrapped in try/catch so a
-                    // matrix-API mismatch on a future MC version can't
-                    // crash the screen — falls back to an unmirrored draw.
+                    // Horizontal flip via 2D matrix scale(-1, 1). MC 1.21.11+
+                    // exposes a Matrix3x2fStack (2D) on DrawContext, so we
+                    // use pushMatrix()/popMatrix() and the 2-arg translate/scale
+                    // methods. We translate to (dx+dw) first so the mirrored
+                    // image lands back in the same screen rect. Wrapped in
+                    // try/catch so a matrix-API mismatch on a future MC
+                    // version can't crash the screen — falls back to an
+                    // unmirrored draw.
                     boolean pushed = false;
                     try {
-                        ctx.getMatrices().push();
+                        ctx.getMatrices().pushMatrix();
                         pushed = true;
-                        ctx.getMatrices().translate(dx + dw, 0f, 0f);
-                        ctx.getMatrices().scale(-1f, 1f, 1f);
+                        ctx.getMatrices().translate((float)(dx + dw), 0f);
+                        ctx.getMatrices().scale(-1f, 1f);
                         Compat.drawTexture(ctx, sk.id, 0, dy, 0, 0, dw, dh, dw, dh);
                     } catch (Throwable t) {
                         try { Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh); }
                         catch (Throwable ignored) {}
                     } finally {
                         if (pushed) {
-                            try { ctx.getMatrices().pop(); } catch (Throwable ignored) {}
+                            try { ctx.getMatrices().popMatrix(); } catch (Throwable ignored) {}
                         }
                     }
                 } else {
