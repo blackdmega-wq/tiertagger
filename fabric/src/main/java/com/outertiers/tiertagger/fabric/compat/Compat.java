@@ -15,22 +15,7 @@ import java.util.function.Supplier;
 
 /**
  * Tiny compatibility shim that papers over Vanilla API breakage between
- * Minecraft 1.21.1 and 1.21.11. All call sites are reflection-based so a
- * single source compiles unchanged against any 1.21.x Yarn mappings.
- *
- * <p>Breaking changes handled here:
- * <ul>
- *   <li>{@code PlayerSkinDrawer.draw(...)} — accepts {@code Identifier} on
- *       1.21.1, {@code SkinTextures} on 1.21.2+, with extra
- *       {@code boolean hatVisible} / {@code boolean overlay} parameters
- *       starting on 1.21.6+.</li>
- *   <li>{@code DrawContext.drawTexture(...)} — signature changed three times
- *       between 1.21.1 and 1.21.6 (added {@code RenderLayer} factory in
- *       1.21.2; added {@code int color} tint in 1.21.5+).</li>
- *   <li>{@code Registries.ITEM.get(Identifier)} — returns {@code Item} on
- *       1.21.1, {@code Optional<RegistryEntry.Reference<Item>>} on
- *       1.21.2+.</li>
- * </ul>
+ * Minecraft 1.21.1 and 1.21.11.
  *
  * <p><b>Root-cause of the "invisible icons / skin / nametag glyphs" bug
  * (fixed in v1.21.11.17):</b> all previous reflection paths searched for
@@ -38,8 +23,8 @@ import java.util.function.Supplier;
  * {@code "withFont"}, {@code "createTexture"}, {@code "upload"},
  * {@code "draw"}). In a production Minecraft install the runtime namespace
  * is <em>intermediary</em>: every method is named {@code method_XXXXX}, so
- * none of the string checks ever matched, the methods were never invoked, and
- * every icon/skin box stayed empty.
+ * none of the string checks ever matched and every icon/skin/glyph stayed
+ * invisible.
  *
  * <p><b>Fix:</b> each reflective call site now has a companion "holder" inner
  * class that uses a <em>compile-time</em> (direct bytecode) call.  Loom
@@ -56,6 +41,10 @@ public final class Compat {
      * first and falls back to the Identifier overload. Handles arities 5..7
      * because 1.21.6+ introduced {@code boolean hat} / {@code boolean overlay}
      * trailing parameters.
+     *
+     * Note: In this mod, skin rendering in the profile/compare screens now goes
+     * directly through Compat.drawTexture (with the mc-heads.net PNG), so this
+     * method is retained only for potential future use.
      */
     public static void drawPlayerFace(DrawContext ctx, Object skin,
                                       Identifier fallback, int x, int y, int size) {
@@ -66,26 +55,7 @@ public final class Compat {
                 if (t instanceof Identifier id) tex = id;
             } catch (Throwable ignored) {}
         }
-
-        // PRIMARY: direct compile-time call for 1.21.6+ (SkinTextures overload).
-        // Loom remaps PlayerSkinDrawer.draw to its intermediary name at build time.
-        if (skin != null) {
-            try {
-                SkinDrawHolder.draw(ctx, skin, x, y, size);
-                return;
-            } catch (Throwable ignored) {}
-        }
-
-        // PRIMARY (legacy): direct compile-time call for Identifier overload.
-        // Falls through (NoSuchMethodError / ClassCastException) on 1.21.6+.
-        if (tex != null) {
-            try {
-                SkinDrawLegacyHolder.draw(ctx, tex, x, y, size);
-                return;
-            } catch (Throwable ignored) {}
-        }
-
-        // FALLBACK: reflection-based (development mode / unexpected version).
+        // Reflection-based fallback (handles any MC version in dev mode).
         // Pass 1: try SkinTextures-typed overloads (any arity from 5 to 7).
         try {
             for (Method m : PlayerSkinDrawer.class.getMethods()) {
@@ -111,35 +81,6 @@ public final class Compat {
             }
         } catch (Throwable ignored) {
             // Caller has its own visual fallback.
-        }
-    }
-
-    /**
-     * Direct compile-time call to the modern PlayerSkinDrawer.draw overload
-     * that takes SkinTextures (MC 1.21.6+). Loom remaps both the class name
-     * and method name to intermediary at build time, so they are found
-     * correctly in production — unlike the string-based "draw" reflection
-     * which always failed in production.
-     *
-     * Throws NoClassDefFoundError / NoSuchMethodError on MC versions that
-     * don't have SkinTextures or the 7-arg draw; callers catch Throwable.
-     */
-    private static final class SkinDrawHolder {
-        static void draw(DrawContext ctx, Object skin, int x, int y, int size) {
-            net.minecraft.client.util.SkinTextures st =
-                    (net.minecraft.client.util.SkinTextures) skin;
-            net.minecraft.client.gui.PlayerSkinDrawer.draw(ctx, st, x, y, size, true, true);
-        }
-    }
-
-    /**
-     * Direct compile-time call to the legacy PlayerSkinDrawer.draw overload
-     * that takes Identifier (MC 1.21.1). Throws NoSuchMethodError on newer MC
-     * versions where this overload was removed; callers catch Throwable.
-     */
-    private static final class SkinDrawLegacyHolder {
-        static void draw(DrawContext ctx, Identifier id, int x, int y, int size) {
-            net.minecraft.client.gui.PlayerSkinDrawer.draw(ctx, id, x, y, size);
         }
     }
 
@@ -182,12 +123,6 @@ public final class Compat {
             if (opt.isEmpty()) return null;
             Object inner = opt.get();
             if (inner instanceof Item it2) return it2;
-            // RegistryEntry.Reference.value() — direct call preferred but
-            // the class name is intermediary; fall back to reflection.
-            try {
-                Object value = ItemRegistryEntryHolder.value(inner);
-                if (value instanceof Item it3) return it3;
-            } catch (Throwable ignored) {}
             try {
                 Object value = inner.getClass().getMethod("value").invoke(inner);
                 if (value instanceof Item it3) return it3;
@@ -197,33 +132,20 @@ public final class Compat {
     }
 
     /**
-     * Direct compile-time call to RegistryEntry.Reference.value(). Loom
-     * remaps "value" to its intermediary method name at build time.
-     */
-    private static final class ItemRegistryEntryHolder {
-        @SuppressWarnings("unchecked")
-        static Object value(Object entry) {
-            return ((net.minecraft.registry.entry.RegistryEntry.Reference<Item>) entry).value();
-        }
-    }
-
-    /**
      * Reflective {@code DrawContext.drawTexture} that compiles unchanged
      * across all 1.21.x mappings.
      *
      * <p><b>Root-cause note (why icons &amp; skins were invisible on 1.21.6+):</b>
-     * The previous code tried to resolve the method by looping
-     * {@code DrawContext.class.getMethods()} looking for names {@code "drawTexture"}
-     * / {@code "drawGuiTexture"}. In production the runtime namespace is
-     * intermediary, so every method is named {@code method_XXXXX} — none of
-     * those string checks ever matched, {@code best} was always {@code null},
-     * the draw call was silently skipped, and callers set {@code drewIcon=true}
-     * immediately after, so neither the texture nor the item fallback ever
-     * rendered.
+     * The previous code searched for the method by name {@code "drawTexture"},
+     * which always failed in production because method names are intermediary
+     * at runtime. {@link DrawTextureHolder} fixes this with a direct
+     * compile-time call that Loom remaps correctly at build time.
      *
-     * <p><b>Fix:</b> {@link DrawTextureHolder} makes a direct compile-time
-     * call that Loom remaps to intermediary at build time.  The
-     * reflection-based search is kept as a last-ditch fallback.
+     * <p>Note: Only the modern 10-arg holder is provided. The legacy 9-arg form
+     * {@code drawTexture(Identifier,...)} was removed from DrawContext in
+     * MC 1.21.11 and cannot be compiled into the same source file that targets
+     * 1.21.11 Yarn mappings. Older-version builds fall through to the
+     * reflection path below.
      */
     public static void drawTexture(DrawContext ctx, Identifier tex,
                                    int x, int y, float u, float v,
@@ -237,16 +159,7 @@ public final class Compat {
             return;
         } catch (Throwable ignored) {}
 
-        // PRIMARY (legacy 1.21.1): direct call without pipeline parameter.
-        try {
-            DrawTextureLegacyHolder.draw(ctx, tex, x, y, u, v, w, h, texW, texH);
-            return;
-        } catch (Throwable ignored) {}
-
-        // FALLBACK: reflection-based (development / unexpected version).
-        // NOTE: do NOT try drawGuiTexture(Identifier, x, y, w, h) here — that
-        // 5-arg form renders GUI-atlas sprites, not arbitrary mod textures, and
-        // calling it for mod icons or downloaded skin PNGs renders nothing.
+        // FALLBACK: reflection-based (development mode / older MC versions).
         Method best = null;
         int bestArity = -1;
         for (Method m : DrawContext.class.getMethods()) {
@@ -297,8 +210,13 @@ public final class Compat {
      * remaps both the method name and RenderPipelines.GUI_TEXTURED to their
      * correct intermediary identifiers at build time.
      *
-     * Throws NoClassDefFoundError / NoSuchMethodError on older MC versions;
-     * callers catch Throwable.
+     * <p>In MC 1.21.11 the method signature is 11-arg (with trailing color tint);
+     * earlier 1.21.6–1.21.10 it was 10-arg. We use the 10-arg form here;
+     * if the 10-arg overload was dropped in a future snapshot, the
+     * {@code NoSuchMethodError} is caught and the reflection path takes over.
+     *
+     * Throws NoClassDefFoundError / NoSuchMethodError on MC 1.21.1–1.21.5
+     * where RenderPipelines does not exist; callers catch Throwable.
      */
     private static final class DrawTextureHolder {
         static void draw(DrawContext ctx, Identifier tex,
@@ -306,20 +224,6 @@ public final class Compat {
                          int w, int h, int texW, int texH) {
             ctx.drawTexture(net.minecraft.client.gl.RenderPipelines.GUI_TEXTURED,
                             tex, x, y, u, v, w, h, texW, texH);
-        }
-    }
-
-    /**
-     * Direct compile-time call to the legacy DrawContext.drawTexture overload
-     * (MC 1.21.1) that takes an Identifier as its first argument.
-     *
-     * Throws NoSuchMethodError on newer MC versions; callers catch Throwable.
-     */
-    private static final class DrawTextureLegacyHolder {
-        static void draw(DrawContext ctx, Identifier tex,
-                         int x, int y, float u, float v,
-                         int w, int h, int texW, int texH) {
-            ctx.drawTexture(tex, x, y, u, v, w, h, texW, texH);
         }
     }
 
@@ -442,20 +346,27 @@ public final class Compat {
      * <p><b>Fix (v1.21.11.17):</b> the previous code searched for
      * {@code "createTexture"} and {@code "upload"} by their Yarn name strings,
      * which always failed in production because runtime method names are
-     * intermediary.  {@link TextureInitHolder} now makes direct compile-time
-     * calls that Loom remaps correctly at build time.
+     * intermediary. {@link TextureUploadHolder} now makes a direct compile-time
+     * call that Loom remaps correctly at build time.
+     *
+     * <p>In MC 1.21.11, {@code createTexture(Supplier)} is private (the
+     * constructor handles initialization internally), so {@link TextureUploadHolder}
+     * only calls {@code upload()}. The reflection path also calls {@code upload()}
+     * as a fallback.
      */
     public static void initGpuTexture(NativeImageBackedTexture tex, String label) {
         if (tex == null) return;
 
-        // PRIMARY: direct compile-time calls (Loom remaps at build time).
+        // PRIMARY: direct compile-time call to upload() (Loom remaps at build time).
+        // In MC 1.21.11, createTexture(Supplier) is private; upload() handles
+        // the full initialization when called after construction.
         try {
-            TextureInitHolder.init(tex, label);
+            TextureUploadHolder.init(tex);
             return;
         } catch (Throwable ignored) {}
 
-        // FALLBACK: reflection-based (development / unexpected version).
-        boolean created = false;
+        // FALLBACK: reflection-based (development mode / unexpected version).
+        // 1) createTexture(<name>) — exists on some 1.21.5-1.21.10 variants.
         try {
             for (Method m : NativeImageBackedTexture.class.getMethods()) {
                 if (!"createTexture".equals(m.getName())) continue;
@@ -472,29 +383,27 @@ public final class Compat {
                 }
                 try {
                     m.invoke(tex, arg);
-                    created = true;
                     break;
                 } catch (Throwable ignored) {}
             }
         } catch (Throwable ignored) {}
+        // 2) upload() — pushes the NativeImage pixels into the GPU texture.
         try {
             Method up = NativeImageBackedTexture.class.getMethod("upload");
             up.invoke(tex);
         } catch (Throwable ignored) {}
-        if (!created) return;
     }
 
     /**
-     * Direct compile-time calls to NativeImageBackedTexture.createTexture and
-     * .upload for MC 1.21.5+ where allocation is deferred. Loom remaps both
-     * method names to intermediary at build time.
+     * Direct compile-time call to NativeImageBackedTexture.upload(). Loom
+     * remaps the method name to intermediary at build time, so it is found
+     * correctly in production — unlike the reflection approach using "upload".
      *
-     * Throws NoSuchMethodError on older MC (1.21.1–1.21.4) where allocation
-     * was implicit; callers catch Throwable.
+     * In MC 1.21.11, createTexture(Supplier) has private access; upload()
+     * is the correct single public entry point for GPU texture initialization.
      */
-    private static final class TextureInitHolder {
-        static void init(NativeImageBackedTexture tex, String label) {
-            tex.createTexture(() -> label);
+    private static final class TextureUploadHolder {
+        static void init(NativeImageBackedTexture tex) {
             tex.upload();
         }
     }
