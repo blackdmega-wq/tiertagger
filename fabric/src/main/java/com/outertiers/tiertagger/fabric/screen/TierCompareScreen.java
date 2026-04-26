@@ -221,12 +221,14 @@ public class TierCompareScreen extends Screen {
                               int x, int y, int w, int h) {
         fillRect(ctx, x, y, x + w, y + h, BG_HEADER);
 
-        // Body slots are roughly square — sized for the 3D-angled head
-        // render returned by mc-heads.net /head/ (~256×272, ≈1:1 aspect).
-        // The previous 1:2 tall slots were for the old flat /body/
-        // render which appeared as an unrecognisable silhouette here.
-        int bodyH      = h - 12;
-        int bodyW      = bodyH;
+        // Tall body slots — sized for the 3D-angled FULL body render
+        // returned by mc-heads.net /body/ (~256×624, ≈1:2.4 aspect). The
+        // user explicitly asked for the chest and arms to be visible
+        // looking diagonally to the side, so we allocate a portrait slot
+        // (≈ 1:2 aspect) for the player render. drawHead() preserves the
+        // image's real aspect inside this box, so the body never stretches.
+        int bodyH      = h - 8;
+        int bodyW      = Math.max(28, bodyH / 2);
         int leftHeadX  = x + 10;
         int rightHeadX = x + w - 10 - bodyW;
         int headY      = y + (h - bodyH) / 2;

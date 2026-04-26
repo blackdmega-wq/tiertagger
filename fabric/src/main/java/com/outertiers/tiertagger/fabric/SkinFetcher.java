@@ -26,14 +26,14 @@ import java.util.concurrent.Executors;
  * local player tab list).
  *
  * Implementation notes:
- *  - Uses {@code https://mc-heads.net/head/<name>/<size>.png} which returns
- *    a 3D rendered head at a 3/4 angle, with the hat overlay baked in
- *    (≈ 256x272 for size=256). This is the look the user asked for —
- *    the previous {@code /body/} and {@code /player/} endpoints both
- *    returned a flat 2D full-body render that came out as a barely
- *    visible silhouette in the small profile / compare panel slots
- *    (the skin pixels were so downscaled you couldn't see the face).
- *    The 3D head fills the slot and shows the actual skin clearly.
+ *  - Uses {@code https://mc-heads.net/body/<name>/<size>.png} which returns
+ *    a 3D rendered FULL BODY at a 3/4 angle, showing head + chest + arms +
+ *    legs all at once with the hat / outer-layer overlays baked in
+ *    (≈ 256x624 for size=256, native ~1:2.4 aspect). The user explicitly
+ *    asked for the chest and arms to be visible at a diagonal angle
+ *    (instead of the previous floating-head crop), so we draw the full
+ *    body render and the profile / compare slots are sized tall enough
+ *    to host the 1:2 aspect without crushing the skin.
  *    The natural image dimensions are read off the decoded
  *    {@link NativeImage} and cached alongside the texture so callers
  *    can scale the image with the correct aspect ratio (no stretching).
@@ -112,14 +112,15 @@ public final class SkinFetcher {
         if (!IN_FLIGHT.add(key)) return;
         CompletableFuture.runAsync(() -> {
             try {
-                // Head endpoint = 3D rendered head at a 3/4 angle with the
-                // hat overlay baked in (~256x272 at size=256). The user
-                // explicitly asked for the angled view — both /body/ and
-                // /player/ return the same flat 2D full-body render
-                // which, downscaled into the small profile/compare slot,
-                // looked like an unrecognisable silhouette. /head/ fills
-                // the slot at near 1:1 aspect and shows the skin clearly.
-                URI uri = URI.create("https://mc-heads.net/head/" + key + "/" + BODY_REQUEST_SIZE + ".png");
+                // /body/ endpoint = 3D rendered FULL body at a 3/4 angle
+                // with the hat / outer-layer overlays baked in (~256x624
+                // at size=256, native ≈1:2.4 aspect). The user explicitly
+                // asked for the chest and arms to be visible looking
+                // diagonally to the side, instead of the floating-head
+                // crop the /head/ endpoint produced. The profile and
+                // compare panels now allocate a tall enough slot for this
+                // body render so it scales in proportionally.
+                URI uri = URI.create("https://mc-heads.net/body/" + key + "/" + BODY_REQUEST_SIZE + ".png");
                 HttpRequest req = HttpRequest.newBuilder(uri)
                         .timeout(Duration.ofSeconds(15))
                         .header("User-Agent", "TierTagger/" + TierTaggerCore.MOD_VERSION)

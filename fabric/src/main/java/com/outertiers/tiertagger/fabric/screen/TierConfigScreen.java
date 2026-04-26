@@ -6,7 +6,9 @@ import com.outertiers.tiertagger.common.TierTaggerCore;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.gui.widget.CyclingButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
@@ -189,6 +191,29 @@ public class TierConfigScreen extends Screen {
         }
     }
 
+    /**
+     * Attach a hover tooltip to the most recently added widget (or any widget
+     * passed in). Tooltips render with Minecraft's vanilla purple-bordered
+     * panel — the same look the user requested in the screenshots — and only
+     * appear when the cursor lingers over the widget, so they stay out of the
+     * way during normal interaction.
+     *
+     * <p>Defensive: a null widget or a missing {@code setTooltip} method on
+     * older mappings is silently ignored so the screen still builds.
+     */
+    private static void tip(ClickableWidget w, String text) {
+        if (w == null || text == null || text.isEmpty()) return;
+        try { w.setTooltip(Tooltip.of(Text.literal(text))); }
+        catch (Throwable ignored) {}
+    }
+
+    /** Helper: add a widget AND attach a tooltip in one call. */
+    private <T extends ClickableWidget> T addTipped(T w, String tooltip) {
+        try { this.addDrawableChild(w); } catch (Throwable ignored) {}
+        tip(w, tooltip);
+        return w;
+    }
+
     private void addSectionHeader(int row, String text) {
         sectionHeaders.add(new int[]{ rowY(row) - 2, 0 });
         sectionHeadersText.add(text);
@@ -274,26 +299,30 @@ public class TierConfigScreen extends Screen {
         // there with a left/right arrow picker per service.
         addSectionHeader(rRef[0], "\u2014 General \u2014");
         rRef[0]++;
-        safeAdd("primaryService", () -> this.addDrawableChild(
-            CyclingButtonWidget.<TierService>builder(
+        safeAdd("primaryService", () -> {
+            ClickableWidget w = CyclingButtonWidget.<TierService>builder(
                     s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)),
                     cfg.primaryServiceEnum())
                 .values(TierService.values())
                 .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H,
                     Text.literal("Primary Service"),
-                    (b, v) -> { cfg.primaryService = v.id; cfg.save(); })));
+                    (b, v) -> { cfg.primaryService = v.id; cfg.save(); });
+            addTipped(w, "Which tierlist drives the single-tier helper " +
+                "(used by /tiertagger and the active service display).");
+        });
         safeAdd("displayMode", () -> {
             List<String> modes = new ArrayList<>();
             modes.add("highest");
             modes.addAll(TierService.allKnownModes());
             String initial = cfg.displayMode == null ? "highest" : cfg.displayMode.toLowerCase();
             if (!modes.contains(initial)) modes.add(initial);
-            this.addDrawableChild(
-                CyclingButtonWidget.<String>builder(s -> Text.literal(prettyMode(s)), initial)
+            ClickableWidget w = CyclingButtonWidget.<String>builder(s -> Text.literal(prettyMode(s)), initial)
                     .values(modes)
                     .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
                         Text.literal("Display Mode"),
-                        (b, v) -> { cfg.displayMode = v; cfg.save(); }));
+                        (b, v) -> { cfg.displayMode = v; cfg.save(); });
+            addTipped(w, "Choose which gamemode tier is shown by the primary service. " +
+                "'Highest' picks whichever mode the player ranks highest in.");
         });
         rRef[0]++;
 
@@ -305,12 +334,12 @@ public class TierConfigScreen extends Screen {
             for (String m : leftSvc.modes) if (!modes.contains(m)) modes.add(m);
             String initial = cfg.leftMode == null ? "highest" : cfg.leftMode.toLowerCase();
             if (!modes.contains(initial)) modes.add(initial);
-            this.addDrawableChild(
-                CyclingButtonWidget.<String>builder(s -> Text.literal(prettyMode(s)), initial)
+            ClickableWidget w = CyclingButtonWidget.<String>builder(s -> Text.literal(prettyMode(s)), initial)
                     .values(modes)
                     .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H,
                         Text.literal("Left Mode"),
-                        (b, v) -> { cfg.leftMode = v; cfg.save(); }));
+                        (b, v) -> { cfg.leftMode = v; cfg.save(); });
+            addTipped(w, "Which gamemode the LEFT badge reads its tier from.");
         });
         safeAdd("rightMode", () -> {
             TierService rightSvc = cfg.rightServiceEnum();
@@ -319,79 +348,109 @@ public class TierConfigScreen extends Screen {
             for (String m : rightSvc.modes) if (!modes.contains(m)) modes.add(m);
             String initial = cfg.rightMode == null ? "highest" : cfg.rightMode.toLowerCase();
             if (!modes.contains(initial)) modes.add(initial);
-            this.addDrawableChild(
-                CyclingButtonWidget.<String>builder(s -> Text.literal(prettyMode(s)), initial)
+            ClickableWidget w = CyclingButtonWidget.<String>builder(s -> Text.literal(prettyMode(s)), initial)
                     .values(modes)
                     .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
                         Text.literal("Right Mode"),
-                        (b, v) -> { cfg.rightMode = v; cfg.save(); }));
+                        (b, v) -> { cfg.rightMode = v; cfg.save(); });
+            addTipped(w, "Which gamemode the RIGHT badge reads its tier from.");
         });
         rRef[0]++;
 
         addSectionHeader(rRef[0], "\u2014 Where to Show \u2014");
         rRef[0]++;
-        safeAdd("showInTab", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showInTab)
-            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Tab Badges"),
-                (b, v) -> { cfg.showInTab = v; cfg.save(); })));
-        safeAdd("showNametag", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showNametag)
-            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Nametag (F5)"),
-                (b, v) -> { cfg.showNametag = v; cfg.save(); })));
+        safeAdd("showInTab", () -> {
+            ClickableWidget w = CyclingButtonWidget.onOffBuilder(cfg.showInTab)
+                .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Tab Badges"),
+                    (b, v) -> { cfg.showInTab = v; cfg.save(); });
+            addTipped(w, "Show tier badges next to player names in the tab list (TAB key).");
+        });
+        safeAdd("showNametag", () -> {
+            ClickableWidget w = CyclingButtonWidget.onOffBuilder(cfg.showNametag)
+                .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Nametag (F5)"),
+                    (b, v) -> { cfg.showNametag = v; cfg.save(); });
+            addTipped(w, "Show tier badges above players' heads in the world (third-person view).");
+        });
         rRef[0]++;
 
-        safeAdd("rightBadgeEnabled", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.rightBadgeEnabled)
-            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Dual Badges"),
-                (b, v) -> { cfg.rightBadgeEnabled = v; cfg.save(); })));
-        safeAdd("showPeak", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showPeak)
-            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Use Peak Tier"),
-                (b, v) -> { cfg.showPeak = v; cfg.save(); })));
+        safeAdd("rightBadgeEnabled", () -> {
+            ClickableWidget w = CyclingButtonWidget.onOffBuilder(cfg.rightBadgeEnabled)
+                .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Dual Badges"),
+                    (b, v) -> { cfg.rightBadgeEnabled = v; cfg.save(); });
+            addTipped(w, "Show two tier badges (one for each side's tierlist). When OFF, only the LEFT badge is shown.");
+        });
+        safeAdd("showPeak", () -> {
+            ClickableWidget w = CyclingButtonWidget.onOffBuilder(cfg.showPeak)
+                .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Use Peak Tier"),
+                    (b, v) -> { cfg.showPeak = v; cfg.save(); });
+            addTipped(w, "Show each player's all-time PEAK tier instead of their current tier.");
+        });
         rRef[0]++;
 
         addSectionHeader(rRef[0], "\u2014 Appearance \u2014");
         rRef[0]++;
-        safeAdd("coloredBadges", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.coloredBadges)
-            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Coloured Badges"),
-                (b, v) -> { cfg.coloredBadges = v; cfg.save(); })));
+        safeAdd("coloredBadges", () -> {
+            ClickableWidget w = CyclingButtonWidget.onOffBuilder(cfg.coloredBadges)
+                .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Coloured Badges"),
+                    (b, v) -> { cfg.coloredBadges = v; cfg.save(); });
+            addTipped(w, "Colour the tier text (HT1 = gold, HT2 = silver, …). When OFF, badges are plain white.");
+        });
         safeAdd("badgeFormat", () -> {
             List<String> formats = Arrays.asList(TierConfig.BADGE_FORMATS);
             String initialFormat = (cfg.badgeFormat == null || !formats.contains(cfg.badgeFormat))
                 ? "bracket" : cfg.badgeFormat;
-            this.addDrawableChild(
-                CyclingButtonWidget.<String>builder(Text::literal, initialFormat)
+            ClickableWidget w = CyclingButtonWidget.<String>builder(Text::literal, initialFormat)
                     .values(formats)
                     .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
                         Text.literal("Badge Format"),
-                        (b, v) -> { cfg.badgeFormat = v; cfg.save(); }));
+                        (b, v) -> { cfg.badgeFormat = v; cfg.save(); });
+            addTipped(w, "How the tier label is wrapped: bracket = [HT1], plain = HT1, short = HT1.");
         });
         rRef[0]++;
 
-        safeAdd("showServiceIcon", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showServiceIcon)
-            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Service Tag"),
-                (b, v) -> { cfg.showServiceIcon = v; cfg.save(); })));
-        safeAdd("modeIcons", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(!cfg.disableIcons && cfg.showModeIcon)
-            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Gamemode Icons"),
-                (b, v) -> { cfg.disableIcons = !v; cfg.showModeIcon = v; cfg.save(); })));
+        safeAdd("showServiceIcon", () -> {
+            ClickableWidget w = CyclingButtonWidget.onOffBuilder(cfg.showServiceIcon)
+                .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Service Tag"),
+                    (b, v) -> { cfg.showServiceIcon = v; cfg.save(); });
+            addTipped(w, "Prefix each badge with the tierlist's short name (OT, MC, PVP, SUB).");
+        });
+        safeAdd("modeIcons", () -> {
+            ClickableWidget w = CyclingButtonWidget.onOffBuilder(!cfg.disableIcons && cfg.showModeIcon)
+                .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Gamemode Icons"),
+                    (b, v) -> { cfg.disableIcons = !v; cfg.showModeIcon = v; cfg.save(); });
+            addTipped(w, "Show the gamemode icon (sword, axe, …) next to each tier on the profile screens.");
+        });
         rRef[0]++;
 
-        safeAdd("disableTiers", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(!cfg.disableTiers)
-            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Show Tier Text"),
-                (b, v) -> { cfg.disableTiers = !v; cfg.save(); })));
-        safeAdd("disableAnimations", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(!cfg.disableAnimations)
-            .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Animations"),
-                (b, v) -> { cfg.disableAnimations = !v; cfg.save(); })));
+        safeAdd("disableTiers", () -> {
+            ClickableWidget w = CyclingButtonWidget.onOffBuilder(!cfg.disableTiers)
+                .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Show Tier Text"),
+                    (b, v) -> { cfg.disableTiers = !v; cfg.save(); });
+            addTipped(w, "Master switch — when OFF, no tier badges appear anywhere.");
+        });
+        safeAdd("disableAnimations", () -> {
+            ClickableWidget w = CyclingButtonWidget.onOffBuilder(!cfg.disableAnimations)
+                .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Animations"),
+                    (b, v) -> { cfg.disableAnimations = !v; cfg.save(); });
+            addTipped(w, "Enable subtle fade / pulse animations on the badges.");
+        });
         rRef[0]++;
 
-        safeAdd("fallthrough", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.fallthroughToHighest)
-            .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Fallback to Highest"),
-                (b, v) -> { cfg.fallthroughToHighest = v; cfg.save(); })));
+        safeAdd("fallthrough", () -> {
+            ClickableWidget w = CyclingButtonWidget.onOffBuilder(cfg.fallthroughToHighest)
+                .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H, Text.literal("Fallback to Highest"),
+                    (b, v) -> { cfg.fallthroughToHighest = v; cfg.save(); });
+            addTipped(w, "If a player has no tier in the selected gamemode, fall back to their highest tier.");
+        });
         safeAdd("ttl", () -> {
             List<Integer> ttls = Arrays.asList(60, 180, 300, 600, 1800, 3600);
             int initial = ttls.contains(cfg.cacheTtlSeconds) ? cfg.cacheTtlSeconds : 300;
-            this.addDrawableChild(
-                CyclingButtonWidget.<Integer>builder(s -> Text.literal(prettyTtl(s)), initial)
+            ClickableWidget w = CyclingButtonWidget.<Integer>builder(s -> Text.literal(prettyTtl(s)), initial)
                     .values(ttls)
                     .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
                         Text.literal("Cache TTL"),
-                        (b, v) -> { cfg.cacheTtlSeconds = v; cfg.save(); }));
+                        (b, v) -> { cfg.cacheTtlSeconds = v; cfg.save(); });
+            addTipped(w, "How long a player's tier data is cached locally before being re-fetched.");
         });
         rRef[0]++;
 
@@ -402,34 +461,42 @@ public class TierConfigScreen extends Screen {
             final TierService svc = svcs[i];
             final int col = i % 2;
             if (col == 0 && i > 0) rRef[0]++;
-            safeAdd("svc:" + svc.id, () -> this.addDrawableChild(
-                CyclingButtonWidget.onOffBuilder(cfg.isServiceEnabled(svc))
+            safeAdd("svc:" + svc.id, () -> {
+                ClickableWidget w = CyclingButtonWidget.onOffBuilder(cfg.isServiceEnabled(svc))
                     .build(colX(col), rowY(rRef[0]), BTN_W, BTN_H,
                         Text.literal(svc.displayName).withColor(rgb(svc.accentArgb)),
                         (b, v) -> {
                             cfg.setServiceEnabled(svc, v);
                             cfg.save();
                             try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
-                        })));
+                        });
+                addTipped(w, "Fetch tier data from " + svc.displayName + ". Disable to skip this tierlist entirely.");
+            });
         }
         rRef[0]++;
 
         addSectionHeader(rRef[0], "\u2014 Mode Filters \u2014");
         rRef[0]++;
-        safeAdd("tabModes", () -> this.addDrawableChild(ButtonWidget.builder(
-                Text.literal("Tab Modes\u2026"),
-                b -> {
-                    MinecraftClient mc = this.client != null ? this.client : MinecraftClient.getInstance();
-                    if (mc != null) mc.setScreen(new ModeFilterScreen(this, true));
-                })
-            .dimensions(colX(0), rowY(rRef[0]), BTN_W, BTN_H).build()));
-        safeAdd("nametagModes", () -> this.addDrawableChild(ButtonWidget.builder(
-                Text.literal("Nametag Modes\u2026"),
-                b -> {
-                    MinecraftClient mc = this.client != null ? this.client : MinecraftClient.getInstance();
-                    if (mc != null) mc.setScreen(new ModeFilterScreen(this, false));
-                })
-            .dimensions(colX(1), rowY(rRef[0]), BTN_W, BTN_H).build()));
+        safeAdd("tabModes", () -> {
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal("Tab Modes\u2026"),
+                    b -> {
+                        MinecraftClient mc = this.client != null ? this.client : MinecraftClient.getInstance();
+                        if (mc != null) mc.setScreen(new ModeFilterScreen(this, true));
+                    })
+                .dimensions(colX(0), rowY(rRef[0]), BTN_W, BTN_H).build();
+            addTipped(w, "Pick which gamemodes contribute to the badge shown in the tab list.");
+        });
+        safeAdd("nametagModes", () -> {
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal("Nametag Modes\u2026"),
+                    b -> {
+                        MinecraftClient mc = this.client != null ? this.client : MinecraftClient.getInstance();
+                        if (mc != null) mc.setScreen(new ModeFilterScreen(this, false));
+                    })
+                .dimensions(colX(1), rowY(rRef[0]), BTN_W, BTN_H).build();
+            addTipped(w, "Pick which gamemodes contribute to the badge shown above player heads.");
+        });
         rRef[0]++;
     }
 
@@ -475,15 +542,306 @@ public class TierConfigScreen extends Screen {
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // Tab 2: Tiers Config — assign each service to Left / Right / nothing,
-    // with the constraint that Left ≠ Right (a service cannot occupy both
-    // badge slots at the same time).
+    // Tab 2: "Tiers Config" — v1.21.11.31 redesign matching the user-supplied
+    // screenshots (purple-bordered hover tooltips on every control).
+    //
+    //  Row 1 : [ Disable Tiers : ON/OFF ]   [G]  [T]  [C]
+    //          where the three small buttons are visibility toggles for the
+    //          gamemode icon, the tab list badge, and chat respectively.
+    //  Row 2 : [ Enable Dynamic Separator : ON/OFF ]
+    //  Row 3 : [ Displayed Tiers : Selected | Highest | Adaptive Highest ]
+    //  Row 4 : [ Enable auto kit detect : ON/OFF ]   [↻]  [◎]
+    //          where the small buttons reload the cache and cycle the active
+    //          right-side gamemode (the in-game "I" hotkey, surfaced here).
+    //  Logo  : large centred badge showing the currently-selected primary
+    //          service ("PvPTiers", "OuterTiers", …) painted in its accent
+    //          colour. Click to cycle through services.
+    //  Row 5 : [ ← ]   [ • ]   [ → ]
+    //          chooses where the active service tier badge is rendered
+    //          relative to the player nametag (left / centre / right).
+    //
+    // Each control gets a hover tooltip with the same wording as the
+    // screenshots, plus an "Advanced…" button at the bottom that takes the
+    // user to the legacy left/right service picker so the existing routing
+    // power-user features stay accessible.
     // ─────────────────────────────────────────────────────────────────────
     private void buildTiersConfigTab(TierConfig cfg) {
+        if (advancedRouting) {
+            buildAdvancedRoutingView(cfg);
+            return;
+        }
         final int[] rRef = { 0 };
-        TierService[] svcs = TierService.values();
 
-        // ── Header showing the current Left / Right assignment ────────────
+        // ── Row 1: Disable Tiers + 3 icon toggles ─────────────────────────
+        final int row1y = rowY(rRef[0]);
+        final int iconBtnW = 32;
+        final int iconGap = 4;
+        final int mainBtnW = rowW() - 3 * (iconBtnW + iconGap);
+
+        safeAdd("disableTiers", () -> {
+            ClickableWidget w = CyclingButtonWidget
+                .onOffBuilder(!cfg.disableTiers)
+                .build(rowX(), row1y, mainBtnW, BTN_H,
+                    Text.literal("Disable Tiers"),
+                    (b, v) -> { cfg.disableTiers = !v; cfg.save(); });
+            addTipped(w, "Toggle the entire tier display. When OFF, no tier badges appear anywhere.");
+        });
+
+        // [G] Gamemode-icon toggle.
+        safeAdd("toggleGameModeIcon", () -> {
+            int x = rowX() + mainBtnW + iconGap;
+            boolean on = !cfg.disableIcons && cfg.showModeIcon;
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal(on ? "\u00a7a\u26ED" : "\u00a77\u26ED"),
+                    b -> {
+                        boolean nowOn = !(!cfg.disableIcons && cfg.showModeIcon);
+                        cfg.disableIcons = !nowOn;
+                        cfg.showModeIcon = nowOn;
+                        cfg.save();
+                        rebuildKeepingScroll();
+                    })
+                .dimensions(x, row1y, iconBtnW, BTN_H)
+                .build();
+            addTipped(w, "Disable the gamemode icon next to the tier.");
+        });
+
+        // [T] Tab-list visibility toggle.
+        safeAdd("toggleTablist", () -> {
+            int x = rowX() + mainBtnW + iconGap + (iconBtnW + iconGap);
+            boolean on = cfg.showInTab;
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal(on ? "\u00a7a\u2630" : "\u00a77\u2630"),
+                    b -> {
+                        cfg.showInTab = !cfg.showInTab;
+                        cfg.save();
+                        rebuildKeepingScroll();
+                    })
+                .dimensions(x, row1y, iconBtnW, BTN_H)
+                .build();
+            addTipped(w, "Disable Tiers on the tablist.");
+        });
+
+        // [C] Chat visibility toggle.
+        safeAdd("toggleChat", () -> {
+            int x = rowX() + mainBtnW + iconGap + 2 * (iconBtnW + iconGap);
+            boolean on = !cfg.disableInChat;
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal(on ? "\u00a7a\u270E" : "\u00a77\u270E"),
+                    b -> {
+                        cfg.disableInChat = !cfg.disableInChat;
+                        cfg.save();
+                        rebuildKeepingScroll();
+                    })
+                .dimensions(x, row1y, iconBtnW, BTN_H)
+                .build();
+            addTipped(w, "Disable Tiers in chat.");
+        });
+
+        rRef[0]++;
+
+        // ── Row 2: Enable Dynamic Separator (full width) ──────────────────
+        final int row2y = rowY(rRef[0]);
+        safeAdd("dynamicSeparator", () -> {
+            ClickableWidget w = CyclingButtonWidget
+                .onOffBuilder(cfg.dynamicSeparator)
+                .build(rowX(), row2y, rowW(), BTN_H,
+                    Text.literal("Enable Dynamic Separator"),
+                    (b, v) -> { cfg.dynamicSeparator = v; cfg.save(); });
+            addTipped(w, "Make the Tiers separator color match the tier color.");
+        });
+        rRef[0]++;
+
+        // ── Row 3: Displayed Tiers (cycling Selected/Highest/Adaptive) ────
+        final int row3y = rowY(rRef[0]);
+        safeAdd("displayedTiers", () -> {
+            String initial = cfg.displayedTiers == null ? "adaptive_highest" : cfg.displayedTiers;
+            ClickableWidget w = CyclingButtonWidget
+                .<String>builder(s -> Text.literal(TierConfig.displayedTiersLabel(s)))
+                .values(Arrays.asList(TierConfig.DISPLAYED_TIER_MODES))
+                .initially(initial)
+                .build(rowX(), row3y, rowW(), BTN_H,
+                    Text.literal("Displayed Tiers"),
+                    (b, v) -> { cfg.displayedTiers = v; cfg.save(); });
+            addTipped(w,
+                "Selected: only the selected tier will be displayed.\n" +
+                "Highest: only the player's highest tier will be displayed.\n" +
+                "Adaptive Highest: the highest tier will be shown if the selected one does not exist.");
+        });
+        rRef[0]++;
+
+        // ── Row 4: Enable auto kit detect + 2 action icons ────────────────
+        final int row4y = rowY(rRef[0]);
+        final int row4main = rowW() - 2 * (iconBtnW + iconGap);
+
+        safeAdd("autoKitDetect", () -> {
+            ClickableWidget w = CyclingButtonWidget
+                .onOffBuilder(cfg.autoKitDetect)
+                .build(rowX(), row4y, row4main, BTN_H,
+                    Text.literal("Enable auto kit detect"),
+                    (b, v) -> { cfg.autoKitDetect = v; cfg.save(); });
+            addTipped(w,
+                "Tiers will always scan your inventory to display the right gamemode " +
+                "(instead of having to press 'Z' / 'I').");
+        });
+
+        // [↻] Reload cache.
+        safeAdd("reloadCache", () -> {
+            int x = rowX() + row4main + iconGap;
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal("\u00a7e\u21BB"),
+                    b -> {
+                        try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
+                    })
+                .dimensions(x, row4y, iconBtnW, BTN_H)
+                .build();
+            addTipped(w, "Reload the cache.");
+        });
+
+        // [◎] Cycle active right gamemode.
+        safeAdd("cycleRightMode", () -> {
+            int x = rowX() + row4main + iconGap + (iconBtnW + iconGap);
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal("\u00a7d\u25C9"),
+                    b -> {
+                        TierService rightSvc = cfg.rightServiceEnum();
+                        if (rightSvc == null) return;
+                        List<String> modes = new ArrayList<>();
+                        modes.add("highest");
+                        for (String m : rightSvc.modes) if (!modes.contains(m)) modes.add(m);
+                        String cur = cfg.rightMode == null ? "highest" : cfg.rightMode.toLowerCase();
+                        int idx = modes.indexOf(cur);
+                        cfg.rightMode = modes.get((idx < 0 ? 0 : (idx + 1) % modes.size()));
+                        cfg.save();
+                        rebuildKeepingScroll();
+                    })
+                .dimensions(x, row4y, iconBtnW, BTN_H)
+                .build();
+            addTipped(w, "Cycle active right gamemode (press 'I' in game).");
+        });
+        rRef[0]++;
+
+        // ── Active service logo (centred, large badge) ────────────────────
+        // Click to cycle through services so the user can quickly switch
+        // primary tierlist without diving into Advanced.
+        rRef[0]++; // small spacer row above the logo for breathing room
+        final int logoRow = rRef[0]++;
+        final int logoY = rowY(logoRow);
+        final int logoH = ROW_H + 16;            // a bit taller than a normal row
+        final int logoW = Math.min(180, rowW() - 24);
+        final int logoX = rowX() + (rowW() - logoW) / 2;
+        final TierService primary = cfg.primaryServiceEnum();
+        final int primaryColor = primary == null ? 0xFFFFFFFF : rgb(primary.accentArgb);
+        final String primaryName = primary == null ? "?" : primary.displayName;
+
+        safeAdd("primaryServiceLogo", () -> {
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal(primaryName).formatted(Formatting.BOLD).withColor(primaryColor),
+                    b -> {
+                        TierService[] svcs = TierService.values();
+                        int idx = 0;
+                        for (int i = 0; i < svcs.length; i++) {
+                            if (svcs[i].id.equalsIgnoreCase(cfg.primaryService)) { idx = i; break; }
+                        }
+                        TierService next = svcs[(idx + 1) % svcs.length];
+                        cfg.primaryService = next.id;
+                        cfg.save();
+                        try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
+                        rebuildKeepingScroll();
+                    })
+                .dimensions(logoX, logoY, logoW, logoH)
+                .build();
+            addTipped(w, "Active service. Click to cycle through tierlists.");
+        });
+        rRef[0]++; // logo occupies its own row + the extra height counted as 1 row
+
+        // ── Row 5: Display position ← • → ─────────────────────────────────
+        final int posY = rowY(rRef[0]);
+        final int posBtnW = 60;
+        final int posGap = 6;
+        final int posBlockW = posBtnW * 3 + posGap * 2;
+        final int posStartX = rowX() + (rowW() - posBlockW) / 2;
+        final String currentPos = cfg.tierDisplayPosition == null ? "right" : cfg.tierDisplayPosition;
+
+        safeAdd("posLeft", () -> {
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal("left".equals(currentPos) ? "\u00a7e[\u2190]" : "\u2190"),
+                    b -> { cfg.tierDisplayPosition = "left"; cfg.save(); rebuildKeepingScroll(); })
+                .dimensions(posStartX, posY, posBtnW, BTN_H)
+                .build();
+            addTipped(w, "Display " + primaryName + " on the left.");
+        });
+        safeAdd("posCenter", () -> {
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal("center".equals(currentPos) ? "\u00a7e[\u2022]" : "\u2022"),
+                    b -> { cfg.tierDisplayPosition = "center"; cfg.save(); rebuildKeepingScroll(); })
+                .dimensions(posStartX + posBtnW + posGap, posY, posBtnW, BTN_H)
+                .build();
+            addTipped(w, "Display " + primaryName + " centred above the player name.");
+        });
+        safeAdd("posRight", () -> {
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal("right".equals(currentPos) ? "\u00a7e[\u2192]" : "\u2192"),
+                    b -> { cfg.tierDisplayPosition = "right"; cfg.save(); rebuildKeepingScroll(); })
+                .dimensions(posStartX + 2 * (posBtnW + posGap), posY, posBtnW, BTN_H)
+                .build();
+            addTipped(w, "Display " + primaryName + " on the right.");
+        });
+        rRef[0]++;
+
+        // ── Advanced… button (drops into legacy left/right routing) ───────
+        rRef[0]++; // breathing room
+        final int advY = rowY(rRef[0]);
+        safeAdd("advanced", () -> {
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal("Advanced \u2014 Left/Right Routing\u2026"),
+                    b -> openAdvancedRouting(cfg))
+                .dimensions(rowX(), advY, rowW(), BTN_H)
+                .build();
+            addTipped(w,
+                "Open the per-service Left / Right tierlist picker. " +
+                "Use this if you want PvPTiers on one side and OuterTiers on the other.");
+        });
+        rRef[0]++;
+    }
+
+    /**
+     * Drop-in modal that exposes the old per-service Left/Right picker we
+     * removed from the main "Tiers Config" view. Keeps the power-user
+     * routing controls reachable without cluttering the redesigned screen.
+     */
+    private void openAdvancedRouting(TierConfig cfg) {
+        // Cheap inline approach: switch to a plain settings sub-screen by
+        // toggling a rendering flag and rebuilding. Simpler and safer than
+        // pushing a whole new Screen subclass for a few buttons.
+        advancedRouting = true;
+        rebuildKeepingScroll();
+    }
+
+    /** When true, the "Tiers Config" tab renders the legacy routing picker. */
+    private boolean advancedRouting = false;
+
+    /**
+     * Legacy per-service Left/Right routing picker. Reachable via the
+     * "Advanced — Left/Right Routing…" button on the redesigned Tiers
+     * Config tab. Constraint: a service can occupy at most one slot
+     * (Left ≠ Right) — clicking the opposite arrow auto-swaps the
+     * previous occupant so the constraint stays satisfied.
+     */
+    private void buildAdvancedRoutingView(TierConfig cfg) {
+        final int[] rRef = { 0 };
+
+        // ── Back button ───────────────────────────────────────────────────
+        final int backY = rowY(rRef[0]++);
+        safeAdd("backFromAdvanced", () -> {
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal("\u00a7e\u2190 Back"),
+                    b -> { advancedRouting = false; rebuildKeepingScroll(); })
+                .dimensions(rowX(), backY, rowW(), BTN_H)
+                .build();
+            addTipped(w, "Return to the main Tiers Config screen.");
+        });
+        rRef[0]++;
+
         addSectionHeader(rRef[0], "\u2014 Badge Assignment (Left \u2260 Right) \u2014");
         rRef[0]++;
 
@@ -495,29 +853,27 @@ public class TierConfigScreen extends Screen {
         final String rightLabel = "Right: " + (rightSvc != null ? rightSvc.displayName : "-");
         final int leftColor  = leftSvc  != null ? rgb(leftSvc.accentArgb)  : 0xFFFFFFFF;
         final int rightColor = rightSvc != null ? rgb(rightSvc.accentArgb) : 0xFFFFFFFF;
-        safeAdd("statusLeft", () -> this.addDrawableChild(ButtonWidget.builder(
-                Text.literal(leftLabel).withColor(leftColor), b -> {})
-            .dimensions(colX(0), rowY(rStatus), BTN_W, BTN_H).build()));
-        safeAdd("statusRight", () -> this.addDrawableChild(ButtonWidget.builder(
-                Text.literal(rightLabel).withColor(rightColor), b -> {})
-            .dimensions(colX(1), rowY(rStatus), BTN_W, BTN_H).build()));
+        safeAdd("statusLeft", () -> {
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal(leftLabel).withColor(leftColor), b -> {})
+                .dimensions(colX(0), rowY(rStatus), BTN_W, BTN_H).build();
+            addTipped(w, "Currently displayed on the LEFT side of player names.");
+        });
+        safeAdd("statusRight", () -> {
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal(rightLabel).withColor(rightColor), b -> {})
+                .dimensions(colX(1), rowY(rStatus), BTN_W, BTN_H).build();
+            addTipped(w, "Currently displayed on the RIGHT side of player names.");
+        });
 
-        // Spacer row.
         rRef[0]++;
         addSectionHeader(rRef[0], "\u2014 Available Tierlists \u2014");
         rRef[0]++;
 
-        // ── One row per service ───────────────────────────────────────────
-        // Layout per row (full panel width):
-        //   [<-- Left]   <Service Name (status)>   [Right -->]
-        // Clicking [<-- Left] sets that service as Left badge. If it was
-        // already on Right, the previous Left service auto-moves to Right
-        // (swap) so we keep the constraint while never leaving Right empty.
-        // Same logic for [Right -->]. The "(Left)" / "(Right)" suffix on
-        // the centre label tells the user what's currently assigned.
         final int sideBtnW = 32;
         final int sideGap  = 6;
         final int centerW  = rowW() - 2 * (sideBtnW + sideGap);
+        TierService[] svcs = TierService.values();
 
         for (int i = 0; i < svcs.length; i++) {
             final TierService svc = svcs[i];
@@ -531,65 +887,68 @@ public class TierConfigScreen extends Screen {
             else if (isRight)       suffix = "  (Right)";
             final String labelText = svc.displayName + suffix;
 
-            // Left arrow button.
-            safeAdd("set-left:" + svc.id, () -> this.addDrawableChild(ButtonWidget.builder(
-                    Text.literal(isLeft ? "[\u2190]" : "\u2190"),
-                    b -> {
-                        try {
-                            String prevLeft = cfg.leftService;
-                            cfg.leftService = svc.id;
-                            // Swap to keep left ≠ right.
-                            if (cfg.rightService != null && cfg.rightService.equalsIgnoreCase(svc.id)) {
-                                cfg.rightService = (prevLeft != null && !prevLeft.equalsIgnoreCase(svc.id))
-                                    ? prevLeft
-                                    : nextDifferent(svc.id);
-                            }
+            safeAdd("set-left:" + svc.id, () -> {
+                ClickableWidget w = ButtonWidget.builder(
+                        Text.literal(isLeft ? "[\u2190]" : "\u2190"),
+                        b -> {
+                            try {
+                                String prevLeft = cfg.leftService;
+                                cfg.leftService = svc.id;
+                                if (cfg.rightService != null && cfg.rightService.equalsIgnoreCase(svc.id)) {
+                                    cfg.rightService = (prevLeft != null && !prevLeft.equalsIgnoreCase(svc.id))
+                                        ? prevLeft : nextDifferent(svc.id);
+                                }
+                                cfg.save();
+                                try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
+                            } catch (Throwable ignored) {}
+                            rebuildKeepingScroll();
+                        })
+                    .dimensions(colX(0), rowY(row), sideBtnW, BTN_H).build();
+                addTipped(w, "Show " + svc.displayName + " on the LEFT side of player names.");
+            });
+
+            safeAdd("svc-row:" + svc.id, () -> {
+                ClickableWidget w = ButtonWidget.builder(
+                        Text.literal(labelText).withColor(rgb(svc.accentArgb)),
+                        b -> {
+                            cfg.primaryService = svc.id;
                             cfg.save();
                             try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
-                        } catch (Throwable ignored) {}
-                        this.clearChildren();
-                        try { buildWidgets(); } catch (Throwable ignored) {}
-                    })
-                .dimensions(colX(0), rowY(row), sideBtnW, BTN_H).build()));
+                            rebuildKeepingScroll();
+                        })
+                    .dimensions(colX(0) + sideBtnW + sideGap, rowY(row), centerW, BTN_H).build();
+                addTipped(w, "Click to make " + svc.displayName + " the primary tierlist " +
+                    "(used by the active service display on the main Tiers Config screen).");
+            });
 
-            // Centre service-name button (acts as Primary-Service picker too).
-            safeAdd("svc-row:" + svc.id, () -> this.addDrawableChild(ButtonWidget.builder(
-                    Text.literal(labelText).withColor(rgb(svc.accentArgb)),
-                    b -> {
-                        cfg.primaryService = svc.id;
-                        cfg.save();
-                        try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
-                        this.clearChildren();
-                        try { buildWidgets(); } catch (Throwable ignored) {}
-                    })
-                .dimensions(colX(0) + sideBtnW + sideGap, rowY(row), centerW, BTN_H).build()));
-
-            // Right arrow button.
-            safeAdd("set-right:" + svc.id, () -> this.addDrawableChild(ButtonWidget.builder(
-                    Text.literal(isRight ? "[\u2192]" : "\u2192"),
-                    b -> {
-                        try {
-                            String prevRight = cfg.rightService;
-                            cfg.rightService = svc.id;
-                            // Swap to keep left ≠ right.
-                            if (cfg.leftService != null && cfg.leftService.equalsIgnoreCase(svc.id)) {
-                                cfg.leftService = (prevRight != null && !prevRight.equalsIgnoreCase(svc.id))
-                                    ? prevRight
-                                    : nextDifferent(svc.id);
-                            }
-                            cfg.save();
-                            try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
-                        } catch (Throwable ignored) {}
-                        this.clearChildren();
-                        try { buildWidgets(); } catch (Throwable ignored) {}
-                    })
-                .dimensions(colX(1) + BTN_W - sideBtnW, rowY(row), sideBtnW, BTN_H).build()));
+            safeAdd("set-right:" + svc.id, () -> {
+                ClickableWidget w = ButtonWidget.builder(
+                        Text.literal(isRight ? "[\u2192]" : "\u2192"),
+                        b -> {
+                            try {
+                                String prevRight = cfg.rightService;
+                                cfg.rightService = svc.id;
+                                if (cfg.leftService != null && cfg.leftService.equalsIgnoreCase(svc.id)) {
+                                    cfg.leftService = (prevRight != null && !prevRight.equalsIgnoreCase(svc.id))
+                                        ? prevRight : nextDifferent(svc.id);
+                                }
+                                cfg.save();
+                                try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
+                            } catch (Throwable ignored) {}
+                            rebuildKeepingScroll();
+                        })
+                    .dimensions(colX(1) + BTN_W - sideBtnW, rowY(row), sideBtnW, BTN_H).build();
+                addTipped(w, "Show " + svc.displayName + " on the RIGHT side of player names.");
+            });
         }
+    }
 
-        // ── Hint line so the user knows the centre button = Primary ──────
-        rRef[0]++;
-        addSectionHeader(rRef[0], "Click a tierlist name to make it the primary service.");
-        rRef[0]++;
+    private void rebuildKeepingScroll() {
+        int s = scrollY;
+        this.clearChildren();
+        try { buildWidgets(); } catch (Throwable ignored) {}
+        scrollY = s;
+        scrollByTab[currentTab] = s;
     }
 
     /**

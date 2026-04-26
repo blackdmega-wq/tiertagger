@@ -144,12 +144,14 @@ public class TierProfileScreen extends Screen {
             fillRect(ctx, panelX, panelTop, panelX + panelW, panelBottom, BG_PANEL);
             outlineRect(ctx, panelX, panelTop, panelW, panelBottom - panelTop, BG_PANEL_BORDER);
 
-            // Header sized to fit the 3D-angled player render at a
-            // comfortable scale. We previously used a much taller header
-            // (92px) which made the body render dominate the panel and
-            // hid the actual skin detail — the user explicitly asked for
-            // a smaller, angled render here.
-            int headerH = 72;
+            // Header sized to fit the FULL-body render returned by
+            // mc-heads.net /body/ (~1:2.4 aspect). The user explicitly
+            // asked for the chest and arms to be visible looking
+            // diagonally to the side instead of just the head, so we
+            // allocate a tall header and the body slot inside it is
+            // portrait-shaped (≈ 1:2). drawHead() preserves the natural
+            // image aspect inside the slot, so the body never stretches.
+            int headerH = 110;
             renderHeader(ctx, panelX + CARD_PAD, panelTop + CARD_PAD,
                          panelW - CARD_PAD * 2, headerH);
 
@@ -195,12 +197,14 @@ public class TierProfileScreen extends Screen {
     private void renderHeader(DrawContext ctx, int x, int y, int w, int h) {
         fillRect(ctx, x, y, x + w, y + h, BG_HEADER);
 
-        // Body slot is roughly square — sized for the 3D-angled head
-        // render returned by mc-heads.net /head/ (~256×272, ≈1:1 aspect).
-        // The previous 1:2 tall slot was for the old flat /body/ render
-        // which the user couldn't see properly.
-        int bodyH = h - 12;
-        int bodyW = bodyH;
+        // Tall body slot — sized for the 3D-angled FULL body render
+        // returned by mc-heads.net /body/ (~256×624, ≈1:2.4 aspect).
+        // The user explicitly asked for the chest and arms to be visible
+        // looking diagonally to the side, so we allocate a portrait
+        // slot (≈ 1:2 aspect). drawHead() preserves the image's real
+        // aspect inside this box, so the body never stretches.
+        int bodyH = h - 8;
+        int bodyW = Math.max(28, bodyH / 2);
         int headX = x + 8;
         int headY = y + (h - bodyH) / 2;
         drawHead(ctx, username, headX, headY, bodyW, bodyH);

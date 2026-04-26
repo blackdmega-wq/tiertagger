@@ -90,6 +90,53 @@ public class TierConfig {
     public boolean disableIcons      = false;
     public boolean disableAnimations = false;
 
+    // ------- new "Tiers config" UI fields (matches v1.21.11.31 redesign) -------
+
+    /** When true, hide the tier badge in chat messages. */
+    public boolean disableInChat = false;
+    /**
+     * When true, the separator between dual-badges and the player name is
+     * coloured to match the dominant tier instead of using a plain grey "|".
+     */
+    public boolean dynamicSeparator = false;
+    /**
+     * Controls how the displayed tier is chosen when the player has tiers in
+     * multiple gamemodes. One of:
+     *   - "selected"         : only the user-selected gamemode tier is shown
+     *   - "highest"          : only the player's highest tier is shown
+     *   - "adaptive_highest" : prefer selected; fall back to highest if missing
+     */
+    public String displayedTiers = "adaptive_highest";
+    /**
+     * When true the mod will continuously inspect the local player's hotbar
+     * to decide which gamemode to display, instead of cycling manually
+     * with the "I" / "Z" hotkey.
+     */
+    public boolean autoKitDetect = false;
+    /**
+     * Where to place the "active" service badge relative to the player name.
+     * One of "left", "center", "right". Default "right" matches the legacy
+     * dual-badge layout (PvPTiers on the right of the nametag).
+     */
+    public String tierDisplayPosition = "right";
+
+    public static final String[] DISPLAYED_TIER_MODES = {
+        "selected", "highest", "adaptive_highest"
+    };
+
+    public static final String[] DISPLAY_POSITIONS = { "left", "center", "right" };
+
+    /** Returns a human-readable label for the {@link #displayedTiers} value. */
+    public static String displayedTiersLabel(String mode) {
+        if (mode == null) return "Adaptive Highest";
+        switch (mode.toLowerCase(Locale.ROOT)) {
+            case "selected":         return "Selected";
+            case "highest":          return "Highest";
+            case "adaptive_highest":
+            default:                 return "Adaptive Highest";
+        }
+    }
+
     private static Map<String, Boolean> defaultServices() {
         Map<String, Boolean> m = new LinkedHashMap<>();
         for (TierService s : TierService.values()) m.put(s.id, true);
@@ -222,6 +269,20 @@ public class TierConfig {
         if (leftMode       == null || leftMode.isBlank())    leftMode    = "highest";
         if (rightMode      == null || rightMode.isBlank())   rightMode   = "highest";
         if (enabledModes   == null) enabledModes = new ArrayList<>();
+        if (displayedTiers == null || displayedTiers.isBlank()) displayedTiers = "adaptive_highest";
+        else {
+            String dt = displayedTiers.toLowerCase(Locale.ROOT);
+            boolean ok = false;
+            for (String v : DISPLAYED_TIER_MODES) if (v.equals(dt)) { ok = true; break; }
+            displayedTiers = ok ? dt : "adaptive_highest";
+        }
+        if (tierDisplayPosition == null || tierDisplayPosition.isBlank()) tierDisplayPosition = "right";
+        else {
+            String tp = tierDisplayPosition.toLowerCase(Locale.ROOT);
+            boolean ok = false;
+            for (String v : DISPLAY_POSITIONS) if (v.equals(tp)) { ok = true; break; }
+            tierDisplayPosition = ok ? tp : "right";
+        }
         // tierColors: keep null when the user hasn't customised anything (saves
         // a few bytes in the json + signals "use defaults" to argbFor).
         if (tierColors != null) {
@@ -360,5 +421,10 @@ public class TierConfig {
         this.disableTiers      = def.disableTiers;
         this.disableIcons      = def.disableIcons;
         this.disableAnimations = def.disableAnimations;
+        this.disableInChat     = def.disableInChat;
+        this.dynamicSeparator  = def.dynamicSeparator;
+        this.displayedTiers    = def.displayedTiers;
+        this.autoKitDetect     = def.autoKitDetect;
+        this.tierDisplayPosition = def.tierDisplayPosition;
     }
 }
