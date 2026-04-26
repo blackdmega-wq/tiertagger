@@ -202,59 +202,35 @@ public class TierConfigScreen extends Screen {
     private volatile String lastInitError = null;
 
     // ── Cycle-Mode-Key click-to-bind state ──────────────────────────────
-    // When the user clicks the "Cycle Mode Key" button, capturingCycleKey
-    // flips to true. The next physical key press (handled in keyPressed)
-    // is then captured as the new bind. ESC cancels capture without
-    // changing the bind. cycleKeyButton is the live reference to the
-    // button so we can refresh its label.
-    private boolean capturingCycleKey = false;
-    private ButtonWidget cycleKeyButton = null;
+    // When the user clicks the "Cycle Mode Key" button, CAPTURING_CYCLE_KEY
+    // flips to true. The next physical key press is then captured by
+    // KeyboardMixin (which hooks the GLFW-stable Keyboard.onKey callback,
+    // so we don't have to override Screen.keyPressed — its signature changes
+    // between MC versions). ESC cancels capture without changing the bind.
+    public static volatile boolean CAPTURING_CYCLE_KEY = false;
+    public static volatile ButtonWidget CYCLE_KEY_BUTTON = null;
 
-    /** Build the button label, prefixed with a "> ... <" frame while
-     *  the screen is waiting for the next key press. */
+    /** Refreshes the cycle-key button label. Safe to call from any thread
+     *  that has access to the Minecraft client. */
+    public static void refreshCycleKeyButtonLabel() {
+        ButtonWidget b = CYCLE_KEY_BUTTON;
+        if (b == null) return;
+        String base;
+        try { base = TierKeybinds.keyLabel(TierKeybinds.getCycleKeyCode()); }
+        catch (Throwable t) { base = "?"; }
+        String msg = CAPTURING_CYCLE_KEY
+            ? "Cycle Mode Key: > " + base + " <  (press a key)"
+            : "Cycle Mode Key: " + base;
+        b.setMessage(Text.literal(msg));
+    }
+
+    /** Build the button label for initial creation. */
     private String cycleKeyLabel() {
         String base;
         try { base = TierKeybinds.keyLabel(TierKeybinds.getCycleKeyCode()); }
         catch (Throwable t) { base = "?"; }
-        if (capturingCycleKey) return "Cycle Mode Key: > " + base + " <  (press a key)";
+        if (CAPTURING_CYCLE_KEY) return "Cycle Mode Key: > " + base + " <  (press a key)";
         return "Cycle Mode Key: " + base;
-    }
-
-    @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (capturingCycleKey) {
-            // ESC → cancel, leave the existing bind untouched.
-            if (keyCode == 256 /* GLFW_KEY_ESCAPE */) {
-                capturingCycleKey = false;
-                if (cycleKeyButton != null) cycleKeyButton.setMessage(Text.literal(cycleKeyLabel()));
-                return true;
-            }
-            // Any other key → bind it.
-            try { TierKeybinds.setCycleKeyCode(keyCode); } catch (Throwable ignored) {}
-            capturingCycleKey = false;
-            if (cycleKeyButton != null) cycleKeyButton.setMessage(Text.literal(cycleKeyLabel()));
-            return true;
-        }
-        return super.keyPressed(keyCode, scanCode, modifiers);
-    }
-
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // If the user clicks anywhere OTHER than the cycle-key button while
-        // capture mode is active, cancel the capture.
-        if (capturingCycleKey && cycleKeyButton != null) {
-            int bx = cycleKeyButton.getX();
-            int by = cycleKeyButton.getY();
-            int bw = cycleKeyButton.getWidth();
-            int bh = cycleKeyButton.getHeight();
-            boolean insideBtn = mouseX >= bx && mouseX < bx + bw
-                             && mouseY >= by && mouseY < by + bh;
-            if (!insideBtn) {
-                capturingCycleKey = false;
-                cycleKeyButton.setMessage(Text.literal(cycleKeyLabel()));
-            }
-        }
-        return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
@@ -942,14 +918,14 @@ public class TierConfigScreen extends Screen {
             ButtonWidget btn = ButtonWidget.builder(
                     Text.literal(cycleKeyLabel()),
                     b -> {
-                        // Toggle listening mode — re-rendering the button
-                        // is handled by render() reading capturingCycleKey.
-                        capturingCycleKey = !capturingCycleKey;
-                        b.setMessage(Text.literal(cycleKeyLabel()));
+                        // Toggle listening mode — KeyboardMixin reads
+                        // CAPTURING_CYCLE_KEY to intercept the next key.
+                        CAPTURING_CYCLE_KEY = !CAPTURING_CYCLE_KEY;
+                        refreshCycleKeyButtonLabel();
                     })
                 .dimensions(rowX(), rowKeyY, rowW(), BTN_H)
                 .build();
-            cycleKeyButton = btn;
+            CYCLE_KEY_BUTTON = btn;
             addTipped(btn,
                 "Click the button, then press any key to bind it as the " +
                 "cycle-mode key (cycles the right-side gamemode in-game). " +
@@ -1533,11 +1509,11 @@ public class TierConfigScreen extends Screen {
             //         Gives the same feel as the vanilla Controls screen's
             //         "press a key" prompt (subtle, never distracting).
             try {
-                if (capturingCycleKey && cycleKeyButton != null) {
-                    int bx = cycleKeyButton.getX();
-                    int by = cycleKeyButton.getY();
-                    int bw = cycleKeyButton.getWidth();
-                    int bh = cycleKeyButton.getHeight();
+                if (CAPTURING_CYCLE_KEY && CYCLE_KEY_BUTTON != null) {
+                    int bx = CYCLE_KEY_BUTTON.getX();
+                    int by = CYCLE_KEY_BUTTON.getY();
+                    int bw = CYCLE_KEY_BUTTON.getWidth();
+                    int bh = CYCLE_KEY_BUTTON.getHeight();
                     // Only draw when visible inside the body band so it
                     // never bleeds into the title / tab strips.
                     if (by + bh > bodyTop && by < bodyBottom) {

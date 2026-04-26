@@ -6,7 +6,8 @@
     "PlayerListHudMixin",
     "PlayerEntityRendererMixin",
     "LivingEntityRendererMixin",
-    "OptionsScreenMixin"
+    "OptionsScreenMixin",
+    "KeyboardMixin"
   ],
   "injectors": {
     "defaultRequire": 0
