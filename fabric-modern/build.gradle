@@ -7,7 +7,17 @@
 //
 // The existing `:fabric` module (Yarn-based, 1.21.x) is unaffected.
 plugins {
-    id 'net.fabricmc.fabric-loom'
+    // `net.fabricmc.fabric-loom-remap` (LoomRemapGradlePlugin) is the right
+    // plugin variant for MC 26.1.x: the GAME ships unobfuscated (Mojang
+    // names everywhere), but the published `fabric-api` jars on
+    // maven.fabricmc.net for 26.1.x are STILL packaged with intermediary
+    // namespace access wideners. The pure no-remap plugin
+    // (`net.fabricmc.fabric-loom`) rejects those with
+    //   "Expected official namespace for access widener entry, found: intermediary"
+    // — so we use the remap variant which transparently remaps the
+    // intermediary mod deps into the Mojang dev namespace at jar load.
+    // Project source still uses Mojang names directly.
+    id 'net.fabricmc.fabric-loom-remap'
     id 'maven-publish'
 }
 
@@ -28,16 +38,14 @@ dependencies {
     // Game is unobfuscated from 26.1+ — no `mappings` entry, no yarn.
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
 
-    // The modern `net.fabricmc.fabric-loom` plugin maps to `LoomNoRemapGradlePlugin`
-    // (verified via plugin descriptor in fabric-loom-1.15.jar). It does NOT
-    // expose `modImplementation` / `modCompileOnly` because there is no
-    // remapping step — the game and mod jars are already in Mojang names.
-    // Use plain `implementation` / `compileOnly` instead.
-    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    // With `fabric-loom-remap`, mod deps go through `modImplementation` /
+    // `modCompileOnly` so that loom rewrites their intermediary refs into
+    // the project's Mojang dev namespace at jar load.
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
     if (project.hasProperty('modmenu_version') && !project.modmenu_version.toString().isBlank()) {
-        compileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+        modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
     }
 
     implementation project(':common')

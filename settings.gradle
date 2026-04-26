@@ -27,8 +27,12 @@ pluginManagement {
             // for local dev is taken from gradle.properties (loom_version).
             id 'fabric-loom' version "${loom_version}"
         } else if (target == 'fabric-modern') {
-            // Modern non-remapping Loom for MC 26.1+ (year.drop.hotfix unobfuscated).
-            id 'net.fabricmc.fabric-loom' version "${loom_modern_version}"
+            // Modern Loom (1.15+) — REMAP variant. The game ships unobfuscated
+            // in 26.1+, but published fabric-api jars on 26.1.x still use
+            // intermediary access wideners, so the no-remap plugin rejects
+            // them. The remap plugin transparently rewrites mod deps into
+            // the project's Mojang dev namespace at jar load.
+            id 'net.fabricmc.fabric-loom-remap' version "${loom_modern_version}"
         }
     }
 }
