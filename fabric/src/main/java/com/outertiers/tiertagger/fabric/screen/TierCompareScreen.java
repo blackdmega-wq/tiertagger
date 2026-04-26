@@ -221,10 +221,12 @@ public class TierCompareScreen extends Screen {
                               int x, int y, int w, int h) {
         fillRect(ctx, x, y, x + w, y + h, BG_HEADER);
 
-        // Body slots are tall 1:2-ish rectangles so the full-body skin
-        // render fits naturally instead of being squashed into a square.
+        // Body slots are roughly square — sized for the 3D-angled head
+        // render returned by mc-heads.net /head/ (~256×272, ≈1:1 aspect).
+        // The previous 1:2 tall slots were for the old flat /body/
+        // render which appeared as an unrecognisable silhouette here.
         int bodyH      = h - 12;
-        int bodyW      = bodyH / 2;
+        int bodyW      = bodyH;
         int leftHeadX  = x + 10;
         int rightHeadX = x + w - 10 - bodyW;
         int headY      = y + (h - bodyH) / 2;

@@ -40,6 +40,10 @@ public final class ModeIcons {
         put("dia2v2",      "2v2");
         put("dia_2v2",     "2v2");
         put("overall",     "overall");
+        // PvPTiers crystal: official icon from pvptiers.com/icons/tiers/crystal.png
+        // — the previous bundled crystal.png used the wrong amethyst-style
+        // gem; the new one is the canonical purple End-Crystal badge.
+        put("crystal",     "crystal");
         // SubTiers-specific gamemodes
         put("trident",     "trident");
         put("creeper",     "creeper");
@@ -50,16 +54,12 @@ public final class ModeIcons {
         put("debuff",      "debuff");
         put("bow",         "bow");
         put("sumo",        "sumo");
-        // NOTE: PvPTiers "crystal", SubTiers "elytra", and SubTiers
-        // "bedwars"/"bed" are intentionally NOT registered here. Their
-        // bundled PNGs (crystal.png, elytra.png, bed.png) used the wrong
-        // visuals (an amethyst-style gem, a teal triangle, and a vague
-        // red bar) which made them unrecognisable at icon size. By
-        // omitting them here, the screen renderer falls through to
-        // ctx.drawItem() with the proper Minecraft items configured in
-        // {@link com.outertiers.tiertagger.common.TierIcons} (END_CRYSTAL,
-        // ELYTRA, RED_BED) — those are the canonical, instantly
-        // recognisable game icons the user asked for.
+        // SubTiers bed / bedwars + elytra: official icons from
+        // subtiers.net/assets/{bed,elytra}-<hash>.svg, rasterised to
+        // 64×64 PNGs at build time (see fabric/src/main/resources/.../icons/).
+        put("bed",         "bed");
+        put("bedwars",     "bed");
+        put("elytra",      "elytra");
     }
 
     private ModeIcons() {}

@@ -195,10 +195,12 @@ public class TierProfileScreen extends Screen {
     private void renderHeader(DrawContext ctx, int x, int y, int w, int h) {
         fillRect(ctx, x, y, x + w, y + h, BG_HEADER);
 
-        // Body slot is a tall 1:2-ish rectangle so the full-body skin render
-        // fits naturally instead of being squashed into a square.
+        // Body slot is roughly square — sized for the 3D-angled head
+        // render returned by mc-heads.net /head/ (~256×272, ≈1:1 aspect).
+        // The previous 1:2 tall slot was for the old flat /body/ render
+        // which the user couldn't see properly.
         int bodyH = h - 12;
-        int bodyW = bodyH / 2;
+        int bodyW = bodyH;
         int headX = x + 8;
         int headY = y + (h - bodyH) / 2;
         drawHead(ctx, username, headX, headY, bodyW, bodyH);
