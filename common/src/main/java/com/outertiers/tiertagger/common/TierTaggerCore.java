@@ -258,9 +258,9 @@ public final class TierTaggerCore {
     public static int argbFor(String tier) {
         if (tier == null) return 0xFFAAAAAA;
         String t = tier.toUpperCase();
-        // Retired ("R" prefix) → white, irrespective of the underlying tier.
+        // Retired ("R" prefix) → look up "Retired" key (default white).
         if (t.startsWith("R") && t.length() > 1) {
-            return 0xFFFFFFFF;
+            return readConfigColor("Retired", 0xFFFFFFFF);
         }
         boolean high;
         char digit;
@@ -272,13 +272,33 @@ public final class TierTaggerCore {
         } else {
             return 0xFFAAAAAA;
         }
+        // Built-in palette fallback when the user has NOT customised this tier.
+        int builtin;
         switch (digit) {
-            case '1': return high ? 0xFFF1C40F : 0xFFD4B354;   // T1 gold
-            case '2': return high ? 0xFFA4B2C7 : 0xFF888D95;   // T2 silver / steel
-            case '3': return high ? 0xFFDF8746 : 0xFFB36932;   // T3 bronze
-            case '4': return high ? 0xFF46DF5D : 0xFF319228;   // T4 green
-            case '5': return 0xFFA4D5FF;                       // T5 light blue (HT == LT)
+            case '1': builtin = high ? 0xFFF1C40F : 0xFFD4B354; break;   // T1 gold
+            case '2': builtin = high ? 0xFFA4B2C7 : 0xFF888D95; break;   // T2 silver / steel
+            case '3': builtin = high ? 0xFFDF8746 : 0xFFB36932; break;   // T3 bronze
+            case '4': builtin = high ? 0xFF46DF5D : 0xFF319228; break;   // T4 green
+            case '5': builtin = 0xFFA4D5FF; break;                       // T5 light blue
             default:  return 0xFFAAAAAA;
+        }
+        String key = (high ? "HT" : "LT") + digit;
+        return readConfigColor(key, builtin);
+    }
+
+    /**
+     * Looks up a tier hex override in the live {@link TierConfig#tierColors}
+     * map and returns its ARGB int, or the built-in palette colour when the
+     * user has not customised that tier (or the saved hex is unparsable).
+     */
+    private static int readConfigColor(String key, int fallback) {
+        try {
+            if (CONFIG == null || CONFIG.tierColors == null) return fallback;
+            String hex = CONFIG.tierColors.get(key);
+            if (hex == null || hex.isBlank()) return fallback;
+            return TierConfig.parseHexArgb(hex);
+        } catch (Throwable t) {
+            return fallback;
         }
     }
 }

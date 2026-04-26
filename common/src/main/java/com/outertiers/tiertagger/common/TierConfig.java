@@ -71,6 +71,14 @@ public class TierConfig {
     public String  leftMode           = "highest";
     /** Per-side mode override for the RIGHT badge. See {@link #leftMode}. */
     public String  rightMode          = "highest";
+    /**
+     * Per-tier hex colour overrides shown on the "Tier Colors" tab in
+     * {@code /tiertagger config}. Keys are tier labels ("HT1", "LT1", …,
+     * "Retired"); values are RGB hex strings ("#F1C40F"). When {@code null}
+     * or missing for a given tier, {@link TierTaggerCore#argbFor(String)}
+     * falls back to its built-in palette.
+     */
+    public Map<String, String> tierColors = null;
     /** Modes considered when computing "highest" tier. Empty => use everything. */
     public List<String> enabledModes = new ArrayList<>();
     /** Modes shown in the player tab list. {@code null}/empty => follow {@link #enabledModes}. */
@@ -86,6 +94,85 @@ public class TierConfig {
         Map<String, Boolean> m = new LinkedHashMap<>();
         for (TierService s : TierService.values()) m.put(s.id, true);
         return m;
+    }
+
+    /** Tier label order used by the "Tier Colors" tab. */
+    public static final String[] TIER_KEYS = {
+        "HT1", "LT1", "HT2", "LT2", "HT3", "LT3",
+        "HT4", "LT4", "HT5", "LT5", "Retired"
+    };
+
+    /**
+     * Default tier hex colours — these are the user's existing palette baked
+     * into {@link TierTaggerCore#argbFor(String)}. The "Tier Colors" tab seeds
+     * its rows from this map and "Reset to Default" wipes overrides back to it.
+     */
+    public static Map<String, String> defaultTierColors() {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("HT1", "#F1C40F");
+        m.put("LT1", "#D4B354");
+        m.put("HT2", "#A4B2C7");
+        m.put("LT2", "#888D95");
+        m.put("HT3", "#DF8746");
+        m.put("LT3", "#B36932");
+        m.put("HT4", "#46DF5D");
+        m.put("LT4", "#319228");
+        m.put("HT5", "#A4D5FF");
+        m.put("LT5", "#A4D5FF");
+        m.put("Retired", "#FFFFFF");
+        return m;
+    }
+
+    /** Returns the saved hex string for a tier, or its default if not customised. */
+    public String getTierColorHex(String tierKey) {
+        if (tierKey == null) return "#FFFFFF";
+        if (tierColors != null) {
+            String v = tierColors.get(tierKey);
+            if (v != null && !v.isBlank()) return v;
+        }
+        String def = defaultTierColors().get(tierKey);
+        return def == null ? "#FFFFFF" : def;
+    }
+
+    /** Persists a tier colour override. Pass {@code null}/blank to clear. */
+    public void setTierColorHex(String tierKey, String hex) {
+        if (tierKey == null) return;
+        if (tierColors == null) tierColors = new LinkedHashMap<>();
+        if (hex == null || hex.isBlank()) tierColors.remove(tierKey);
+        else tierColors.put(tierKey, normaliseHex(hex));
+    }
+
+    /** Forces {@code "#RRGGBB"} formatting (uppercase, 6 hex digits). */
+    public static String normaliseHex(String raw) {
+        if (raw == null) return "#FFFFFF";
+        String s = raw.trim();
+        if (s.startsWith("#")) s = s.substring(1);
+        if (s.length() == 3) {
+            char r = s.charAt(0), g = s.charAt(1), b = s.charAt(2);
+            s = "" + r + r + g + g + b + b;
+        }
+        if (s.length() == 8) s = s.substring(2); // strip leading alpha if present
+        if (s.length() != 6) return "#FFFFFF";
+        StringBuilder sb = new StringBuilder("#");
+        for (int i = 0; i < 6; i++) {
+            char c = s.charAt(i);
+            if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+                sb.append(Character.toUpperCase(c));
+            } else {
+                return "#FFFFFF";
+            }
+        }
+        return sb.toString();
+    }
+
+    /** Parses {@code "#RRGGBB"} into {@code 0xFFRRGGBB}; returns 0xFFFFFFFF on failure. */
+    public static int parseHexArgb(String hex) {
+        try {
+            String s = normaliseHex(hex).substring(1);
+            return 0xFF000000 | Integer.parseInt(s, 16);
+        } catch (Throwable t) {
+            return 0xFFFFFFFF;
+        }
     }
 
     // ------- io -------
@@ -135,6 +222,18 @@ public class TierConfig {
         if (leftMode       == null || leftMode.isBlank())    leftMode    = "highest";
         if (rightMode      == null || rightMode.isBlank())   rightMode   = "highest";
         if (enabledModes   == null) enabledModes = new ArrayList<>();
+        // tierColors: keep null when the user hasn't customised anything (saves
+        // a few bytes in the json + signals "use defaults" to argbFor).
+        if (tierColors != null) {
+            // Re-normalise any user-supplied hex strings so weird input (e.g.
+            // missing "#", alpha prefix, lowercase) is cleaned up on load.
+            Map<String, String> cleaned = new LinkedHashMap<>();
+            for (Map.Entry<String, String> e : tierColors.entrySet()) {
+                if (e.getKey() == null || e.getValue() == null) continue;
+                cleaned.put(e.getKey(), normaliseHex(e.getValue()));
+            }
+            tierColors = cleaned;
+        }
 
         return this;
     }
@@ -254,6 +353,7 @@ public class TierConfig {
         this.displayMode       = def.displayMode;
         this.leftMode          = def.leftMode;
         this.rightMode         = def.rightMode;
+        this.tierColors        = null; // null => use built-in palette
         this.enabledModes      = new ArrayList<>();
         this.tabModes          = null;
         this.nametagModes      = null;

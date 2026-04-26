@@ -8,6 +8,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.CyclingButtonWidget;
+import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
@@ -20,15 +21,24 @@ import java.util.Set;
 /**
  * TierTagger settings screen.
  *
- * v1.21.11 redesign: scrollable two-column layout. Every scroll rebuild calls
- * {@code buildWidgets()}, which now properly clears both section-header lists
- * (the missing clear was causing headers to accumulate on every scroll event).
+ * <p>v1.21.11.29 redesign: 3-tab layout matching the user-supplied mock-ups.
+ * The tabs are
+ * <ul>
+ *   <li><b>Settings</b> — every existing toggle (badge services, modes,
+ *       appearance, mode filters, …).</li>
+ *   <li><b>Tier Colors</b> — one editable hex row per tier
+ *       (HT1, LT1, …, Retired) with a live colour swatch. Defaults seed from
+ *       {@link TierConfig#defaultTierColors()} which is the user's current
+ *       palette baked into {@link TierTaggerCore#argbFor(String)}.</li>
+ *   <li><b>Tierlists</b> — one selectable row per {@link TierService}
+ *       (MCTiers, OuterTiers, PvPTiers, SubTiers); the chosen one is the
+ *       primary service and is suffixed with {@code "(selected)"}.</li>
+ * </ul>
  *
- * Widget rendering is done OUTSIDE the scissor so the Done / Refresh buttons
- * at the bottom are never clipped. Section-header text (which must scroll) is
- * drawn INSIDE the scissor. The title strip is re-painted on top after
- * {@code super.render()} so any widget that briefly leaks into that area is
- * covered up cleanly.
+ * <p>Each tab keeps its own scroll position and re-renders independently. The
+ * scrollable body is rendered OUTSIDE a scissor (so the bottom action row is
+ * never clipped); the title strip and tab strip are repainted on top after
+ * {@code super.render()} to cover any widget that briefly leaks.
  */
 public class TierConfigScreen extends Screen {
 
@@ -41,8 +51,14 @@ public class TierConfigScreen extends Screen {
     private static final int BG_PANEL        = 0xF20E1116;
     private static final int BG_PANEL_BORDER = 0xFF2A2F38;
     private static final int BG_HEADER       = 0xFF181C24;
+    private static final int BG_TAB_INACTIVE = 0xFF1F232C;
+    private static final int BG_TAB_ACTIVE   = 0xFF0E1116;
     private static final int FG_FAINT        = 0xFF9AA0AA;
     private static final int FG_SECTION      = 0xFFFFAA00;
+
+    private static final int TAB_H           = 22;
+    private static final int TAB_STRIP_TOP   = 30;
+    private static final String[] TAB_LABELS = { "Settings", "Tier Colors", "Tierlists" };
 
     private final Screen parent;
     private boolean bgApplied = false;
@@ -50,9 +66,17 @@ public class TierConfigScreen extends Screen {
     private final List<int[]>  sectionHeaders     = new ArrayList<>();
     private final List<String> sectionHeadersText = new ArrayList<>();
 
+    /** Tab-strip hit boxes — populated each render() so mouseClicked can use them. */
+    private final int[][] tabBounds = new int[TAB_LABELS.length][4];
+
+    /** 0 = Settings, 1 = Tier Colors, 2 = Tierlists. */
+    private int currentTab = 0;
+    /** Per-tab scroll positions so switching tabs preserves where you were. */
+    private final int[] scrollByTab = new int[TAB_LABELS.length];
+
     private int scrollY   = 0;
     private int maxScroll = 0;
-    private int bodyTop   = 36;
+    private int bodyTop   = TAB_STRIP_TOP + TAB_H + 4;
     private int bodyBottom = 0;
     private int maxRowUsed = 0;
 
@@ -66,6 +90,10 @@ public class TierConfigScreen extends Screen {
         int startX = (this.width - totalW) / 2;
         return startX + col * (BTN_W + BTN_GAP);
     }
+
+    /** Single full-row x/width — used by Tier Colors and Tierlists tabs. */
+    private int rowX() { return colX(0); }
+    private int rowW() { return BTN_W * 2 + BTN_GAP; }
 
     private int rowY(int row) {
         if (row > maxRowUsed) maxRowUsed = row;
@@ -82,8 +110,9 @@ public class TierConfigScreen extends Screen {
         sectionHeaders.clear();
         sectionHeadersText.clear();
         maxRowUsed = 0;
-        bodyTop    = 36;
+        bodyTop    = TAB_STRIP_TOP + TAB_H + 4;
         bodyBottom = this.height - 32 - ROW_H;
+        scrollY    = scrollByTab[currentTab];
         try { buildWidgets(); }
         catch (Throwable t) {
             TierTaggerCore.LOGGER.warn("[TierTagger] config screen init failed", t);
@@ -96,11 +125,37 @@ public class TierConfigScreen extends Screen {
         }
     }
 
+    private void switchTab(int newTab) {
+        if (newTab < 0 || newTab >= TAB_LABELS.length || newTab == currentTab) return;
+        scrollByTab[currentTab] = scrollY;
+        currentTab = newTab;
+        scrollY = scrollByTab[currentTab];
+        this.clearChildren();
+        try { buildWidgets(); } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public boolean mouseClicked(double mx, double my, int button) {
+        // Tab-strip hit testing happens before super so the tab buttons always win.
+        if (button == 0) {
+            for (int i = 0; i < tabBounds.length; i++) {
+                int[] b = tabBounds[i];
+                if (b[2] <= 0 || b[3] <= 0) continue;
+                if (mx >= b[0] && mx < b[0] + b[2] && my >= b[1] && my < b[1] + b[3]) {
+                    switchTab(i);
+                    return true;
+                }
+            }
+        }
+        return super.mouseClicked(mx, my, button);
+    }
+
     @Override
     public boolean mouseScrolled(double mx, double my, double hd, double vd) {
         int prev = scrollY;
         scrollY = Math.max(0, Math.min(maxScroll, scrollY - (int)(vd * 16)));
         if (scrollY != prev) {
+            scrollByTab[currentTab] = scrollY;
             this.clearChildren();
             try { buildWidgets(); } catch (Throwable ignored) {}
         }
@@ -120,9 +175,9 @@ public class TierConfigScreen extends Screen {
     }
 
     private void buildWidgets() {
-        // CRITICAL: clear BOTH lists so headers do not accumulate on every scroll rebuild.
         sectionHeaders.clear();
         sectionHeadersText.clear();
+        maxRowUsed = 0;
 
         TierConfig cfg = TierTaggerCore.config();
         if (cfg == null) {
@@ -131,9 +186,60 @@ public class TierConfigScreen extends Screen {
             return;
         }
 
+        switch (currentTab) {
+            case 1:  buildTierColorsTab(cfg); break;
+            case 2:  buildTierlistsTab(cfg);  break;
+            default: buildSettingsTab(cfg);   break;
+        }
+
+        // ── Bottom action bar (anchored, never scrolls) ────────────────────
+        int bottomY = this.height - 27;
+        if (currentTab == 0) {
+            // Settings keeps its existing Refresh Cache + Done bar.
+            safeAdd("refreshCache", () -> this.addDrawableChild(ButtonWidget.builder(
+                    Text.literal("Refresh Cache"),
+                    b -> { try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {} })
+                .dimensions(colX(0), bottomY, BTN_W, BTN_H).build()));
+            safeAdd("done", () -> this.addDrawableChild(ButtonWidget.builder(
+                    Text.literal("Done"), b -> closeSafely())
+                .dimensions(colX(1), bottomY, BTN_W, BTN_H).build()));
+        } else {
+            // Tier Colors / Tierlists — Reset to Default + Done, like the mock-ups.
+            final int targetTab = currentTab;
+            safeAdd("reset", () -> this.addDrawableChild(ButtonWidget.builder(
+                    Text.literal("Reset to Default"),
+                    b -> {
+                        try {
+                            if (targetTab == 1) {
+                                cfg.tierColors = null;
+                            } else if (targetTab == 2) {
+                                cfg.primaryService = TierService.OUTERTIERS.id;
+                            }
+                            cfg.save();
+                            try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
+                        } catch (Throwable ignored) {}
+                        this.clearChildren();
+                        try { buildWidgets(); } catch (Throwable ignored) {}
+                    })
+                .dimensions(colX(0), bottomY, BTN_W, BTN_H).build()));
+            safeAdd("done", () -> this.addDrawableChild(ButtonWidget.builder(
+                    Text.literal("Done"), b -> closeSafely())
+                .dimensions(colX(1), bottomY, BTN_W, BTN_H).build()));
+        }
+
+        int contentH = (maxRowUsed + 2) * ROW_H;
+        int viewH    = bodyBottom - bodyTop;
+        maxScroll = Math.max(0, contentH - viewH);
+        if (scrollY > maxScroll) scrollY = maxScroll;
+        scrollByTab[currentTab] = scrollY;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Tab 0: Settings (legacy content, every toggle the user already had)
+    // ─────────────────────────────────────────────────────────────────────
+    private void buildSettingsTab(TierConfig cfg) {
         final int[] rRef = { 0 };
 
-        // ── Section 1: Badge sources ───────────────────────────────────────
         addSectionHeader(rRef[0], "\u2014 Badge Services \u2014");
         rRef[0]++;
         safeAdd("leftService", () -> this.addDrawableChild(
@@ -143,7 +249,8 @@ public class TierConfigScreen extends Screen {
                 .values(TierService.values())
                 .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H,
                     Text.literal("Left Badge"),
-                    (b, v) -> { cfg.leftService = v.id; cfg.save(); })));
+                    (b, v) -> { cfg.leftService = v.id; cfg.save();
+                        this.clearChildren(); try { buildWidgets(); } catch (Throwable ignored) {} })));
         safeAdd("rightService", () -> this.addDrawableChild(
             CyclingButtonWidget.<TierService>builder(
                     s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)),
@@ -151,7 +258,8 @@ public class TierConfigScreen extends Screen {
                 .values(TierService.values())
                 .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
                     Text.literal("Right Badge"),
-                    (b, v) -> { cfg.rightService = v.id; cfg.save(); })));
+                    (b, v) -> { cfg.rightService = v.id; cfg.save();
+                        this.clearChildren(); try { buildWidgets(); } catch (Throwable ignored) {} })));
         rRef[0]++;
 
         safeAdd("primaryService", () -> this.addDrawableChild(
@@ -177,12 +285,7 @@ public class TierConfigScreen extends Screen {
         });
         rRef[0]++;
 
-        // Per-side gamemode picker: lets the user pin which gamemode the LEFT
-        // and RIGHT badge each read their tier from. The mode list shown is the
-        // chosen side's service modes, prefixed with "highest" (= follow whatever
-        // the player ranks best at on that service). If the saved mode isn't in
-        // the chosen service's mode list (e.g. user switched services after
-        // picking a mode) we still show it so the option isn't silently lost.
+        // Per-side gamemode picker.
         safeAdd("leftMode", () -> {
             TierService leftSvc = cfg.leftServiceEnum();
             List<String> modes = new ArrayList<>();
@@ -213,7 +316,6 @@ public class TierConfigScreen extends Screen {
         });
         rRef[0]++;
 
-        // ── Section 2: Where badges show ───────────────────────────────────
         addSectionHeader(rRef[0], "\u2014 Where to Show \u2014");
         rRef[0]++;
         safeAdd("showInTab", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.showInTab)
@@ -232,7 +334,6 @@ public class TierConfigScreen extends Screen {
                 (b, v) -> { cfg.showPeak = v; cfg.save(); })));
         rRef[0]++;
 
-        // ── Section 3: Appearance ──────────────────────────────────────────
         addSectionHeader(rRef[0], "\u2014 Appearance \u2014");
         rRef[0]++;
         safeAdd("coloredBadges", () -> this.addDrawableChild(CyclingButtonWidget.onOffBuilder(cfg.coloredBadges)
@@ -282,7 +383,6 @@ public class TierConfigScreen extends Screen {
         });
         rRef[0]++;
 
-        // ── Section 4: Per-service enabled toggles ─────────────────────────
         addSectionHeader(rRef[0], "\u2014 Enabled Services \u2014");
         rRef[0]++;
         TierService[] svcs = TierService.values();
@@ -302,7 +402,6 @@ public class TierConfigScreen extends Screen {
         }
         rRef[0]++;
 
-        // ── Section 5: Per-context mode filters ────────────────────────────
         addSectionHeader(rRef[0], "\u2014 Mode Filters \u2014");
         rRef[0]++;
         safeAdd("tabModes", () -> this.addDrawableChild(ButtonWidget.builder(
@@ -320,22 +419,71 @@ public class TierConfigScreen extends Screen {
                 })
             .dimensions(colX(1), rowY(rRef[0]), BTN_W, BTN_H).build()));
         rRef[0]++;
+    }
 
-        // ── Bottom action bar (anchored, never scrolls) ────────────────────
-        // These are added last so super.render() draws them ON TOP of any
-        // scrollable widget that might leak into the bottom area.
-        int bottomY = this.height - 27;
-        safeAdd("refreshCache", () -> this.addDrawableChild(ButtonWidget.builder(
-                Text.literal("Refresh Cache"),
-                b -> { try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {} })
-            .dimensions(colX(0), bottomY, BTN_W, BTN_H).build()));
-        safeAdd("done", () -> this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> closeSafely())
-            .dimensions(colX(1), bottomY, BTN_W, BTN_H).build()));
+    // ─────────────────────────────────────────────────────────────────────
+    // Tab 1: Tier Colors — one editable hex row per tier with a swatch
+    // ─────────────────────────────────────────────────────────────────────
+    /** Row metadata for the Tier Colors tab so render() can paint label + swatch over each row. */
+    private static final class ColorRow {
+        final String tierKey;
+        final TextFieldWidget field;
+        ColorRow(String t, TextFieldWidget f) { this.tierKey = t; this.field = f; }
+    }
+    private final List<ColorRow> colorRows = new ArrayList<>();
 
-        int contentH = (maxRowUsed + 2) * ROW_H;
-        int viewH    = bodyBottom - bodyTop;
-        maxScroll = Math.max(0, contentH - viewH);
-        if (scrollY > maxScroll) scrollY = maxScroll;
+    private void buildTierColorsTab(TierConfig cfg) {
+        colorRows.clear();
+        final int[] rRef = { 0 };
+        final int swatchW = 22;
+        final int swatchGap = 6;
+        final int fieldW = rowW() - swatchW - swatchGap;
+
+        for (final String key : TierConfig.TIER_KEYS) {
+            final int row = rRef[0]++;
+            safeAdd("color:" + key, () -> {
+                TextFieldWidget f = new TextFieldWidget(
+                    this.textRenderer,
+                    rowX(), rowY(row), fieldW, BTN_H,
+                    Text.literal(key));
+                f.setMaxLength(7);
+                f.setText(cfg.getTierColorHex(key));
+                f.setChangedListener(s -> {
+                    try {
+                        cfg.setTierColorHex(key, s);
+                        cfg.save();
+                    } catch (Throwable t) {
+                        TierTaggerCore.LOGGER.warn("[TierTagger] tier-colour save failed for {}", key, t);
+                    }
+                });
+                this.addDrawableChild(f);
+                colorRows.add(new ColorRow(key, f));
+            });
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Tab 2: Tierlists — one selectable button per service
+    // ─────────────────────────────────────────────────────────────────────
+    private void buildTierlistsTab(TierConfig cfg) {
+        TierService[] svcs = TierService.values();
+        final int[] rRef = { 0 };
+        for (int i = 0; i < svcs.length; i++) {
+            final TierService svc = svcs[i];
+            final int row = rRef[0]++;
+            final boolean selected = svc.id.equalsIgnoreCase(cfg.primaryService);
+            String label = svc.displayName + (selected ? "  (selected)" : "");
+            safeAdd("tl:" + svc.id, () -> this.addDrawableChild(ButtonWidget.builder(
+                    Text.literal(label).withColor(rgb(svc.accentArgb)),
+                    b -> {
+                        cfg.primaryService = svc.id;
+                        cfg.save();
+                        try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
+                        this.clearChildren();
+                        try { buildWidgets(); } catch (Throwable ignored) {}
+                    })
+                .dimensions(rowX(), rowY(row), rowW(), BTN_H).build()));
+        }
     }
 
     private static String prettyMode(String mode) {
@@ -374,7 +522,7 @@ public class TierConfigScreen extends Screen {
             fillRect(ctx, panelX, panelTop, panelX + panelW, panelBottomY, BG_PANEL);
             outlineRect(ctx, panelX, panelTop, panelW, panelBottomY - panelTop, BG_PANEL_BORDER);
 
-            // 2. Section-header TEXT inside scissor (scrolls with content).
+            // 2. Section-header text inside scissor (scrolls with content).
             ctx.enableScissor(panelX + 1, bodyTop, panelX + panelW - 1, bodyBottom);
             for (int i = 0; i < sectionHeaders.size(); i++) {
                 int y = sectionHeaders.get(i)[0];
@@ -386,24 +534,53 @@ public class TierConfigScreen extends Screen {
             }
             ctx.disableScissor();
 
-            // 3. All widgets rendered WITHOUT scissor so Done / Refresh are
-            //    never clipped. Widgets that briefly leak into the title strip
-            //    or bottom area are covered by the re-drawn strips below.
+            // 3. Widgets rendered WITHOUT scissor so the bottom action row is
+            //    never clipped. Anything that leaks above the body is repainted
+            //    by the title strip / tab strip below.
             super.render(ctx, mouseX, mouseY, delta);
 
-            // 4. Re-draw the title strip ON TOP to cover any scrolled widget
+            // 4. Tier Colors tab: per-row tier label + colour swatch overlay.
+            if (currentTab == 1) {
+                ctx.enableScissor(panelX + 1, bodyTop, panelX + panelW - 1, bodyBottom);
+                for (ColorRow cr : colorRows) {
+                    if (cr == null || cr.field == null) continue;
+                    int fx = cr.field.getX();
+                    int fy = cr.field.getY();
+                    int fw = cr.field.getWidth();
+                    int fh = BTN_H;
+                    if (fy + fh < bodyTop || fy > bodyBottom) continue;
+                    // Tier label, right-aligned inside the field.
+                    int labelW = this.textRenderer.getWidth(cr.tierKey);
+                    ctx.drawTextWithShadow(this.textRenderer,
+                        Text.literal(cr.tierKey).formatted(Formatting.GRAY),
+                        fx + fw - labelW - 6, fy + (fh - 8) / 2, 0xFF9AA0AA);
+                    // Live colour swatch to the right of the field.
+                    int swatchX = fx + fw + 6;
+                    int swatchY = fy;
+                    int swatchSize = fh;
+                    int argb = TierConfig.parseHexArgb(cr.field.getText());
+                    fillRect(ctx, swatchX, swatchY, swatchX + swatchSize, swatchY + swatchSize, argb);
+                    outlineRect(ctx, swatchX, swatchY, swatchSize, swatchSize, 0xFF000000);
+                }
+                ctx.disableScissor();
+            }
+
+            // 5. Re-draw the title strip ON TOP to cover any scrolled widget
             //    that crept above bodyTop.
-            fillRect(ctx, panelX + 1, panelTop + 1, panelX + panelW - 1, bodyTop, BG_HEADER);
+            fillRect(ctx, panelX + 1, panelTop + 1, panelX + panelW - 1, TAB_STRIP_TOP, BG_HEADER);
             ctx.drawCenteredTextWithShadow(this.textRenderer,
-                this.title.copy().formatted(Formatting.WHITE, Formatting.BOLD),
-                this.width / 2, panelTop + 10, 0xFFFFFFFF);
+                Text.literal("TierTagger").formatted(Formatting.WHITE, Formatting.BOLD),
+                this.width / 2, panelTop + 6, 0xFFFFFFFF);
             ctx.drawCenteredTextWithShadow(this.textRenderer,
                 Text.literal("v" + TierTaggerCore.MOD_VERSION +
                     "  \u00B7  /tiertagger help for chat commands")
                     .withColor(rgb(FG_FAINT)),
-                this.width / 2, panelTop + 18, FG_FAINT);
+                this.width / 2, panelTop + 16, FG_FAINT);
 
-            // 5. Scroll indicator.
+            // 6. Tab strip — cover anything beneath, then draw three tabs.
+            renderTabStrip(ctx, panelX, panelW);
+
+            // 7. Scroll indicator.
             if (maxScroll > 0) {
                 int trackX  = panelX + panelW - 5;
                 int trackTop = bodyTop;
@@ -423,6 +600,40 @@ public class TierConfigScreen extends Screen {
                 t.getClass().getSimpleName() + ": " +
                 (t.getMessage() == null ? "(no message)" : t.getMessage())); }
             catch (Throwable ignored) {}
+        }
+    }
+
+    private void renderTabStrip(DrawContext ctx, int panelX, int panelW) {
+        int innerLeft  = panelX + 4;
+        int innerRight = panelX + panelW - 4;
+        int innerW     = innerRight - innerLeft;
+        int gap        = 4;
+        int tabW       = (innerW - gap * (TAB_LABELS.length - 1)) / TAB_LABELS.length;
+        int tabY       = TAB_STRIP_TOP;
+
+        // Cover the tab strip area first so widgets that scroll past don't bleed through.
+        fillRect(ctx, panelX + 1, tabY - 2, panelX + panelW - 1, tabY + TAB_H + 2, BG_HEADER);
+
+        for (int i = 0; i < TAB_LABELS.length; i++) {
+            int tx = innerLeft + i * (tabW + gap);
+            int ty = tabY;
+            tabBounds[i][0] = tx;
+            tabBounds[i][1] = ty;
+            tabBounds[i][2] = tabW;
+            tabBounds[i][3] = TAB_H;
+
+            boolean active = (i == currentTab);
+            int bg = active ? BG_TAB_ACTIVE : BG_TAB_INACTIVE;
+            fillRect(ctx, tx, ty, tx + tabW, ty + TAB_H, bg);
+            outlineRect(ctx, tx, ty, tabW, TAB_H, BG_PANEL_BORDER);
+            // White underline on the active tab.
+            if (active) {
+                fillRect(ctx, tx + 2, ty + TAB_H - 2, tx + tabW - 2, ty + TAB_H, 0xFFFFFFFF);
+            }
+            int textColor = active ? 0xFFFFFFFF : 0xFFB8BCC4;
+            ctx.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal(TAB_LABELS[i]).formatted(active ? Formatting.WHITE : Formatting.GRAY),
+                tx + tabW / 2, ty + (TAB_H - 8) / 2, textColor);
         }
     }
 
@@ -465,4 +676,3 @@ public class TierConfigScreen extends Screen {
     @SuppressWarnings("unused")
     private static final Set<String> _USED = new LinkedHashSet<>();
 }
-
