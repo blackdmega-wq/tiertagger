@@ -1309,17 +1309,18 @@ public class TierConfigScreen extends Screen {
             // Reserve room at the top for the caption + the floating
             // nametag. The skin slot fills the remaining vertical space and
             // is centered horizontally inside the card.
+            // v1.21.11.44: widened the slot to almost the full panel width
+            // so the fit-inside scaling of the ~1:2.4 mc-heads /body/
+            // render produces a much larger figure — head, torso, arms AND
+            // legs are now clearly visible instead of being a thin sliver
+            // in the middle of the card.
             int topPad   = 18;        // caption row
             int tagBoxH  = 12;
             int bottomPad = 6;
             int slotTop = previewY + topPad + tagBoxH + 4;
             int slotBot = previewY + previewH - bottomPad;
             int slotH   = Math.max(40, slotBot - slotTop);
-            // Body render is ≈ 1:2.4; v1.21.11.39 widens the slot so the
-            // user can see the full skin (head, body, legs) without the
-            // figure shrinking to a tiny silhouette in the middle of the
-            // preview card.
-            int slotW   = Math.max(56, slotH * 9 / 16);
+            int slotW   = Math.max(56, previewW - 16);
             int slotX   = previewX + (previewW - slotW) / 2;
             int slotY   = slotTop;
 
