@@ -189,30 +189,60 @@ public final class TierTaggerCore {
     public static char colourCodeFor(String tier) {
         if (tier == null) return '7';
         String t = tier.toUpperCase();
-        // Strip the optional retired "R" prefix added by Ranking.label() so the
-        // ending-digit heuristic still works for "RHT3" / "RLT4" etc.
-        if (t.startsWith("R") && t.length() > 1) t = t.substring(1);
-        if (t.endsWith("1")) return 'd';
-        if (t.endsWith("2")) return 'c';
-        if (t.endsWith("3")) return '6';
-        if (t.endsWith("4")) return 'e';
-        if (t.endsWith("5")) return 'a';
-        return '7';
+        // Retired tiers (R prefix) are rendered white per the user palette.
+        // Detect BEFORE stripping the prefix, otherwise "RHT2" would fall
+        // through to the regular HT2 colour and the retired-marker would be
+        // invisible in chat tags.
+        if (t.startsWith("R") && t.length() > 1) {
+            return 'f'; // §f = white (retired)
+        }
+        boolean high;
+        char digit;
+        if (t.startsWith("HT") && t.length() >= 3) { high = true;  digit = t.charAt(2); }
+        else if (t.startsWith("LT") && t.length() >= 3) { high = false; digit = t.charAt(2); }
+        else if (t.length() >= 1 && Character.isDigit(t.charAt(t.length() - 1))) {
+            high  = true;
+            digit = t.charAt(t.length() - 1);
+        } else {
+            return '7';
+        }
+        // Vanilla chat only has 16 fixed colour codes, so we pick the
+        // closest legacy code to the rich RGB palette used by argbFor().
+        switch (digit) {
+            case '1': return '6';                  // T1 gold/dim-gold       → §6 gold
+            case '2': return high ? '7' : '8';     // T2 light grey / grey   → §7 / §8
+            case '3': return '6';                  // T3 orange/dark-orange  → §6 gold (closest)
+            case '4': return high ? 'a' : '2';     // T4 green / dark green  → §a / §2
+            case '5': return 'b';                  // T5 light blue          → §b aqua
+            default:  return '7';
+        }
     }
 
     /**
-     * OuterTiers-style colour palette. Distinguishes HT (vivid) from LT
-     * (slightly desaturated) so HT3 doesn't look identical to LT3 at a glance.
-     * Colours are tuned to match the tier badges shown on outertiers.com /
-     * mctiers.com / pvptiers.com — the universal Minecraft tier-list scheme:
-     * pink → red → orange → gold → green for tiers 1 → 5.
+     * Tier badge colour palette. The current values come straight from the
+     * user's Discord-supplied palette — the previous OuterTiers / MCTiers
+     * pink→red→orange→gold→green scheme has been replaced wholesale.
+     *
+     * <pre>
+     *   HT1 #F1C40F  LT1 #D4B354    (gold)
+     *   HT2 #A4B2C7  LT2 #888D95    (silver / steel)
+     *   HT3 #DF8746  LT3 #B36932    (bronze)
+     *   HT4 #46DF5D  LT4 #319228    (green)
+     *   HT5 #A4D5FF  LT5 #A4D5FF    (light blue, identical for HT/LT)
+     *   Retired (R prefix)   #FFFFFF (white)
+     * </pre>
+     *
+     * Retired-tier detection happens BEFORE the HT/LT split so labels like
+     * "RHT3" / "RLT2" all render white instead of inheriting their base tier
+     * colour — this is what the user asked for.
      */
     public static int argbFor(String tier) {
         if (tier == null) return 0xFFAAAAAA;
         String t = tier.toUpperCase();
-        // Strip the optional retired "R" prefix added by Ranking.label() so the
-        // HT/LT detection works for retired-player labels like "RHT1" / "RLT2".
-        if (t.startsWith("R") && t.length() > 1) t = t.substring(1);
+        // Retired ("R" prefix) → white, irrespective of the underlying tier.
+        if (t.startsWith("R") && t.length() > 1) {
+            return 0xFFFFFFFF;
+        }
         boolean high;
         char digit;
         if (t.startsWith("HT") && t.length() >= 3) { high = true;  digit = t.charAt(2); }
@@ -224,11 +254,11 @@ public final class TierTaggerCore {
             return 0xFFAAAAAA;
         }
         switch (digit) {
-            case '1': return high ? 0xFFED1AFF : 0xFFB048C2;   // T1: magenta / dusty pink
-            case '2': return high ? 0xFFFF3F3F : 0xFFB13838;   // T2: vivid red / burgundy
-            case '3': return high ? 0xFFFF9933 : 0xFFB97123;   // T3: orange / amber
-            case '4': return high ? 0xFFFFCD33 : 0xFFB59425;   // T4: gold / mustard
-            case '5': return high ? 0xFF58D352 : 0xFF3D8E3A;   // T5: lime / forest
+            case '1': return high ? 0xFFF1C40F : 0xFFD4B354;   // T1 gold
+            case '2': return high ? 0xFFA4B2C7 : 0xFF888D95;   // T2 silver / steel
+            case '3': return high ? 0xFFDF8746 : 0xFFB36932;   // T3 bronze
+            case '4': return high ? 0xFF46DF5D : 0xFF319228;   // T4 green
+            case '5': return 0xFFA4D5FF;                       // T5 light blue (HT == LT)
             default:  return 0xFFAAAAAA;
         }
     }
