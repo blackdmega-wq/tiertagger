@@ -252,10 +252,22 @@ public final class BadgeRenderer {
     public static MutableText formatBadge(TierService svc, String tier, String mode,
                                           boolean serviceLabelLeading) {
         String label = TierFormat.label(tier);
-        Formatting colour = TierFormat.colored()
-            ? Formatting.byCode(TierTaggerCore.colourCodeFor(tier))
-            : Formatting.GRAY;
-        if (colour == null) colour = Formatting.GRAY;
+
+        // Tier colour for the badge text. Previously we routed through
+        // Formatting.byCode(colourCodeFor(tier)) which always snaps to one
+        // of the 16 fixed vanilla colours (e.g. §6 gold = #FFAA00) — so the
+        // user's exact Discord palette (HT1 #F1C40F, HT2 #A4B2C7, etc.) was
+        // never actually shown on nametag badges or in the player tab list,
+        // even after argbFor() was updated. We now style the label with the
+        // FULL RGB value from argbFor() via Style.withColor(int) so name-tag
+        // and tab-list badges match the in-GUI palette pixel-for-pixel.
+        // CRITICAL: Style.withColor(int) in MC 1.21.5+ rejects any value
+        // outside 0..0xFFFFFF, so the alpha byte must be masked off.
+        boolean coloured = TierFormat.colored();
+        int tierRgb = coloured
+            ? (TierTaggerCore.argbFor(tier) & 0xFFFFFF)
+            : 0xAAAAAA;
+        Style tierStyle = Style.EMPTY.withColor(tierRgb).withBold(true);
 
         MutableText icon = glyph(mode);
         boolean hasIcon = icon != Text.empty()
@@ -265,12 +277,12 @@ public final class BadgeRenderer {
         if (TierFormat.useBrackets()) {
             core = Text.literal("[").formatted(Formatting.GRAY);
             if (hasIcon) core.append(icon).append(Text.literal(" ").formatted(Formatting.GRAY));
-            core.append(Text.literal(label).formatted(colour, Formatting.BOLD));
+            core.append(Text.literal(label).setStyle(tierStyle));
             core.append(Text.literal("]").formatted(Formatting.GRAY));
         } else {
             core = Text.literal("");
             if (hasIcon) core.append(icon).append(Text.literal(" "));
-            core.append(Text.literal(label).formatted(colour, Formatting.BOLD));
+            core.append(Text.literal(label).setStyle(tierStyle));
         }
 
         if (!TierFormat.showServiceLabel()) return core;
