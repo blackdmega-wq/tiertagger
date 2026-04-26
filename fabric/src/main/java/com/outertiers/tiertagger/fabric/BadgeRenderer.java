@@ -177,9 +177,34 @@ public final class BadgeRenderer {
         static final Class<?> SOURCE_TYPE = net.minecraft.text.StyleSpriteSource.class;
     }
 
+    /**
+     * Direct compile-time call to {@code Style.withFont(StyleSpriteSource)}.
+     * Loom remaps both the method name and the {@code StyleSpriteSource}
+     * parameter type to their intermediary names at build time, so the method
+     * is found correctly in production — unlike the previous
+     * {@code Style.class.getMethod("withFont", ...)} approach which always
+     * returned {@code null} at runtime because method names are intermediary.
+     *
+     * Throws {@link NoClassDefFoundError} / {@link NoSuchMethodError} on MC
+     * versions that don't have this overload; callers catch {@link Throwable}.
+     */
+    private static final class FontApplyHolder {
+        static Style apply(Style base) {
+            return base.withFont(ModernFontSourceHolder.SOURCE);
+        }
+    }
+
     private static Style applyIconFont(Style base) {
+        // PRIMARY: direct compile-time call (1.21.5+). Loom remaps
+        // Style.withFont and StyleSpriteSource to intermediary at build time.
+        // The previous reflection paths used string name "withFont" which
+        // doesn't exist in production (only intermediary names do).
         try {
-            // Prefer the wrapper path on 1.21.5+ where (Identifier) is gone.
+            return FontApplyHolder.apply(base);
+        } catch (Throwable ignored) {}
+
+        // FALLBACK: reflection-based (development / older MC versions).
+        try {
             if (WITH_FONT_WRAPPED != null && WRAPPED_FONT_INSTANCE != null) {
                 return (Style) WITH_FONT_WRAPPED.invoke(base, WRAPPED_FONT_INSTANCE);
             }
