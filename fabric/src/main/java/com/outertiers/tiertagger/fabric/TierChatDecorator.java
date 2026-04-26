@@ -3,6 +3,7 @@ package com.outertiers.tiertagger.fabric;
 import com.outertiers.tiertagger.common.PlayerData;
 import com.outertiers.tiertagger.common.TierConfig;
 import com.outertiers.tiertagger.common.TierTaggerCore;
+import com.outertiers.tiertagger.fabric.compat.Profiles;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.PlayerListEntry;
@@ -36,23 +37,22 @@ import java.util.Set;
 public final class TierChatDecorator {
     private TierChatDecorator() {}
 
-    /** Wires both GAME and CHAT receive paths into our decorator. */
+    /**
+     * Wires the GAME receive path into our decorator. Modern servers (and
+     * vanilla 1.20+) route most player chat through the GAME message
+     * channel — including signed player chat after the 1.19.3 system-chat
+     * unification — so a single registration covers the common cases
+     * without depending on the {@code MODIFY_CHAT} event (which is not
+     * present in every fabric-api build pinned across our MC matrix).
+     */
     public static void register() {
         try {
             ClientReceiveMessageEvents.MODIFY_GAME.register((message, overlay) -> {
-                if (overlay) return message;          // never mess with action-bar
+                if (overlay) return message;          // never touch action-bar
                 return decorate(message);
             });
         } catch (Throwable t) {
             TierTaggerCore.LOGGER.warn("[TierTagger] chat MODIFY_GAME register failed: {}", t.toString());
-        }
-        try {
-            ClientReceiveMessageEvents.MODIFY_CHAT.register((message, signedMessage, sender, params, receptionTimestamp) ->
-                decorate(message));
-        } catch (Throwable t) {
-            // Older / partial fabric-api builds might not expose MODIFY_CHAT —
-            // log and continue; MODIFY_GAME alone covers most server chat.
-            TierTaggerCore.LOGGER.warn("[TierTagger] chat MODIFY_CHAT register failed: {}", t.toString());
         }
     }
 
@@ -109,7 +109,7 @@ public final class TierChatDecorator {
             Set<String> seen = new HashSet<>();
             for (PlayerListEntry e : entries) {
                 String name;
-                try { name = e.getProfile().getName(); }
+                try { name = Profiles.name(e.getProfile()); }
                 catch (Throwable ignored) { continue; }
                 if (name == null || name.isEmpty() || name.length() < 3) continue;
                 if (!seen.add(name.toLowerCase(Locale.ROOT))) continue;
