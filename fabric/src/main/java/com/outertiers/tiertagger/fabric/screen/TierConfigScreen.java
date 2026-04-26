@@ -134,20 +134,40 @@ public class TierConfigScreen extends Screen {
         try { buildWidgets(); } catch (Throwable ignored) {}
     }
 
-    @Override
-    public boolean mouseClicked(double mx, double my, int button) {
-        // Tab-strip hit testing happens before super so the tab buttons always win.
-        if (button == 0) {
-            for (int i = 0; i < tabBounds.length; i++) {
-                int[] b = tabBounds[i];
-                if (b[2] <= 0 || b[3] <= 0) continue;
-                if (mx >= b[0] && mx < b[0] + b[2] && my >= b[1] && my < b[1] + b[3]) {
-                    switchTab(i);
-                    return true;
-                }
-            }
+    /**
+     * Builds the three tab-switch buttons at the top of the panel. They use
+     * {@link ButtonWidget} so we don't need to override {@code mouseClicked}
+     * (whose signature changes between MC versions). The custom tab strip
+     * background is rendered separately in {@link #render} on top of the panel
+     * but BEHIND these buttons so the labels stay clickable.
+     */
+    private void addTabButtons() {
+        int totalW = BTN_W * 2 + BTN_GAP;
+        int panelW = Math.min(PANEL_W_MAX, this.width - 24);
+        panelW = Math.max(panelW, totalW + 24);
+        int panelX = (this.width - panelW) / 2;
+        int innerLeft  = panelX + 4;
+        int innerRight = panelX + panelW - 4;
+        int innerW     = innerRight - innerLeft;
+        int gap        = 4;
+        int tabW       = (innerW - gap * (TAB_LABELS.length - 1)) / TAB_LABELS.length;
+
+        for (int i = 0; i < TAB_LABELS.length; i++) {
+            final int idx = i;
+            int tx = innerLeft + i * (tabW + gap);
+            String prefix = (i == currentTab) ? "» " : "";
+            String suffix = (i == currentTab) ? " «" : "";
+            ButtonWidget btn = ButtonWidget.builder(
+                    Text.literal(prefix + TAB_LABELS[i] + suffix),
+                    b -> switchTab(idx))
+                .dimensions(tx, TAB_STRIP_TOP, tabW, TAB_H)
+                .build();
+            this.addDrawableChild(btn);
+            tabBounds[i][0] = tx;
+            tabBounds[i][1] = TAB_STRIP_TOP;
+            tabBounds[i][2] = tabW;
+            tabBounds[i][3] = TAB_H;
         }
-        return super.mouseClicked(mx, my, button);
     }
 
     @Override
@@ -185,6 +205,10 @@ public class TierConfigScreen extends Screen {
                 .dimensions(this.width / 2 - 75, this.height / 2, 150, BTN_H).build());
             return;
         }
+
+        // Tab strip first so the tab buttons sit at a stable z-index above
+        // the rest of the body widgets.
+        addTabButtons();
 
         switch (currentTab) {
             case 1:  buildTierColorsTab(cfg); break;
@@ -577,8 +601,11 @@ public class TierConfigScreen extends Screen {
                     .withColor(rgb(FG_FAINT)),
                 this.width / 2, panelTop + 16, FG_FAINT);
 
-            // 6. Tab strip — cover anything beneath, then draw three tabs.
-            renderTabStrip(ctx, panelX, panelW);
+            // 6. Tab strip background — buttons render themselves, this just
+            //    paints the strip behind them so widgets that scrolled past
+            //    don't leak into the tab area.
+            // (Skipped — would cover button labels. Buttons handle their own
+            //  visuals; the title strip above already covers the gap.)
 
             // 7. Scroll indicator.
             if (maxScroll > 0) {
