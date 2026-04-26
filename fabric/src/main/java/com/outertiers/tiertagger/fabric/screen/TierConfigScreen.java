@@ -1055,18 +1055,20 @@ public class TierConfigScreen extends Screen {
         rRef[0]++;
         rRef[0]++; // breathing room before preview
 
-        // ── Live nametag preview (v1.21.11.37) ────────────────────────────
+        // ── Live nametag preview (v1.21.11.45) ────────────────────────────
         // Anchored below "Advanced Settings". Re-renders on every settings
         // change because rebuildKeepingScroll() runs at the end of every
         // toggle handler — so the badge format, brackets, icon position,
         // service colours etc. all update in real time.
-        // Tall enough to fit the full-body Outversal render head-to-toe
-        // (≈1:2.4 aspect) with the nametag floating above the head.
+        // v1.21.11.45: previewH bumped from 170 → 280 so the full-body
+        // Outversal render (head, torso, arms, LEGS) fits inside the card
+        // at a meaningful size. Scroll reservation widened to 13 rows so
+        // the user can scroll all the way down to see the feet.
         previewX = rowX();
         previewY = rowY(rRef[0]);
         previewW = rowW();
-        previewH = 170;
-        rRef[0] += 8; // reserve scroll space for the taller preview
+        previewH = 280;
+        rRef[0] += 13; // reserve scroll space for the taller preview
     }
 
     /**
@@ -1207,17 +1209,19 @@ public class TierConfigScreen extends Screen {
             });
         }
 
-        // ── Live nametag preview (v1.21.11.37) ────────────────────────────
+        // ── Live nametag preview (v1.21.11.45) ────────────────────────────
         // Anchored below the SubTiers / services list inside the Advanced
         // Settings sub-screen. Updates in real time when the user clicks
         // [←] / [→] on any row because each handler calls
         // rebuildKeepingScroll() which re-runs this builder.
+        // v1.21.11.45: matches the main tab — taller box + more scroll
+        // room so the full Outversal body is visible head-to-toe.
         rRef[0]++; // breathing room
         previewX = rowX();
         previewY = rowY(rRef[0]);
         previewW = rowW();
-        previewH = 170;
-        rRef[0] += 8;
+        previewH = 280;
+        rRef[0] += 13;
     }
 
     /**
@@ -1278,6 +1282,21 @@ public class TierConfigScreen extends Screen {
         PlayerData pd = ensurePreviewData();
         if (pd == null) return;
 
+        // ── Animation timebase (v1.21.11.45) ──────────────────────────────
+        // Single shared time value drives every animated element below so
+        // the breathing accent, glow pulse and skin sway all stay in
+        // perfect phase. Util.getMeasuringTimeMs() is the same monotonic
+        // clock vanilla uses for HUD pulses.
+        long now = Util.getMeasuringTimeMs();
+        double tSec  = now / 1000.0;
+        // 0..1 sinusoidal pulse, ~3.6s period — slow enough to feel calm,
+        // fast enough to be visibly alive.
+        double pulse = 0.5 + 0.5 * Math.sin(tSec * (2.0 * Math.PI / 3.6));
+        // Asymmetric pulse used for the accent stripe glow — slightly
+        // out-of-phase with the main pulse to avoid a robotic in/out
+        // metronome feel.
+        double glow  = 0.5 + 0.5 * Math.sin(tSec * (2.0 * Math.PI / 5.2) + 1.1);
+
         ctx.enableScissor(0, bodyTop, this.width, bodyBottom);
         try {
             // Card background with subtle gradient + accent border.
@@ -1285,14 +1304,28 @@ public class TierConfigScreen extends Screen {
                     previewX + previewW, previewY + previewH,
                     0xFF14181F, 0xFF0B0E13);
             outlineRect(ctx, previewX, previewY, previewW, previewH, 0xFF2C313A);
-            // Yellow accent stripe on the left edge — same accent the
-            // active-tab underline uses, ties the preview to the rest of
-            // the design.
+
+            // ── Animated yellow accent stripe ────────────────────────────
+            // The 2px solid stripe is now flanked by a soft glow that
+            // breathes in/out (alpha range 0x18 → 0x60). Drawn as three
+            // 1-pixel half-transparent columns to fake a smooth bloom
+            // without needing custom shaders.
+            int glowAlpha = 0x18 + (int) Math.round(glow * (0x60 - 0x18));
+            int glowColor = (glowAlpha << 24) | (ACCENT & 0x00FFFFFF);
+            fillRect(ctx, previewX + 2, previewY, previewX + 3, previewY + previewH, glowColor);
+            fillRect(ctx, previewX + 3, previewY, previewX + 4, previewY + previewH,
+                    ((glowAlpha / 2) << 24) | (ACCENT & 0x00FFFFFF));
             fillRect(ctx, previewX, previewY, previewX + 2, previewY + previewH, ACCENT);
-            // Tiny "LIVE PREVIEW" caption in the top-left corner.
+
+            // "LIVE PREVIEW" caption with a tiny live-dot indicator that
+            // pulses red→bright-red so the user knows the panel is hot.
             Text caption = Text.literal("LIVE PREVIEW").formatted(Formatting.GRAY, Formatting.BOLD);
+            int dotR = 0xFF + 0; // base red channel always max
+            int dotPulse = 0x80 + (int) Math.round(pulse * 0x60);
+            int dotColor = (0xFF << 24) | (dotR << 16) | (dotPulse / 4 << 8) | (dotPulse / 4);
+            fillRect(ctx, previewX + 8, previewY + 8, previewX + 12, previewY + 12, dotColor);
             ctx.drawTextWithShadow(this.textRenderer, caption,
-                    previewX + 8, previewY + 4, 0xFF8A8F99);
+                    previewX + 16, previewY + 4, 0xFF8A8F99);
 
             // Build the live wrapped nametag — same renderer that produces
             // real in-game nametags, so the preview matches what other
@@ -1309,35 +1342,54 @@ public class TierConfigScreen extends Screen {
             // Reserve room at the top for the caption + the floating
             // nametag. The skin slot fills the remaining vertical space and
             // is centered horizontally inside the card.
-            // v1.21.11.44: widened the slot to almost the full panel width
-            // so the fit-inside scaling of the ~1:2.4 mc-heads /body/
-            // render produces a much larger figure — head, torso, arms AND
-            // legs are now clearly visible instead of being a thin sliver
-            // in the middle of the card.
+            // v1.21.11.45: with previewH = 280 and a 1:2.4 body aspect, a
+            // slot of 130×~250 lets the figure render at ≈ 105×250, so the
+            // legs are FULLY visible instead of being clipped under the
+            // bottom edge of the card.
             int topPad   = 18;        // caption row
             int tagBoxH  = 12;
-            int bottomPad = 6;
+            int bottomPad = 8;
             int slotTop = previewY + topPad + tagBoxH + 4;
             int slotBot = previewY + previewH - bottomPad;
             int slotH   = Math.max(40, slotBot - slotTop);
-            int slotW   = Math.max(56, previewW - 16);
+            // Use a tighter horizontal slot so vertical fit-inside scaling
+            // wins on the 1:2.4 body aspect — the figure becomes tall and
+            // thin (fully visible head→feet) instead of squat and clipped.
+            int slotW   = Math.max(56, Math.min(previewW - 16, slotH * 5 / 11));
             int slotX   = previewX + (previewW - slotW) / 2;
             int slotY   = slotTop;
+
+            // Subtle horizontal sway (±1 px) gives the rendered figure a
+            // tiny "breathing" idle motion. Using floor() so we always end
+            // on a whole pixel — fractional offsets would smear the
+            // texture's hard pixel edges.
+            int sway = (int) Math.floor(Math.sin(tSec * (2.0 * Math.PI / 4.0)) * 1.0);
 
             // Draw the full-body Outversal skin — head, chest, arms, legs.
             // Anchor it to the bottom of the slot so the feet align to the
             // bottom edge (matches the OuterTiers website player cards).
-            drawPreviewBody(ctx, slotX, slotY, slotW, slotH);
+            drawPreviewBody(ctx, slotX + sway, slotY, slotW, slotH);
 
             // Floating nametag — vanilla look (25%-alpha black background,
             // white text). Positioned right above the head of the rendered
-            // skin so the visual association is unmistakable.
+            // skin so the visual association is unmistakable. The
+            // background alpha now breathes between 0x40 and 0x70 in time
+            // with the pulse so the badge feels live.
             int tagW    = this.textRenderer.getWidth(wrapped);
             int tagPad  = 4;
             int tagBoxW = tagW + tagPad * 2;
             int tagBoxX = previewX + (previewW - tagBoxW) / 2;
             int tagBoxY = slotY - tagBoxH - 2;
-            fillRect(ctx, tagBoxX, tagBoxY, tagBoxX + tagBoxW, tagBoxY + tagBoxH, 0x40000000);
+            int bgAlpha = 0x40 + (int) Math.round(pulse * (0x70 - 0x40));
+            int bgColor = (bgAlpha << 24);
+            fillRect(ctx, tagBoxX, tagBoxY, tagBoxX + tagBoxW, tagBoxY + tagBoxH, bgColor);
+            // 1-pixel accent-coloured underline beneath the floating tag,
+            // alpha-pulsing in phase with the bg. Helps connect the
+            // nametag visually to the accent stripe on the left edge.
+            int uline = ((0x60 + (int) Math.round(pulse * 0x60)) << 24)
+                       | (ACCENT & 0x00FFFFFF);
+            fillRect(ctx, tagBoxX, tagBoxY + tagBoxH - 1,
+                    tagBoxX + tagBoxW, tagBoxY + tagBoxH, uline);
             ctx.drawTextWithShadow(this.textRenderer, wrapped,
                     tagBoxX + tagPad, tagBoxY + 2, 0xFFFFFFFF);
         } catch (Throwable t) {
