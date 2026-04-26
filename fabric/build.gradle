@@ -55,12 +55,29 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(project.java_version as int)
     }
-    withSourcesJar()
+    // No withSourcesJar() — see anti-copy comment below. Shipping the
+    // sources jar defeats the entire point of stripping debug info from
+    // the main jar.
 }
 
 tasks.withType(JavaCompile).configureEach {
     it.options.encoding = 'UTF-8'
     it.options.release = project.java_version as int
+    // ── Anti-copy: strip ALL debug attributes (line numbers, source file
+    //    names, local variable names) from the released bytecode. Decompilers
+    //    (CFR / Procyon / Vineflower) will produce dramatically less
+    //    readable output — variables become `var0/var1/…`, method bodies
+    //    lose line markers, and stack traces lose file/line context.
+    //    Mixins are annotation-based and don't depend on debug attributes,
+    //    so this is safe across every supported MC version.
+    it.options.debug = false
+}
+
+// Don't ship a -sources jar to the released zip — sources are the easiest
+// way to copy a mod, and the user explicitly asked for the released JAR
+// not to be copyable.
+tasks.matching { it.name == 'sourcesJar' }.configureEach {
+    it.enabled = false
 }
 
 jar {

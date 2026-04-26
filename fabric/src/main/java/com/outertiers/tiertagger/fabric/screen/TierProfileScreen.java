@@ -69,14 +69,23 @@ public class TierProfileScreen extends Screen {
 
     private final Screen parent;
     private final String username;
+    /** Optional filter — when non-null, only this service's card is rendered.
+     *  Set by {@code /tiertagger search <name> [tierlist]}. */
+    private final TierService onlyService;
     private boolean bgApplied = false;
     private int scrollY = 0;
     private int maxScroll = 0;
 
     public TierProfileScreen(Screen parent, String username) {
-        super(Text.literal("TierTagger \u2014 Profile: " + (username == null ? "?" : username)));
-        this.parent   = parent;
-        this.username = username == null ? "" : username;
+        this(parent, username, null);
+    }
+
+    public TierProfileScreen(Screen parent, String username, TierService onlyService) {
+        super(Text.literal("TierTagger \u2014 Profile: " + (username == null ? "?" : username)
+            + (onlyService != null ? "  (" + onlyService.shortLabel + " only)" : "")));
+        this.parent      = parent;
+        this.username    = username == null ? "" : username;
+        this.onlyService = onlyService;
     }
 
     /** Set when init() throws, so render() can show a useful overlay instead of a blank screen. */
@@ -266,6 +275,8 @@ public class TierProfileScreen extends Screen {
         PlayerData data = opt.get();
 
         for (TierService svc : TierService.values()) {
+            // /tiertagger search <name> <tierlist> → only render that one card.
+            if (onlyService != null && svc != onlyService) continue;
             ServiceData sd = data.get(svc);
             // Union of the service's known modes plus any modes the API
             // returned that we don't have in our static list — this is how

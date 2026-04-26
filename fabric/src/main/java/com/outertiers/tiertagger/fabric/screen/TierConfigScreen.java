@@ -34,6 +34,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
@@ -199,6 +200,62 @@ public class TierConfigScreen extends Screen {
     }
 
     private volatile String lastInitError = null;
+
+    // ── Cycle-Mode-Key click-to-bind state ──────────────────────────────
+    // When the user clicks the "Cycle Mode Key" button, capturingCycleKey
+    // flips to true. The next physical key press (handled in keyPressed)
+    // is then captured as the new bind. ESC cancels capture without
+    // changing the bind. cycleKeyButton is the live reference to the
+    // button so we can refresh its label.
+    private boolean capturingCycleKey = false;
+    private ButtonWidget cycleKeyButton = null;
+
+    /** Build the button label, prefixed with a "> ... <" frame while
+     *  the screen is waiting for the next key press. */
+    private String cycleKeyLabel() {
+        String base;
+        try { base = TierKeybinds.keyLabel(TierKeybinds.getCycleKeyCode()); }
+        catch (Throwable t) { base = "?"; }
+        if (capturingCycleKey) return "Cycle Mode Key: > " + base + " <  (press a key)";
+        return "Cycle Mode Key: " + base;
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (capturingCycleKey) {
+            // ESC → cancel, leave the existing bind untouched.
+            if (keyCode == 256 /* GLFW_KEY_ESCAPE */) {
+                capturingCycleKey = false;
+                if (cycleKeyButton != null) cycleKeyButton.setMessage(Text.literal(cycleKeyLabel()));
+                return true;
+            }
+            // Any other key → bind it.
+            try { TierKeybinds.setCycleKeyCode(keyCode); } catch (Throwable ignored) {}
+            capturingCycleKey = false;
+            if (cycleKeyButton != null) cycleKeyButton.setMessage(Text.literal(cycleKeyLabel()));
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // If the user clicks anywhere OTHER than the cycle-key button while
+        // capture mode is active, cancel the capture.
+        if (capturingCycleKey && cycleKeyButton != null) {
+            int bx = cycleKeyButton.getX();
+            int by = cycleKeyButton.getY();
+            int bw = cycleKeyButton.getWidth();
+            int bh = cycleKeyButton.getHeight();
+            boolean insideBtn = mouseX >= bx && mouseX < bx + bw
+                             && mouseY >= by && mouseY < by + bh;
+            if (!insideBtn) {
+                capturingCycleKey = false;
+                cycleKeyButton.setMessage(Text.literal(cycleKeyLabel()));
+            }
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
 
     @Override
     protected void init() {
@@ -526,22 +583,50 @@ public class TierConfigScreen extends Screen {
                 .values(TierService.values())
                 .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H,
                     Text.literal("Primary Service"),
-                    (b, v) -> { cfg.primaryService = v.id; cfg.save(); });
+                    (b, v) -> {
+                        cfg.primaryService = v.id;
+                        // Reset displayMode if it isn't valid for the new
+                        // primary service. "highest" always stays valid.
+                        if (cfg.displayMode != null
+                            && !cfg.displayMode.equalsIgnoreCase("highest")
+                            && !v.modes.contains(cfg.displayMode.toLowerCase(Locale.ROOT))) {
+                            cfg.displayMode = "highest";
+                        }
+                        cfg.save();
+                        // Rebuild so Display Mode dropdown re-populates with
+                        // the new service's modes.
+                        rebuildKeepingScroll();
+                    });
             addTipped(w, "Which tierlist drives the single-tier helper " +
                 "(used by /tiertagger and the active service display).");
         });
         safeAdd("displayMode", () -> {
+            // Only show modes belonging to the PRIMARY service (per user
+            // request — Display Mode used to list every gamemode of every
+            // tierlist, which polluted the dropdown with modes that the
+            // primary service didn't even support). "Dia 2v2" is filtered
+            // out everywhere it would surface, including here.
+            TierService primSvc = cfg.primaryServiceEnum();
             List<String> modes = new ArrayList<>();
             modes.add("highest");
-            modes.addAll(TierService.allKnownModes());
-            String initial = cfg.displayMode == null ? "highest" : cfg.displayMode.toLowerCase();
-            if (!modes.contains(initial)) modes.add(initial);
-            ClickableWidget w = CyclingButtonWidget.<String>builder(s -> Text.literal(prettyMode(s)), initial)
+            if (primSvc != null) {
+                for (String m : primSvc.modes) {
+                    if (m == null) continue;
+                    String lm = m.toLowerCase(Locale.ROOT);
+                    if (lm.equals("dia_2v2") || lm.equals("dia2v2") || lm.equals("2v2")) continue;
+                    if (!modes.contains(lm)) modes.add(lm);
+                }
+            }
+            String initial = cfg.displayMode == null ? "highest" : cfg.displayMode.toLowerCase(Locale.ROOT);
+            if (!modes.contains(initial)) initial = "highest";
+            final String initialFinal = initial;
+            ClickableWidget w = CyclingButtonWidget.<String>builder(s -> Text.literal(prettyMode(s)), initialFinal)
                     .values(modes)
                     .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
                         Text.literal("Display Mode"),
                         (b, v) -> { cfg.displayMode = v; cfg.save(); });
             addTipped(w, "Choose which gamemode tier is shown by the primary service. " +
+                "Only the primary service's gamemodes are listed. " +
                 "'Highest' picks whichever mode the player ranks highest in.");
         });
         rRef[0]++;
@@ -846,25 +931,30 @@ public class TierConfigScreen extends Screen {
         });
         rRef[0]++;
 
-        // ── Row 4b: Cycle-mode keybind picker ─────────────────────────────
-        // Small in-config picker so the user can re-bind the "cycle right
-        // gamemode" key without diving into vanilla Controls. Default is
-        // 'I'; the value is persisted in Minecraft's options.txt
-        // automatically by KeyBinding#setBoundKey (see TierKeybinds).
+        // ── Row 4b: Cycle-mode keybind PICKER (click-to-bind) ─────────────
+        // The user clicks the button, the screen enters "listening" mode,
+        // and the next physical key the user presses becomes the new bind.
+        // Press ESC to cancel; the existing bind is kept. The change is
+        // persisted to Minecraft's options.txt automatically by
+        // KeyBinding#setBoundKey (see TierKeybinds).
         final int rowKeyY = rowY(rRef[0]);
         safeAdd("cycleKey", () -> {
-            int currentCode = TierKeybinds.getCycleKeyCode();
-            List<Integer> keys = TierKeybinds.commonKeyCodes(currentCode);
-            ClickableWidget w = CyclingButtonWidget.<Integer>builder(
-                    code -> Text.literal(TierKeybinds.keyLabel(code)),
-                    currentCode)
-                .values(keys)
-                .build(rowX(), rowKeyY, rowW(), BTN_H,
-                    Text.literal("Cycle Mode Key"),
-                    (b, v) -> { try { TierKeybinds.setCycleKeyCode(v); } catch (Throwable ignored) {} });
-            addTipped(w,
-                "Which key cycles the right-side gamemode in-game. " +
-                "Default is 'I'. You can also rebind this in Options \u2192 Controls \u2192 TierTagger.");
+            ButtonWidget btn = ButtonWidget.builder(
+                    Text.literal(cycleKeyLabel()),
+                    b -> {
+                        // Toggle listening mode — re-rendering the button
+                        // is handled by render() reading capturingCycleKey.
+                        capturingCycleKey = !capturingCycleKey;
+                        b.setMessage(Text.literal(cycleKeyLabel()));
+                    })
+                .dimensions(rowX(), rowKeyY, rowW(), BTN_H)
+                .build();
+            cycleKeyButton = btn;
+            addTipped(btn,
+                "Click the button, then press any key to bind it as the " +
+                "cycle-mode key (cycles the right-side gamemode in-game). " +
+                "Press ESC to cancel. You can also rebind this in Options " +
+                "\u2192 Controls \u2192 TierTagger.");
         });
         rRef[0]++;
 
@@ -1434,6 +1524,35 @@ public class TierConfigScreen extends Screen {
                         int x2 = btn.getX() + btn.getWidth() - 4;
                         int y2 = btn.getY() + 4;
                         drawDiagonalSlash(ctx, x1, y1, x2, y2, 0xFFE74C3C);
+                    }
+                }
+            } catch (Throwable ignored) {}
+
+            // 3a-bis. Animated pulsing accent ring around the Cycle Mode Key
+            //         button while we're WAITING for the user to press a key.
+            //         Gives the same feel as the vanilla Controls screen's
+            //         "press a key" prompt (subtle, never distracting).
+            try {
+                if (capturingCycleKey && cycleKeyButton != null) {
+                    int bx = cycleKeyButton.getX();
+                    int by = cycleKeyButton.getY();
+                    int bw = cycleKeyButton.getWidth();
+                    int bh = cycleKeyButton.getHeight();
+                    // Only draw when visible inside the body band so it
+                    // never bleeds into the title / tab strips.
+                    if (by + bh > bodyTop && by < bodyBottom) {
+                        // 0..1..0 sine pulse at ~1.5 Hz.
+                        double t = (System.currentTimeMillis() % 1333L) / 1333.0;
+                        float pulse = 0.45f + 0.55f * (float) Math.abs(Math.sin(t * Math.PI));
+                        int alpha = Math.min(255, Math.round(pulse * 220f));
+                        int ringArgb = (alpha << 24) | (ACCENT & 0xFFFFFF);
+                        // Outer glow (2 px, fading) + inner crisp 1 px ring.
+                        for (int i = 1; i <= 2; i++) {
+                            int a = Math.max(0, alpha - i * 70);
+                            int gArgb = (a << 24) | (ACCENT & 0xFFFFFF);
+                            outlineRect(ctx, bx - i, by - i, bw + i * 2, bh + i * 2, gArgb);
+                        }
+                        outlineRect(ctx, bx, by, bw, bh, ringArgb);
                     }
                 }
             } catch (Throwable ignored) {}

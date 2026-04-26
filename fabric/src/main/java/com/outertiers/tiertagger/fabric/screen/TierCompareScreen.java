@@ -78,15 +78,24 @@ public class TierCompareScreen extends Screen {
     private final Screen parent;
     private final String nameA;
     private final String nameB;
+    /** Optional filter — when non-null, only this service's card is rendered.
+     *  Set by {@code /tiertagger compare <a> <b> [tierlist]}. */
+    private final TierService onlyService;
     private boolean bgApplied = false;
     private int scrollY = 0;
     private int maxScroll = 0;
 
     public TierCompareScreen(Screen parent, String nameA, String nameB) {
-        super(Text.literal(nameA + " vs " + nameB));
-        this.parent = parent;
-        this.nameA  = nameA == null ? "" : nameA;
-        this.nameB  = nameB == null ? "" : nameB;
+        this(parent, nameA, nameB, null);
+    }
+
+    public TierCompareScreen(Screen parent, String nameA, String nameB, TierService onlyService) {
+        super(Text.literal(nameA + " vs " + nameB
+            + (onlyService != null ? "  (" + onlyService.shortLabel + " only)" : "")));
+        this.parent      = parent;
+        this.nameA       = nameA == null ? "" : nameA;
+        this.nameB       = nameB == null ? "" : nameB;
+        this.onlyService = onlyService;
     }
 
     /** Set when init() throws, so render() can show a useful overlay instead of a blank screen. */
@@ -352,6 +361,8 @@ public class TierCompareScreen extends Screen {
         int wins1 = 0, wins2 = 0, ties = 0;
 
         for (TierService svc : TierService.values()) {
+            // /tiertagger compare <a> <b> <tierlist> → only render that one card.
+            if (onlyService != null && svc != onlyService) continue;
             ServiceData sdA = dA == null ? null : dA.get(svc);
             ServiceData sdB = dB == null ? null : dB.get(svc);
 

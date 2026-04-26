@@ -96,9 +96,13 @@ public class TierTaggerFabricCommand {
                                 .executes(c -> {
                                     String cn1 = StringArgumentType.getString(c, "player1");
                                     String cn2 = StringArgumentType.getString(c, "player2");
+                                    String tl  = StringArgumentType.getString(c, "tierlist");
+                                    // "all" / unknown → show every tier list (legacy behaviour).
+                                    TierService only = ("all".equalsIgnoreCase(tl)) ? null : TierService.byId(tl);
                                     try { TierTaggerCore.cache().peekData(cn1); TierTaggerCore.cache().peekData(cn2); } catch (Throwable ignored) {}
-                                    PendingScreen.open(new TierCompareScreen(null, cn1, cn2));
-                                    c.getSource().sendFeedback(Text.literal("§7[TierTagger] §rComparing §e" + cn1 + " §rvs §e" + cn2 + "§r…"));
+                                    PendingScreen.open(new TierCompareScreen(null, cn1, cn2, only));
+                                    String tlMsg = (only == null) ? "all tier lists" : only.displayName + " only";
+                                    c.getSource().sendFeedback(Text.literal("§7[TierTagger] §rComparing §e" + cn1 + " §rvs §e" + cn2 + " §7(" + tlMsg + ")§r…"));
                                     return 1;
                                 })))))
                 .then(ClientCommandManager.literal("clear")
@@ -192,7 +196,23 @@ public class TierTaggerFabricCommand {
                             PendingScreen.open(new TierProfileScreen(null, name));
                             ctx.getSource().sendFeedback(Text.literal("§7[TierTagger] §rSearching for §e" + name + "§r…"));
                             return 1;
-                        })))
+                        })
+                        .then(ClientCommandManager.argument("tierlist", StringArgumentType.word())
+                            .suggests((c, b) -> {
+                                for (TierService s : TierService.values()) b.suggest(s.id);
+                                b.suggest("all");
+                                return b.buildFuture();
+                            })
+                            .executes(ctx -> {
+                                String name = StringArgumentType.getString(ctx, "player");
+                                String tl   = StringArgumentType.getString(ctx, "tierlist");
+                                TierService only = ("all".equalsIgnoreCase(tl)) ? null : TierService.byId(tl);
+                                try { TierTaggerCore.cache().peekData(name); } catch (Throwable ignored) {}
+                                PendingScreen.open(new TierProfileScreen(null, name, only));
+                                String tlMsg = (only == null) ? "all tier lists" : only.displayName + " only";
+                                ctx.getSource().sendFeedback(Text.literal("§7[TierTagger] §rSearching for §e" + name + " §7(" + tlMsg + ")§r…"));
+                                return 1;
+                            }))))
                 .executes(ctx -> { sendStatus(ctx.getSource()); return 1; })
             );
         });
@@ -324,8 +344,8 @@ public class TierTaggerFabricCommand {
         String[][] rows = {
             {"/tiertagger",                  "Show current settings"},
             {"/tiertagger config",           "Open the GUI settings screen"},
-            {"/tiertagger profile <player>", "Open the four-service tier breakdown"},
-            {"/tiertagger compare <a> <b> [list]", "Side-by-side comparison (mctiers|outertiers|pvptiers|subtiers|all)"},
+            {"/tiertagger search <player> [list]",  "Open the per-service tier breakdown (optional: limit to one tier list)"},
+            {"/tiertagger compare <a> <b> [list]",  "Side-by-side comparison (mctiers|outertiers|pvptiers|subtiers|all)"},
             {"/tiertagger service left <s>", "Set the LEFT badge service"},
             {"/tiertagger service right <s>","Set the RIGHT badge service"},
             {"/tiertagger service toggle <s>","Enable/disable a service"},

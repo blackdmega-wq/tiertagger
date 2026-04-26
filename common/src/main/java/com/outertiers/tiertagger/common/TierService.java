@@ -51,9 +51,12 @@ public enum TierService {
     SUBTIERS(
         "subtiers", "SubTiers",  "ST",   0xFF8E24AA,
         "https://subtiers.net/api/profile/", Lookup.UUID_NODASH,
+        // "dia_2v2" intentionally REMOVED at user request — it should never
+        // surface anywhere in the UI (Display Mode dropdown, profile cards,
+        // compare cards, /service toggles, etc.).
         List.of("og_vanilla", "speed", "bed", "elytra",
                 "trident", "creeper", "minecart", "manhunt", "dia_smp", "dia_crystal",
-                "dia_2v2", "debuff", "bow")
+                "debuff", "bow")
     );
 
     public enum Lookup { USERNAME, UUID_NODASH }
