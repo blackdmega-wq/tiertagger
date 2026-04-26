@@ -227,7 +227,14 @@ public final class BadgeRenderer {
         String g = ModeGlyphs.glyphFor(mode);
         if (g == null || g.isEmpty()) return Text.empty();
         try {
-            return Text.literal(g).setStyle(applyIconFont(Style.EMPTY));
+            // Force pure-white tint so the bitmap-font glyphs render at full
+            // brightness in the tab list and above nametags. Without an
+            // explicit colour the glyph inherits the surrounding chat style
+            // (often Formatting.GRAY for tab names), which multiplies into
+            // the icon and makes it look washed-out / too dark — exactly the
+            // bug the user reported.
+            Style s = applyIconFont(Style.EMPTY).withColor(0xFFFFFF);
+            return Text.literal(g).setStyle(s);
         } catch (Throwable t) {
             return Text.empty();
         }

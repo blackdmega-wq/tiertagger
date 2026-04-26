@@ -144,7 +144,10 @@ public class TierProfileScreen extends Screen {
             fillRect(ctx, panelX, panelTop, panelX + panelW, panelBottom, BG_PANEL);
             outlineRect(ctx, panelX, panelTop, panelW, panelBottom - panelTop, BG_PANEL_BORDER);
 
-            int headerH = 56;
+            // Header taller now that the player slot shows a full-body
+            // render (1:2 aspect) instead of a square head — matches the
+            // OuterTiers website's player card.
+            int headerH = 92;
             renderHeader(ctx, panelX + CARD_PAD, panelTop + CARD_PAD,
                          panelW - CARD_PAD * 2, headerH);
 
@@ -190,12 +193,15 @@ public class TierProfileScreen extends Screen {
     private void renderHeader(DrawContext ctx, int x, int y, int w, int h) {
         fillRect(ctx, x, y, x + w, y + h, BG_HEADER);
 
-        int headSize = h - 12;
+        // Body slot is a tall 1:2-ish rectangle so the full-body skin render
+        // fits naturally instead of being squashed into a square.
+        int bodyH = h - 12;
+        int bodyW = bodyH / 2;
         int headX = x + 8;
-        int headY = y + (h - headSize) / 2;
-        drawHead(ctx, username, headX, headY, headSize);
+        int headY = y + (h - bodyH) / 2;
+        drawHead(ctx, username, headX, headY, bodyW, bodyH);
 
-        int textX = headX + headSize + 12;
+        int textX = headX + bodyW + 12;
         int textY = y + 10;
         ctx.drawTextWithShadow(this.textRenderer,
             Text.literal(username).formatted(Formatting.WHITE, Formatting.BOLD),
@@ -356,11 +362,16 @@ public class TierProfileScreen extends Screen {
                 int pillW = pillTextW + 8;
                 int pillX = rightX - tailW - (tail.isEmpty() ? 0 : 8) - pillW;
                 int color = TierTaggerCore.argbFor(pill);
-                fillRect(ctx, pillX, y + 4, pillX + pillW, y + 18, (color & 0x00FFFFFF) | 0x33000000);
-                outlineRect(ctx, pillX, y + 4, pillW, 14, color);
-                ctx.drawTextWithShadow(this.textRenderer,
+                // Pill 15px tall (y+3..y+18) so the 8px-tall ASCII glyph at
+                // y+8 sits visually centered (text-center y+11.5 == pill
+                // center y+10.5, off by ½ px which rounds out cleanly).
+                // Old layout was 14px tall with text at y+7 → text drifted
+                // ~1.5 px above center, the bug the user spotted.
+                fillRect(ctx, pillX, y + 3, pillX + pillW, y + 18, (color & 0x00FFFFFF) | 0x33000000);
+                outlineRect(ctx, pillX, y + 3, pillW, 15, color);
+                ctx.drawCenteredTextWithShadow(this.textRenderer,
                     Text.literal(pill).withColor(rgb(color)).copy().formatted(Formatting.BOLD),
-                    pillX + 4, y + 7, opaque(color));
+                    pillX + pillW / 2, y + 7, opaque(color));
             }
         }
 
@@ -464,38 +475,46 @@ public class TierProfileScreen extends Screen {
 
     // ── helpers ─────────────────────────────────────────────────────────────
 
-    private void drawHead(DrawContext ctx, String name, int x, int y, int size) {
-        // Border / shadow plate
-        ctx.fill(x - 2, y - 2, x + size + 2, y + size + 2, 0xFF1A1A1A);
+    private void drawHead(DrawContext ctx, String name, int x, int y, int boxW, int boxH) {
+        // Border / shadow plate around the body slot.
+        ctx.fill(x - 2, y - 2, x + boxW + 2, y + boxH + 2, 0xFF1A1A1A);
 
         // Use mc-heads.net via SkinFetcher for ALL players (online + offline).
-        // This avoids the brittle PlayerSkinDrawer.draw reflective path whose
-        // signature changed incompatibly in MC 1.21.6+ (added RenderPipeline
-        // first arg) and silently failed, leaving the head box empty. The
-        // fetched PNG is a flat 64x64 head sprite already baked with hat
-        // overlay, so we can blit it straight to the screen using the same
-        // Compat.drawTexture path that successfully renders the gamemode
-        // icons elsewhere on this screen.
-        Optional<Identifier> fetched = Optional.empty();
-        try { fetched = SkinFetcher.headFor(name); } catch (Throwable ignored) {}
+        // The /body/ endpoint returns a 2D full-body render (~1:2 aspect) so
+        // the player image looks like the OuterTiers website player card
+        // instead of an oversized square head. We honour the actual decoded
+        // image dimensions so the body keeps its real aspect — fit-inside
+        // the box, centered, no stretching.
+        Optional<SkinFetcher.Skin> fetched = Optional.empty();
+        try { fetched = SkinFetcher.skinFor(name); } catch (Throwable ignored) {}
         if (fetched.isPresent()) {
             try {
-                // Pass the actual mc-heads.net PNG dimensions (64x64) for the
-                // texW/texH UV-normalisation slots so the full sprite is
-                // sampled and scaled to `size`, regardless of whether `size`
-                // happens to equal 64.
-                Compat.drawTexture(ctx, fetched.get(), x, y, 0, 0, size, size, 64, 64);
+                SkinFetcher.Skin sk = fetched.get();
+                int iw = Math.max(1, sk.width);
+                int ih = Math.max(1, sk.height);
+                // Fit the image inside the box, preserving aspect ratio.
+                double sx = (double) boxW / iw;
+                double sy = (double) boxH / ih;
+                double scale = Math.min(sx, sy);
+                int dw = Math.max(1, (int) Math.floor(iw * scale));
+                int dh = Math.max(1, (int) Math.floor(ih * scale));
+                int dx = x + (boxW - dw) / 2;
+                int dy = y + (boxH - dh) / 2;
+                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, iw, ih);
                 return;
             } catch (Throwable ignored) {}
         }
 
-        // Placeholder while the skin is still downloading (or if mc-heads.net
-        // is unreachable). A subtle Steve-skin-tone rectangle keeps the layout
-        // stable and tells the user the slot belongs to a player.
+        // Placeholder while the body render is still downloading (or if
+        // mc-heads.net is unreachable). Tinted body silhouette keeps the
+        // layout stable and tells the user the slot belongs to a player.
         try {
-            ctx.fill(x, y, x + size, y + size, 0xFF6E4A2A);
-            ctx.fill(x + size / 4, y + size / 3,
-                     x + size * 3 / 4, y + size * 2 / 3, 0xFF3F2A18);
+            ctx.fill(x, y, x + boxW, y + boxH, 0xFF26303B);
+            // Faint head + torso outline.
+            int cx = x + boxW / 2;
+            int hSize = Math.max(4, boxW / 2);
+            ctx.fill(cx - hSize / 2, y + 4, cx + hSize / 2, y + 4 + hSize, 0xFF6E4A2A);
+            ctx.fill(cx - hSize, y + 6 + hSize, cx + hSize, y + boxH - 4, 0xFF3F2A18);
         } catch (Throwable ignored) {}
     }
 

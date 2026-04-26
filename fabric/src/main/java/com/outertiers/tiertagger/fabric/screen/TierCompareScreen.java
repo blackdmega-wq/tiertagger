@@ -169,7 +169,10 @@ public class TierCompareScreen extends Screen {
             PlayerData dA = optA.orElse(null);
             PlayerData dB = optB.orElse(null);
 
-            int headerH = 64;
+            // Taller header now that the player slots show full-body
+            // renders (1:2 aspect) and a centered OuterTiers logo instead
+            // of a square head + small "vs" pill.
+            int headerH = 92;
             renderHeader(ctx, dA, dB, panelX + CARD_PAD, panelTop + CARD_PAD,
                          panelW - CARD_PAD * 2, headerH);
 
@@ -216,15 +219,18 @@ public class TierCompareScreen extends Screen {
                               int x, int y, int w, int h) {
         fillRect(ctx, x, y, x + w, y + h, BG_HEADER);
 
-        int headSize = h - 16;
+        // Body slots are tall 1:2-ish rectangles so the full-body skin
+        // render fits naturally instead of being squashed into a square.
+        int bodyH      = h - 12;
+        int bodyW      = bodyH / 2;
         int leftHeadX  = x + 10;
-        int rightHeadX = x + w - 10 - headSize;
-        int headY      = y + (h - headSize) / 2;
-        drawHead(ctx, nameA, leftHeadX,  headY, headSize);
-        drawHead(ctx, nameB, rightHeadX, headY, headSize);
+        int rightHeadX = x + w - 10 - bodyW;
+        int headY      = y + (h - bodyH) / 2;
+        drawHead(ctx, nameA, leftHeadX,  headY, bodyW, bodyH);
+        drawHead(ctx, nameB, rightHeadX, headY, bodyW, bodyH);
 
         // ── Left side text block ──
-        int leftTextX = leftHeadX + headSize + 10;
+        int leftTextX = leftHeadX + bodyW + 10;
         ctx.drawTextWithShadow(this.textRenderer,
             Text.literal(nameA).formatted(Formatting.WHITE, Formatting.BOLD),
             leftTextX, y + 10, 0xFFFFFFFF);
@@ -247,7 +253,7 @@ public class TierCompareScreen extends Screen {
             Text.literal(loadedCount(dA)).withColor(rgb(FG_FAINT)),
             leftTextX, y + 38, FG_FAINT);
 
-        // ── Right side text block (right-aligned, with extra gap from head) ──
+        // ── Right side text block (right-aligned, with extra gap from body) ──
         int rightTextRight = rightHeadX - RIGHT_NAME_GAP;
         int wName = this.textRenderer.getWidth(nameB);
         ctx.drawTextWithShadow(this.textRenderer,
@@ -274,17 +280,29 @@ public class TierCompareScreen extends Screen {
         ctx.drawTextWithShadow(this.textRenderer,
             Text.literal(lc).withColor(rgb(FG_FAINT)), rightTextRight - lcw, y + 38, FG_FAINT);
 
-        // ── Centred "vs" pill ──
-        String vs = "vs";
-        int pillW = 28;
-        int pillH = 18;
-        int pillX = x + (w - pillW) / 2;
-        int pillY = y + (h - pillH) / 2;
-        fillRect(ctx, pillX, pillY, pillX + pillW, pillY + pillH, VS_BG);
-        outlineRect(ctx, pillX, pillY, pillW, pillH, VS_BORDER);
-        ctx.drawCenteredTextWithShadow(this.textRenderer,
-            Text.literal(vs).formatted(Formatting.GRAY, Formatting.BOLD),
-            pillX + pillW / 2, pillY + 5, 0xCCCCCC);
+        // ── Centred OuterTiers logo (replaces the old "vs" pill) ──
+        // The logo PNG is bundled at assets/tiertagger/textures/logo/outertiers.png
+        // (512×512 source). We fit it inside a square slot scaled to the
+        // header so it stays crisp on small windows and big windows alike.
+        int logoBox = Math.min(h - 16, 56);
+        int logoX   = x + (w - logoBox) / 2;
+        int logoY   = y + (h - logoBox) / 2;
+        try {
+            Identifier logo = Identifier.of("tiertagger", "textures/logo/outertiers.png");
+            Compat.drawTexture(ctx, logo, logoX, logoY, 0, 0, logoBox, logoBox, 512, 512);
+        } catch (Throwable ignored) {
+            // Fall back to the old "vs" pill if for some reason the logo
+            // texture can't be drawn — keeps the UI usable.
+            String vs = "vs";
+            int pillW = 28, pillH = 18;
+            int pillX = x + (w - pillW) / 2;
+            int pillY = y + (h - pillH) / 2;
+            fillRect(ctx, pillX, pillY, pillX + pillW, pillY + pillH, VS_BG);
+            outlineRect(ctx, pillX, pillY, pillW, pillH, VS_BORDER);
+            ctx.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal(vs).formatted(Formatting.GRAY, Formatting.BOLD),
+                pillX + pillW / 2, pillY + 5, 0xCCCCCC);
+        }
     }
 
     private static Ranking highestOverall(PlayerData d) {
@@ -506,30 +524,41 @@ public class TierCompareScreen extends Screen {
 
     // ── helpers ─────────────────────────────────────────────────────────────
 
-    private void drawHead(DrawContext ctx, String name, int x, int y, int size) {
-        ctx.fill(x - 2, y - 2, x + size + 2, y + size + 2, 0xFF1A1A1A);
+    private void drawHead(DrawContext ctx, String name, int x, int y, int boxW, int boxH) {
+        ctx.fill(x - 2, y - 2, x + boxW + 2, y + boxH + 2, 0xFF1A1A1A);
 
         // Use mc-heads.net via SkinFetcher for ALL players (online + offline).
-        // The PlayerSkinDrawer.draw reflective path silently broke on
-        // MC 1.21.6+ (added a RenderPipeline first arg) and rendered nothing.
-        // The fetched 64x64 PNG already has the hat overlay baked in, so we
-        // can blit it via the proven Compat.drawTexture path that the
-        // gamemode icons also use.
-        Optional<Identifier> fetched = Optional.empty();
-        try { fetched = SkinFetcher.headFor(name); } catch (Throwable ignored) {}
+        // The /body/ endpoint returns a 2D full-body render (~1:2 aspect)
+        // matching the OuterTiers website player cards. We honour the actual
+        // decoded image dimensions so the body keeps its real aspect — fit
+        // inside the box, centered, no stretching.
+        Optional<SkinFetcher.Skin> fetched = Optional.empty();
+        try { fetched = SkinFetcher.skinFor(name); } catch (Throwable ignored) {}
         if (fetched.isPresent()) {
             try {
-                Compat.drawTexture(ctx, fetched.get(), x, y, 0, 0, size, size, 64, 64);
+                SkinFetcher.Skin sk = fetched.get();
+                int iw = Math.max(1, sk.width);
+                int ih = Math.max(1, sk.height);
+                double sx = (double) boxW / iw;
+                double sy = (double) boxH / ih;
+                double scale = Math.min(sx, sy);
+                int dw = Math.max(1, (int) Math.floor(iw * scale));
+                int dh = Math.max(1, (int) Math.floor(ih * scale));
+                int dx = x + (boxW - dw) / 2;
+                int dy = y + (boxH - dh) / 2;
+                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, iw, ih);
                 return;
             } catch (Throwable ignored) {}
         }
 
-        // Placeholder while the skin is downloading or if mc-heads.net is
-        // unreachable. Stable layout, no empty box.
+        // Placeholder while the body render is downloading or if
+        // mc-heads.net is unreachable. Stable layout, no empty box.
         try {
-            ctx.fill(x, y, x + size, y + size, 0xFF6E4A2A);
-            ctx.fill(x + size / 4, y + size / 3,
-                     x + size * 3 / 4, y + size * 2 / 3, 0xFF3F2A18);
+            ctx.fill(x, y, x + boxW, y + boxH, 0xFF26303B);
+            int cx = x + boxW / 2;
+            int hSize = Math.max(4, boxW / 2);
+            ctx.fill(cx - hSize / 2, y + 4, cx + hSize / 2, y + 4 + hSize, 0xFF6E4A2A);
+            ctx.fill(cx - hSize, y + 6 + hSize, cx + hSize, y + boxH - 4, 0xFF3F2A18);
         } catch (Throwable ignored) {}
     }
 
