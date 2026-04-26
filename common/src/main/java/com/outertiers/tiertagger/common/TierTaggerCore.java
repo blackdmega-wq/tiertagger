@@ -103,11 +103,30 @@ public final class TierTaggerCore {
      */
     public static TierPick pickForService(PlayerData data, TierService service,
                                           java.util.function.Predicate<String> modeFilter) {
+        return pickForService(data, service, modeFilter, null);
+    }
+
+    /**
+     * Same as {@link #pickForService(PlayerData, TierService, java.util.function.Predicate)}
+     * but allows the caller to override which gamemode drives the badge for this
+     * particular service. Used by the per-side ("Left Mode" / "Right Mode") config
+     * options so a user can pin, e.g., the LEFT badge to MCTiers Vanilla while the
+     * RIGHT badge follows MCTiers Sword. Pass {@code null} or {@code "highest"} to
+     * fall back to the global {@link TierConfig#displayMode}.
+     */
+    public static TierPick pickForService(PlayerData data, TierService service,
+                                          java.util.function.Predicate<String> modeFilter,
+                                          String modeOverride) {
         if (data == null || service == null || CONFIG == null) return null;
         ServiceData sd = data.get(service);
         if (sd == null || sd.missing) return null;
 
-        String displayMode = CONFIG.displayMode == null ? "highest" : CONFIG.displayMode.toLowerCase();
+        String displayMode;
+        if (modeOverride != null && !modeOverride.isBlank()) {
+            displayMode = modeOverride.toLowerCase();
+        } else {
+            displayMode = CONFIG.displayMode == null ? "highest" : CONFIG.displayMode.toLowerCase();
+        }
         if ("highest".equals(displayMode) || "overall".equals(displayMode)) {
             String bestMode = null;
             Ranking best = null;

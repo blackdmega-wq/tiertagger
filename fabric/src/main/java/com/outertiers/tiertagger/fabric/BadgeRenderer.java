@@ -309,7 +309,8 @@ public final class BadgeRenderer {
     public static MutableText buildTabPrefix(TierConfig cfg, PlayerData data) {
         TierService leftSvc = cfg.leftServiceEnum();
         java.util.function.Predicate<String> tabFilter = cfg::isTabModeEnabled;
-        TierTaggerCore.TierPick pick = TierTaggerCore.pickForService(data, leftSvc, tabFilter);
+        TierTaggerCore.TierPick pick =
+            TierTaggerCore.pickForService(data, leftSvc, tabFilter, cfg.leftMode);
         if (pick == null || pick.tier == null || pick.tier.isBlank()) return null;
         return formatBadge(leftSvc, pick.tier, pick.mode, true).append(Text.literal(" "));
     }
@@ -321,7 +322,8 @@ public final class BadgeRenderer {
         if (!cfg.rightBadgeEnabled) return null;
         TierService rightSvc = cfg.rightServiceEnum();
         java.util.function.Predicate<String> tabFilter = cfg::isTabModeEnabled;
-        TierTaggerCore.TierPick pick = TierTaggerCore.pickForService(data, rightSvc, tabFilter);
+        TierTaggerCore.TierPick pick =
+            TierTaggerCore.pickForService(data, rightSvc, tabFilter, cfg.rightMode);
         if (pick == null || pick.tier == null || pick.tier.isBlank()) return null;
         return Text.literal(" ").append(formatBadge(rightSvc, pick.tier, pick.mode, false));
     }
@@ -334,9 +336,10 @@ public final class BadgeRenderer {
         TierService leftSvc  = cfg.leftServiceEnum();
         TierService rightSvc = cfg.rightServiceEnum();
         java.util.function.Predicate<String> nametagFilter = cfg::isNametagModeEnabled;
-        TierTaggerCore.TierPick leftPick  = TierTaggerCore.pickForService(data, leftSvc, nametagFilter);
+        TierTaggerCore.TierPick leftPick  =
+            TierTaggerCore.pickForService(data, leftSvc, nametagFilter, cfg.leftMode);
         TierTaggerCore.TierPick rightPick = cfg.rightBadgeEnabled
-            ? TierTaggerCore.pickForService(data, rightSvc, nametagFilter) : null;
+            ? TierTaggerCore.pickForService(data, rightSvc, nametagFilter, cfg.rightMode) : null;
         boolean hasLeft  = leftPick  != null && leftPick.tier  != null && !leftPick.tier.isBlank();
         boolean hasRight = rightPick != null && rightPick.tier != null && !rightPick.tier.isBlank();
         if (!hasLeft && !hasRight) return null;

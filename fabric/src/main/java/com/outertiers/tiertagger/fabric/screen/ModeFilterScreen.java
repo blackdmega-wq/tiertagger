@@ -21,6 +21,15 @@ import java.util.Set;
  * which gamemodes are shown in either the player tab list or above player
  * nametags. The two contexts are independent so a user can, for example, only
  * surface Vanilla in the tab list while still seeing every mode above heads.
+ *
+ * <p>v1.21.11.28 fix: previously this screen could appear completely empty
+ * because (a) it lacked the {@code bgApplied} guard so MC's
+ * {@link Screen#render(DrawContext, int, int, float)} re-ran
+ * {@code renderBackground} after our panel was drawn, blanking the title and
+ * panel; and (b) any throw inside the per-mode widget loop aborted the rest
+ * of the build, leaving the screen with no buttons. The screen now mirrors
+ * {@link TierConfigScreen}'s defensive build pattern (safeAdd + scrolling
+ * + render guard) so all ~30 modes are reachable on every screen size.
  */
 public class ModeFilterScreen extends Screen {
 
@@ -38,6 +47,14 @@ public class ModeFilterScreen extends Screen {
     private final Screen parent;
     /** {@code true} = configuring the tab list, {@code false} = configuring nametags. */
     private final boolean tabContext;
+    private boolean bgApplied = false;
+
+    private int scrollY    = 0;
+    private int maxScroll  = 0;
+    private int bodyTop    = 36;
+    private int bodyBottom = 0;
+    private int maxRowUsed = 0;
+    private volatile String lastInitError = null;
 
     public ModeFilterScreen(Screen parent, boolean tabContext) {
         super(Text.literal(tabContext ? "Tab Modes" : "Nametag Modes"));
@@ -52,13 +69,47 @@ public class ModeFilterScreen extends Screen {
     }
 
     private int rowY(int row) {
-        return Math.max(48, this.height / 8) + row * ROW_H;
+        if (row > maxRowUsed) maxRowUsed = row;
+        return bodyTop + 6 + row * ROW_H - scrollY;
     }
-
-    private static int rgb(int argb) { return argb & 0xFFFFFF; }
 
     @Override
     protected void init() {
+        lastInitError = null;
+        maxRowUsed = 0;
+        bodyTop    = 36;
+        bodyBottom = this.height - 32 - ROW_H;
+        try { buildWidgets(); }
+        catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] mode-filter init failed", t);
+            lastInitError = t.getClass().getSimpleName() + ": " +
+                (t.getMessage() == null ? "(no message)" : t.getMessage());
+            this.clearChildren();
+            this.addDrawableChild(ButtonWidget.builder(
+                    Text.literal("Done"), b -> closeSafely())
+                .dimensions(this.width / 2 - 110, this.height - 27, 220, BTN_H).build());
+        }
+    }
+
+    @Override
+    public boolean mouseScrolled(double mx, double my, double hd, double vd) {
+        int prev = scrollY;
+        scrollY = Math.max(0, Math.min(maxScroll, scrollY - (int)(vd * 16)));
+        if (scrollY != prev) {
+            this.clearChildren();
+            try { buildWidgets(); } catch (Throwable ignored) {}
+        }
+        return true;
+    }
+
+    private void safeAdd(String label, Runnable build) {
+        try { build.run(); }
+        catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] mode-filter widget " + label + " failed", t);
+        }
+    }
+
+    private void buildWidgets() {
         TierConfig cfg = TierTaggerCore.config();
         if (cfg == null) {
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> closeSafely())
@@ -73,32 +124,31 @@ public class ModeFilterScreen extends Screen {
         if (existing != null) modes.addAll(existing);
         List<String> ordered = new ArrayList<>(modes);
 
-        int bottomLimit = this.height - 32;
         for (int i = 0; i < ordered.size(); i++) {
             final String mode = ordered.get(i);
             final int col = i % 2;
             final int row = i / 2;
-            int y = rowY(row);
-            if (y + BTN_H > bottomLimit) break;
-
-            boolean enabled = tabContext ? cfg.isTabModeEnabled(mode) : cfg.isNametagModeEnabled(mode);
-            this.addDrawableChild(CyclingButtonWidget.onOffBuilder(enabled)
-                .build(colX(col), y, BTN_W, BTN_H,
-                    Text.literal(prettyName(mode)),
-                    (b, v) -> {
-                        try {
-                            if (tabContext) cfg.setTabModeEnabled(mode, v);
-                            else            cfg.setNametagModeEnabled(mode, v);
-                            cfg.save();
-                        } catch (Throwable t) {
-                            TierTaggerCore.LOGGER.warn("[TierTagger] mode-filter toggle failed for {}", mode, t);
-                        }
-                    }));
+            final int y   = rowY(row);
+            safeAdd("mode:" + mode, () -> {
+                boolean enabled = tabContext ? cfg.isTabModeEnabled(mode) : cfg.isNametagModeEnabled(mode);
+                this.addDrawableChild(CyclingButtonWidget.onOffBuilder(enabled)
+                    .build(colX(col), y, BTN_W, BTN_H,
+                        Text.literal(prettyName(mode)),
+                        (b, v) -> {
+                            try {
+                                if (tabContext) cfg.setTabModeEnabled(mode, v);
+                                else            cfg.setNametagModeEnabled(mode, v);
+                                cfg.save();
+                            } catch (Throwable t) {
+                                TierTaggerCore.LOGGER.warn("[TierTagger] mode-filter toggle failed for {}", mode, t);
+                            }
+                        }));
+            });
         }
 
-        // Bottom action row: Reset + Done.
+        // Bottom action row: Reset + Done — anchored so they never scroll.
         int bottomY = this.height - 27;
-        this.addDrawableChild(ButtonWidget.builder(
+        safeAdd("reset", () -> this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("Reset (show all)"),
                 b -> {
                     try {
@@ -109,19 +159,38 @@ public class ModeFilterScreen extends Screen {
                     MinecraftClient mc = this.client != null ? this.client : MinecraftClient.getInstance();
                     if (mc != null) mc.setScreen(new ModeFilterScreen(parent, tabContext));
                 })
-            .dimensions(colX(0), bottomY, BTN_W, BTN_H).build());
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> closeSafely())
-            .dimensions(colX(1), bottomY, BTN_W, BTN_H).build());
+            .dimensions(colX(0), bottomY, BTN_W, BTN_H).build()));
+        safeAdd("done", () -> this.addDrawableChild(ButtonWidget.builder(
+                Text.literal("Done"), b -> closeSafely())
+            .dimensions(colX(1), bottomY, BTN_W, BTN_H).build()));
+
+        int contentH = (maxRowUsed + 2) * ROW_H;
+        int viewH    = bodyBottom - bodyTop;
+        maxScroll = Math.max(0, contentH - viewH);
+        if (scrollY > maxScroll) scrollY = maxScroll;
     }
 
     private static String prettyName(String mode) {
         if (mode == null || mode.isEmpty()) return "?";
         // Most modes are short ASCII; just upper-case the first letter for a tidy label.
-        return Character.toUpperCase(mode.charAt(0)) + mode.substring(1);
+        return Character.toUpperCase(mode.charAt(0)) + mode.substring(1).replace('_', ' ');
+    }
+
+    private static int rgb(int argb) { return argb & 0xFFFFFF; }
+
+    @Override
+    public void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        // CRITICAL: MC's Screen#render calls renderBackground itself, so without
+        // this guard the dim background would be drawn AFTER our panel/title in
+        // render(), wiping them and producing the "screen shows nothing" bug.
+        if (bgApplied) return;
+        bgApplied = true;
+        try { super.renderBackground(ctx, mouseX, mouseY, delta); } catch (Throwable ignored) {}
     }
 
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        bgApplied = false;
         try {
             this.renderBackground(ctx, mouseX, mouseY, delta);
 
@@ -130,11 +199,19 @@ public class ModeFilterScreen extends Screen {
             panelW = Math.max(panelW, totalW + 24);
             int panelX = (this.width - panelW) / 2;
             int panelTop = 8;
-            int panelBottom = this.height - 8;
-            fillRect(ctx, panelX, panelTop, panelX + panelW, panelBottom, BG_PANEL);
-            outlineRect(ctx, panelX, panelTop, panelW, panelBottom - panelTop, BG_PANEL_BORDER);
+            int panelBottomY = this.height - 8;
 
-            fillRect(ctx, panelX + 1, panelTop + 1, panelX + panelW - 1, panelTop + 26, BG_HEADER);
+            // 1. Panel background.
+            fillRect(ctx, panelX, panelTop, panelX + panelW, panelBottomY, BG_PANEL);
+            outlineRect(ctx, panelX, panelTop, panelW, panelBottomY - panelTop, BG_PANEL_BORDER);
+
+            // 2. Widgets — drawn outside scissor so the bottom action row is
+            //    never clipped. The title strip is re-painted on top below.
+            super.render(ctx, mouseX, mouseY, delta);
+
+            // 3. Re-draw the title strip on top to cover any scrolled widget
+            //    that crept above bodyTop.
+            fillRect(ctx, panelX + 1, panelTop + 1, panelX + panelW - 1, bodyTop, BG_HEADER);
             ctx.drawCenteredTextWithShadow(this.textRenderer,
                 this.title.copy().formatted(Formatting.WHITE, Formatting.BOLD),
                 this.width / 2, panelTop + 10, 0xFFFFFFFF);
@@ -145,10 +222,42 @@ public class ModeFilterScreen extends Screen {
                     .withColor(rgb(FG_FAINT)),
                 this.width / 2, panelTop + 18, FG_FAINT);
 
-            super.render(ctx, mouseX, mouseY, delta);
+            // 4. Scroll indicator.
+            if (maxScroll > 0) {
+                int trackX  = panelX + panelW - 5;
+                int trackTop = bodyTop;
+                int trackH  = bodyBottom - bodyTop;
+                fillRect(ctx, trackX, trackTop, trackX + 3, trackTop + trackH, 0x40FFFFFF);
+                int thumbH = Math.max(20, trackH * trackH / Math.max(1, trackH + maxScroll));
+                int thumbY = trackTop + (int)((long)(trackH - thumbH) * scrollY / Math.max(1, maxScroll));
+                fillRect(ctx, trackX, thumbY, trackX + 3, thumbY + thumbH, 0xFFAAAAAA);
+            }
+
+            if (lastInitError != null) {
+                drawErrorOverlay(ctx, "Mode-filter init failed", lastInitError);
+            }
         } catch (Throwable t) {
             TierTaggerCore.LOGGER.warn("[TierTagger] mode-filter render", t);
+            try { drawErrorOverlay(ctx, "Mode-filter render failed",
+                t.getClass().getSimpleName() + ": " +
+                (t.getMessage() == null ? "(no message)" : t.getMessage())); }
+            catch (Throwable ignored) {}
         }
+    }
+
+    private void drawErrorOverlay(DrawContext ctx, String title, String detail) {
+        int cx = this.width / 2;
+        int cy = this.height / 2;
+        int w  = Math.min(this.width - 40, 360);
+        fillRect(ctx, cx - w / 2, cy - 30, cx + w / 2, cy + 30, 0xCC110000);
+        outlineRect(ctx, cx - w / 2, cy - 30, w, 60, 0xFFFF5555);
+        ctx.drawCenteredTextWithShadow(this.textRenderer,
+            Text.literal(title).formatted(Formatting.RED, Formatting.BOLD), cx, cy - 18, 0xFFFF5555);
+        ctx.drawCenteredTextWithShadow(this.textRenderer,
+            Text.literal(detail).formatted(Formatting.WHITE), cx, cy - 4, 0xFFFFFFFF);
+        ctx.drawCenteredTextWithShadow(this.textRenderer,
+            Text.literal("See latest.log for the full stack trace").formatted(Formatting.GRAY),
+            cx, cy + 12, 0xFFAAAAAA);
     }
 
     private static void fillRect(DrawContext ctx, int x1, int y1, int x2, int y2, int argb) {

@@ -60,6 +60,17 @@ public class TierConfig {
     public boolean showModeIcon      = true;
     /** Either "highest" or one of {@link #GAMEMODES} (excluding "overall" which means highest). */
     public String  displayMode       = "highest";
+    /**
+     * Per-side mode override for the LEFT badge. {@code "highest"} (default) means
+     * "use whichever gamemode of {@link #leftService} the player ranks highest in".
+     * Any other value (e.g. {@code "vanilla"}, {@code "sword"}) forces the badge
+     * to read the tier from that specific gamemode of {@link #leftService}, with
+     * {@link #fallthroughToHighest} controlling what happens when the player has
+     * no rank in that mode.
+     */
+    public String  leftMode           = "highest";
+    /** Per-side mode override for the RIGHT badge. See {@link #leftMode}. */
+    public String  rightMode          = "highest";
     /** Modes considered when computing "highest" tier. Empty => use everything. */
     public List<String> enabledModes = new ArrayList<>();
     /** Modes shown in the player tab list. {@code null}/empty => follow {@link #enabledModes}. */
@@ -121,6 +132,8 @@ public class TierConfig {
         if (leftService    == null || TierService.byId(leftService)    == null) leftService    = TierService.OUTERTIERS.id;
         if (rightService   == null || TierService.byId(rightService)   == null) rightService   = TierService.MCTIERS.id;
         if (displayMode    == null || displayMode.isBlank()) displayMode = "highest";
+        if (leftMode       == null || leftMode.isBlank())    leftMode    = "highest";
+        if (rightMode      == null || rightMode.isBlank())   rightMode   = "highest";
         if (enabledModes   == null) enabledModes = new ArrayList<>();
 
         return this;
@@ -239,6 +252,8 @@ public class TierConfig {
         this.showServiceIcon   = def.showServiceIcon;
         this.showModeIcon      = def.showModeIcon;
         this.displayMode       = def.displayMode;
+        this.leftMode          = def.leftMode;
+        this.rightMode         = def.rightMode;
         this.enabledModes      = new ArrayList<>();
         this.tabModes          = null;
         this.nametagModes      = null;

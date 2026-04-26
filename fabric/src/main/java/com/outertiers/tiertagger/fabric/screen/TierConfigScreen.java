@@ -177,6 +177,42 @@ public class TierConfigScreen extends Screen {
         });
         rRef[0]++;
 
+        // Per-side gamemode picker: lets the user pin which gamemode the LEFT
+        // and RIGHT badge each read their tier from. The mode list shown is the
+        // chosen side's service modes, prefixed with "highest" (= follow whatever
+        // the player ranks best at on that service). If the saved mode isn't in
+        // the chosen service's mode list (e.g. user switched services after
+        // picking a mode) we still show it so the option isn't silently lost.
+        safeAdd("leftMode", () -> {
+            TierService leftSvc = cfg.leftServiceEnum();
+            List<String> modes = new ArrayList<>();
+            modes.add("highest");
+            for (String m : leftSvc.modes) if (!modes.contains(m)) modes.add(m);
+            String initial = cfg.leftMode == null ? "highest" : cfg.leftMode.toLowerCase();
+            if (!modes.contains(initial)) modes.add(initial);
+            this.addDrawableChild(
+                CyclingButtonWidget.<String>builder(s -> Text.literal(prettyMode(s)), initial)
+                    .values(modes)
+                    .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H,
+                        Text.literal("Left Mode"),
+                        (b, v) -> { cfg.leftMode = v; cfg.save(); }));
+        });
+        safeAdd("rightMode", () -> {
+            TierService rightSvc = cfg.rightServiceEnum();
+            List<String> modes = new ArrayList<>();
+            modes.add("highest");
+            for (String m : rightSvc.modes) if (!modes.contains(m)) modes.add(m);
+            String initial = cfg.rightMode == null ? "highest" : cfg.rightMode.toLowerCase();
+            if (!modes.contains(initial)) modes.add(initial);
+            this.addDrawableChild(
+                CyclingButtonWidget.<String>builder(s -> Text.literal(prettyMode(s)), initial)
+                    .values(modes)
+                    .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
+                        Text.literal("Right Mode"),
+                        (b, v) -> { cfg.rightMode = v; cfg.save(); }));
+        });
+        rRef[0]++;
+
         // ── Section 2: Where badges show ───────────────────────────────────
         addSectionHeader(rRef[0], "\u2014 Where to Show \u2014");
         rRef[0]++;
