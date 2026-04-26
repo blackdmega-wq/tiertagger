@@ -58,7 +58,7 @@ public class TierConfigScreen extends Screen {
 
     private static final int TAB_H           = 22;
     private static final int TAB_STRIP_TOP   = 30;
-    private static final String[] TAB_LABELS = { "Settings", "Tier Colors", "Tierlists" };
+    private static final String[] TAB_LABELS = { "Settings", "Tier Colors", "Tiers Config" };
 
     private final Screen parent;
     private boolean bgApplied = false;
@@ -212,7 +212,7 @@ public class TierConfigScreen extends Screen {
 
         switch (currentTab) {
             case 1:  buildTierColorsTab(cfg); break;
-            case 2:  buildTierlistsTab(cfg);  break;
+            case 2:  buildTiersConfigTab(cfg); break;
             default: buildSettingsTab(cfg);   break;
         }
 
@@ -237,7 +237,12 @@ public class TierConfigScreen extends Screen {
                             if (targetTab == 1) {
                                 cfg.tierColors = null;
                             } else if (targetTab == 2) {
+                                // Tiers Config: reset every badge-assignment field
+                                // (primary + left + right) so the user gets a
+                                // clean slate that still satisfies left ≠ right.
                                 cfg.primaryService = TierService.OUTERTIERS.id;
+                                cfg.leftService    = TierService.OUTERTIERS.id;
+                                cfg.rightService   = TierService.MCTIERS.id;
                             }
                             cfg.save();
                             try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
@@ -264,28 +269,11 @@ public class TierConfigScreen extends Screen {
     private void buildSettingsTab(TierConfig cfg) {
         final int[] rRef = { 0 };
 
-        addSectionHeader(rRef[0], "\u2014 Badge Services \u2014");
+        // Badge Services moved to the dedicated "Tiers Config" tab — the
+        // user wanted left/right badge selection laid out as a service list
+        // there with a left/right arrow picker per service.
+        addSectionHeader(rRef[0], "\u2014 General \u2014");
         rRef[0]++;
-        safeAdd("leftService", () -> this.addDrawableChild(
-            CyclingButtonWidget.<TierService>builder(
-                    s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)),
-                    cfg.leftServiceEnum())
-                .values(TierService.values())
-                .build(colX(0), rowY(rRef[0]), BTN_W, BTN_H,
-                    Text.literal("Left Badge"),
-                    (b, v) -> { cfg.leftService = v.id; cfg.save();
-                        this.clearChildren(); try { buildWidgets(); } catch (Throwable ignored) {} })));
-        safeAdd("rightService", () -> this.addDrawableChild(
-            CyclingButtonWidget.<TierService>builder(
-                    s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)),
-                    cfg.rightServiceEnum())
-                .values(TierService.values())
-                .build(colX(1), rowY(rRef[0]), BTN_W, BTN_H,
-                    Text.literal("Right Badge"),
-                    (b, v) -> { cfg.rightService = v.id; cfg.save();
-                        this.clearChildren(); try { buildWidgets(); } catch (Throwable ignored) {} })));
-        rRef[0]++;
-
         safeAdd("primaryService", () -> this.addDrawableChild(
             CyclingButtonWidget.<TierService>builder(
                     s -> Text.literal(s.displayName).withColor(rgb(s.accentArgb)),
@@ -487,18 +475,86 @@ public class TierConfigScreen extends Screen {
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // Tab 2: Tierlists — one selectable button per service
+    // Tab 2: Tiers Config — assign each service to Left / Right / nothing,
+    // with the constraint that Left ≠ Right (a service cannot occupy both
+    // badge slots at the same time).
     // ─────────────────────────────────────────────────────────────────────
-    private void buildTierlistsTab(TierConfig cfg) {
-        TierService[] svcs = TierService.values();
+    private void buildTiersConfigTab(TierConfig cfg) {
         final int[] rRef = { 0 };
+        TierService[] svcs = TierService.values();
+
+        // ── Header showing the current Left / Right assignment ────────────
+        addSectionHeader(rRef[0], "\u2014 Badge Assignment (Left \u2260 Right) \u2014");
+        rRef[0]++;
+
+        // Status row: "Left: MCTiers   |   Right: OuterTiers"
+        final int rStatus = rRef[0]++;
+        TierService leftSvc  = cfg.leftServiceEnum();
+        TierService rightSvc = cfg.rightServiceEnum();
+        final String leftLabel  = "Left:  "  + (leftSvc  != null ? leftSvc.displayName  : "-");
+        final String rightLabel = "Right: " + (rightSvc != null ? rightSvc.displayName : "-");
+        final int leftColor  = leftSvc  != null ? rgb(leftSvc.accentArgb)  : 0xFFFFFFFF;
+        final int rightColor = rightSvc != null ? rgb(rightSvc.accentArgb) : 0xFFFFFFFF;
+        safeAdd("statusLeft", () -> this.addDrawableChild(ButtonWidget.builder(
+                Text.literal(leftLabel).withColor(leftColor), b -> {})
+            .dimensions(colX(0), rowY(rStatus), BTN_W, BTN_H).build()));
+        safeAdd("statusRight", () -> this.addDrawableChild(ButtonWidget.builder(
+                Text.literal(rightLabel).withColor(rightColor), b -> {})
+            .dimensions(colX(1), rowY(rStatus), BTN_W, BTN_H).build()));
+
+        // Spacer row.
+        rRef[0]++;
+        addSectionHeader(rRef[0], "\u2014 Available Tierlists \u2014");
+        rRef[0]++;
+
+        // ── One row per service ───────────────────────────────────────────
+        // Layout per row (full panel width):
+        //   [<-- Left]   <Service Name (status)>   [Right -->]
+        // Clicking [<-- Left] sets that service as Left badge. If it was
+        // already on Right, the previous Left service auto-moves to Right
+        // (swap) so we keep the constraint while never leaving Right empty.
+        // Same logic for [Right -->]. The "(Left)" / "(Right)" suffix on
+        // the centre label tells the user what's currently assigned.
+        final int sideBtnW = 32;
+        final int sideGap  = 6;
+        final int centerW  = rowW() - 2 * (sideBtnW + sideGap);
+
         for (int i = 0; i < svcs.length; i++) {
             final TierService svc = svcs[i];
             final int row = rRef[0]++;
-            final boolean selected = svc.id.equalsIgnoreCase(cfg.primaryService);
-            String label = svc.displayName + (selected ? "  (selected)" : "");
-            safeAdd("tl:" + svc.id, () -> this.addDrawableChild(ButtonWidget.builder(
-                    Text.literal(label).withColor(rgb(svc.accentArgb)),
+            final boolean isLeft  = svc.id.equalsIgnoreCase(cfg.leftService);
+            final boolean isRight = svc.id.equalsIgnoreCase(cfg.rightService);
+
+            String suffix = "";
+            if (isLeft  && isRight) suffix = "  (Left & Right)";
+            else if (isLeft)        suffix = "  (Left)";
+            else if (isRight)       suffix = "  (Right)";
+            final String labelText = svc.displayName + suffix;
+
+            // Left arrow button.
+            safeAdd("set-left:" + svc.id, () -> this.addDrawableChild(ButtonWidget.builder(
+                    Text.literal(isLeft ? "[\u2190]" : "\u2190"),
+                    b -> {
+                        try {
+                            String prevLeft = cfg.leftService;
+                            cfg.leftService = svc.id;
+                            // Swap to keep left ≠ right.
+                            if (cfg.rightService != null && cfg.rightService.equalsIgnoreCase(svc.id)) {
+                                cfg.rightService = (prevLeft != null && !prevLeft.equalsIgnoreCase(svc.id))
+                                    ? prevLeft
+                                    : nextDifferent(svc.id);
+                            }
+                            cfg.save();
+                            try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
+                        } catch (Throwable ignored) {}
+                        this.clearChildren();
+                        try { buildWidgets(); } catch (Throwable ignored) {}
+                    })
+                .dimensions(colX(0), rowY(row), sideBtnW, BTN_H).build()));
+
+            // Centre service-name button (acts as Primary-Service picker too).
+            safeAdd("svc-row:" + svc.id, () -> this.addDrawableChild(ButtonWidget.builder(
+                    Text.literal(labelText).withColor(rgb(svc.accentArgb)),
                     b -> {
                         cfg.primaryService = svc.id;
                         cfg.save();
@@ -506,8 +562,46 @@ public class TierConfigScreen extends Screen {
                         this.clearChildren();
                         try { buildWidgets(); } catch (Throwable ignored) {}
                     })
-                .dimensions(rowX(), rowY(row), rowW(), BTN_H).build()));
+                .dimensions(colX(0) + sideBtnW + sideGap, rowY(row), centerW, BTN_H).build()));
+
+            // Right arrow button.
+            safeAdd("set-right:" + svc.id, () -> this.addDrawableChild(ButtonWidget.builder(
+                    Text.literal(isRight ? "[\u2192]" : "\u2192"),
+                    b -> {
+                        try {
+                            String prevRight = cfg.rightService;
+                            cfg.rightService = svc.id;
+                            // Swap to keep left ≠ right.
+                            if (cfg.leftService != null && cfg.leftService.equalsIgnoreCase(svc.id)) {
+                                cfg.leftService = (prevRight != null && !prevRight.equalsIgnoreCase(svc.id))
+                                    ? prevRight
+                                    : nextDifferent(svc.id);
+                            }
+                            cfg.save();
+                            try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
+                        } catch (Throwable ignored) {}
+                        this.clearChildren();
+                        try { buildWidgets(); } catch (Throwable ignored) {}
+                    })
+                .dimensions(colX(1) + BTN_W - sideBtnW, rowY(row), sideBtnW, BTN_H).build()));
         }
+
+        // ── Hint line so the user knows the centre button = Primary ──────
+        rRef[0]++;
+        addSectionHeader(rRef[0], "Click a tierlist name to make it the primary service.");
+        rRef[0]++;
+    }
+
+    /**
+     * Returns the id of any {@link TierService} that is NOT the given id.
+     * Used as a safety fallback when swapping Left/Right assignments would
+     * otherwise leave one slot equal to the other.
+     */
+    private static String nextDifferent(String id) {
+        for (TierService s : TierService.values()) {
+            if (!s.id.equalsIgnoreCase(id)) return s.id;
+        }
+        return id;
     }
 
     private static String prettyMode(String mode) {
