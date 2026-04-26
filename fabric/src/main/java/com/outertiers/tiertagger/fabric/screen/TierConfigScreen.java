@@ -53,13 +53,22 @@ public class TierConfigScreen extends Screen {
     private static final int BG_PANEL        = 0xF20E1116;
     private static final int BG_PANEL_BORDER = 0xFF2A2F38;
     private static final int BG_HEADER       = 0xFF181C24;
+    /** Subtle gradient stop for the title strip (top → bottom blend). */
+    private static final int BG_HEADER_TOP   = 0xFF20283A;
+    private static final int BG_HEADER_BOT   = 0xFF12161E;
     private static final int BG_TAB_INACTIVE = 0xFF1F232C;
     private static final int BG_TAB_ACTIVE   = 0xFF0E1116;
     private static final int FG_FAINT        = 0xFF9AA0AA;
     private static final int FG_SECTION      = 0xFFFFAA00;
+    /** Yellow accent used for the active-tab underline and title divider. */
+    private static final int ACCENT          = 0xFFFFC857;
+    private static final int ACCENT_SOFT     = 0x66FFC857;
 
-    private static final int TAB_H           = 22;
-    private static final int TAB_STRIP_TOP   = 30;
+    /** Bigger, more breathable tabs so the header reads as a real toolbar. */
+    private static final int TAB_H           = 26;
+    private static final int TAB_STRIP_TOP   = 34;
+    /** Visible space between adjacent tabs — user asked for more breathing room. */
+    private static final int TAB_GAP         = 10;
     private static final String[] TAB_LABELS = { "Settings", "Tier Colors", "Tiers Config" };
 
     private final Screen parent;
@@ -148,19 +157,21 @@ public class TierConfigScreen extends Screen {
         int panelW = Math.min(PANEL_W_MAX, this.width - 24);
         panelW = Math.max(panelW, totalW + 24);
         int panelX = (this.width - panelW) / 2;
-        int innerLeft  = panelX + 4;
-        int innerRight = panelX + panelW - 4;
+        int innerLeft  = panelX + 8;
+        int innerRight = panelX + panelW - 8;
         int innerW     = innerRight - innerLeft;
-        int gap        = 4;
+        int gap        = TAB_GAP;
         int tabW       = (innerW - gap * (TAB_LABELS.length - 1)) / TAB_LABELS.length;
 
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final int idx = i;
             int tx = innerLeft + i * (tabW + gap);
-            String prefix = (i == currentTab) ? "» " : "";
-            String suffix = (i == currentTab) ? " «" : "";
+            // Plain labels — the active state is already shown by the
+            // bottom accent bar drawn in render() and by Minecraft's
+            // own button hover/press visuals, so the » «  decoration
+            // looked redundant and crowded the label.
             ButtonWidget btn = ButtonWidget.builder(
-                    Text.literal(prefix + TAB_LABELS[i] + suffix),
+                    Text.literal(TAB_LABELS[i]),
                     b -> switchTab(idx))
                 .dimensions(tx, TAB_STRIP_TOP, tabW, TAB_H)
                 .build();
@@ -286,6 +297,38 @@ public class TierConfigScreen extends Screen {
         maxScroll = Math.max(0, contentH - viewH);
         if (scrollY > maxScroll) scrollY = maxScroll;
         scrollByTab[currentTab] = scrollY;
+
+        // Hide & disable any scrollable widget whose y position has scrolled
+        // outside the visible body area. Without this, scrolled-up widgets
+        // (e.g. "Tab Modes…") would render ON TOP of the fixed bottom action
+        // bar (Refresh Cache / Done), absorb their clicks, and visually
+        // overlap the tab strip — exactly the z-index issue the user
+        // reported in the v1.21.11.34 feedback.
+        clipScrollableWidgets();
+    }
+
+    /**
+     * Mark widgets that scrolled out of the body area as non-visible /
+     * non-active. The two pinned regions — the tab strip at
+     * {@code y == TAB_STRIP_TOP} and the bottom action bar at
+     * {@code y == this.height - 27} — are exempt so their buttons keep
+     * working at all scroll positions.
+     */
+    private void clipScrollableWidgets() {
+        int bottomY = this.height - 27;
+        for (net.minecraft.client.gui.Element el : this.children()) {
+            if (!(el instanceof ClickableWidget cw)) continue;
+            int wy = cw.getY();
+            if (wy == TAB_STRIP_TOP) continue;        // tab strip — always live
+            if (wy == bottomY)        continue;        // bottom action bar — always live
+            int wh = cw.getHeight();
+            // Strict containment: widget must fit fully within the body
+            // viewport. Partial widgets at the edges get hidden so they
+            // never bleed into the tab strip or the bottom action bar.
+            boolean inBody = wy >= bodyTop - 1 && (wy + wh) <= bodyBottom + 1;
+            cw.visible = inBody;
+            cw.active  = inBody;
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -542,28 +585,27 @@ public class TierConfigScreen extends Screen {
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // Tab 2: "Tiers Config" — v1.21.11.31 redesign matching the user-supplied
-    // screenshots (purple-bordered hover tooltips on every control).
+    // Tab 2: "Tiers Config" — v1.21.11.34 redesign per user request.
     //
-    //  Row 1 : [ Disable Tiers : ON/OFF ]   [G]  [T]  [C]
-    //          where the three small buttons are visibility toggles for the
-    //          gamemode icon, the tab list badge, and chat respectively.
-    //  Row 2 : [ Enable Dynamic Separator : ON/OFF ]
-    //  Row 3 : [ Displayed Tiers : Selected | Highest | Adaptive Highest ]
-    //  Row 4 : [ Enable auto kit detect : ON/OFF ]   [↻]  [◎]
-    //          where the small buttons reload the cache and cycle the active
-    //          right-side gamemode (the in-game "I" hotkey, surfaced here).
-    //  Logo  : large centred badge showing the currently-selected primary
-    //          service ("PvPTiers", "OuterTiers", …) painted in its accent
-    //          colour. Click to cycle through services.
-    //  Row 5 : [ ← ]   [ • ]   [ → ]
-    //          chooses where the active service tier badge is rendered
-    //          relative to the player nametag (left / centre / right).
+    // Layout (all main toggles full-width, single column):
+    //   Row 1 : [ Disable Tiers : ON/OFF ]
+    //   Row 2 : [ Enable Dynamic Separator : ON/OFF ]
+    //   Row 3 : [ Displayed Tiers : Selected | Highest | Adaptive Highest ]
+    //   Row 4 : [ Enable auto kit detect : ON/OFF ]
+    //   Row 5 : [ ↻ Reload ] [ ◎ Cycle ] [ ⚒ Mode ] [ ≡ Tablist ] [ ✎ Chat ]
+    //           — five evenly-spaced BIG icon buttons (taller than a normal
+    //             row) so the active actions read clearly. Reload + Cycle
+    //             are the same hotkey shortcuts that used to live on row 4.
+    //             G/T/C migrate down here from the old "row 1" cluster, as
+    //             the user asked, so the main Disable Tiers toggle gets
+    //             the full panel width.
+    //   --- spacer ---
+    //   Row 6 : [ Advanced Settings ]
     //
-    // Each control gets a hover tooltip with the same wording as the
-    // screenshots, plus an "Advanced…" button at the bottom that takes the
-    // user to the legacy left/right service picker so the existing routing
-    // power-user features stay accessible.
+    // What got removed (per user request):
+    //   - Big "Active service / click to cycle" logo button in the middle.
+    //   - The [←] [•] [→] display-position picker beneath the logo.
+    //   The same routing power is still available via "Advanced Settings".
     // ─────────────────────────────────────────────────────────────────────
     private void buildTiersConfigTab(TierConfig cfg) {
         if (advancedRouting) {
@@ -572,71 +614,16 @@ public class TierConfigScreen extends Screen {
         }
         final int[] rRef = { 0 };
 
-        // ── Row 1: Disable Tiers + 3 icon toggles ─────────────────────────
+        // ── Row 1: Disable Tiers (full width) ─────────────────────────────
         final int row1y = rowY(rRef[0]);
-        final int iconBtnW = 32;
-        final int iconGap = 4;
-        final int mainBtnW = rowW() - 3 * (iconBtnW + iconGap);
-
         safeAdd("disableTiers", () -> {
             ClickableWidget w = CyclingButtonWidget
                 .onOffBuilder(!cfg.disableTiers)
-                .build(rowX(), row1y, mainBtnW, BTN_H,
+                .build(rowX(), row1y, rowW(), BTN_H,
                     Text.literal("Disable Tiers"),
                     (b, v) -> { cfg.disableTiers = !v; cfg.save(); });
             addTipped(w, "Toggle the entire tier display. When OFF, no tier badges appear anywhere.");
         });
-
-        // [G] Gamemode-icon toggle.
-        safeAdd("toggleGameModeIcon", () -> {
-            int x = rowX() + mainBtnW + iconGap;
-            boolean on = !cfg.disableIcons && cfg.showModeIcon;
-            ClickableWidget w = ButtonWidget.builder(
-                    Text.literal(on ? "\u00a7a\u26ED" : "\u00a77\u26ED"),
-                    b -> {
-                        boolean nowOn = !(!cfg.disableIcons && cfg.showModeIcon);
-                        cfg.disableIcons = !nowOn;
-                        cfg.showModeIcon = nowOn;
-                        cfg.save();
-                        rebuildKeepingScroll();
-                    })
-                .dimensions(x, row1y, iconBtnW, BTN_H)
-                .build();
-            addTipped(w, "Disable the gamemode icon next to the tier.");
-        });
-
-        // [T] Tab-list visibility toggle.
-        safeAdd("toggleTablist", () -> {
-            int x = rowX() + mainBtnW + iconGap + (iconBtnW + iconGap);
-            boolean on = cfg.showInTab;
-            ClickableWidget w = ButtonWidget.builder(
-                    Text.literal(on ? "\u00a7a\u2630" : "\u00a77\u2630"),
-                    b -> {
-                        cfg.showInTab = !cfg.showInTab;
-                        cfg.save();
-                        rebuildKeepingScroll();
-                    })
-                .dimensions(x, row1y, iconBtnW, BTN_H)
-                .build();
-            addTipped(w, "Disable Tiers on the tablist.");
-        });
-
-        // [C] Chat visibility toggle.
-        safeAdd("toggleChat", () -> {
-            int x = rowX() + mainBtnW + iconGap + 2 * (iconBtnW + iconGap);
-            boolean on = !cfg.disableInChat;
-            ClickableWidget w = ButtonWidget.builder(
-                    Text.literal(on ? "\u00a7a\u270E" : "\u00a77\u270E"),
-                    b -> {
-                        cfg.disableInChat = !cfg.disableInChat;
-                        cfg.save();
-                        rebuildKeepingScroll();
-                    })
-                .dimensions(x, row1y, iconBtnW, BTN_H)
-                .build();
-            addTipped(w, "Disable Tiers in chat.");
-        });
-
         rRef[0]++;
 
         // ── Row 2: Enable Dynamic Separator (full width) ──────────────────
@@ -668,39 +655,49 @@ public class TierConfigScreen extends Screen {
         });
         rRef[0]++;
 
-        // ── Row 4: Enable auto kit detect + 2 action icons ────────────────
+        // ── Row 4: Enable auto kit detect (full width) ────────────────────
         final int row4y = rowY(rRef[0]);
-        final int row4main = rowW() - 2 * (iconBtnW + iconGap);
-
         safeAdd("autoKitDetect", () -> {
             ClickableWidget w = CyclingButtonWidget
                 .onOffBuilder(cfg.autoKitDetect)
-                .build(rowX(), row4y, row4main, BTN_H,
+                .build(rowX(), row4y, rowW(), BTN_H,
                     Text.literal("Enable auto kit detect"),
                     (b, v) -> { cfg.autoKitDetect = v; cfg.save(); });
             addTipped(w,
                 "Tiers will always scan your inventory to display the right gamemode " +
                 "(instead of having to press 'Z' / 'I').");
         });
+        rRef[0]++;
 
-        // [↻] Reload cache.
+        // ── Row 5: BIG action-icon row ────────────────────────────────────
+        // Five evenly-spaced buttons that are noticeably taller than the
+        // normal row height so the icons read at a glance. The user
+        // explicitly asked for the reload / cycle icons (and the G / T / C
+        // visibility toggles) to be placed under "Enable auto kit detect"
+        // and made bigger.
+        rRef[0]++; // breathing room above the icon strip
+        final int iconRowY  = rowY(rRef[0]);
+        final int iconBtnH  = BTN_H + 8;        // 28 px — half-row taller
+        final int iconCount = 5;
+        final int iconGap   = 6;
+        final int iconBtnW  = (rowW() - iconGap * (iconCount - 1)) / iconCount;
+
+        // [↻] Reload tier cache.
         safeAdd("reloadCache", () -> {
-            int x = rowX() + row4main + iconGap;
+            int x = rowX();
             ClickableWidget w = ButtonWidget.builder(
-                    Text.literal("\u00a7e\u21BB"),
-                    b -> {
-                        try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
-                    })
-                .dimensions(x, row4y, iconBtnW, BTN_H)
+                    Text.literal("\u00a7e\u21BB").formatted(Formatting.BOLD),
+                    b -> { try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {} })
+                .dimensions(x, iconRowY, iconBtnW, iconBtnH)
                 .build();
-            addTipped(w, "Reload the cache.");
+            addTipped(w, "Reload the tier cache.");
         });
 
-        // [◎] Cycle active right gamemode.
+        // [◎] Cycle active right gamemode (in-game "I" hotkey).
         safeAdd("cycleRightMode", () -> {
-            int x = rowX() + row4main + iconGap + (iconBtnW + iconGap);
+            int x = rowX() + (iconBtnW + iconGap);
             ClickableWidget w = ButtonWidget.builder(
-                    Text.literal("\u00a7d\u25C9"),
+                    Text.literal("\u00a7d\u25C9").formatted(Formatting.BOLD),
                     b -> {
                         TierService rightSvc = cfg.rightServiceEnum();
                         if (rightSvc == null) return;
@@ -713,86 +710,72 @@ public class TierConfigScreen extends Screen {
                         cfg.save();
                         rebuildKeepingScroll();
                     })
-                .dimensions(x, row4y, iconBtnW, BTN_H)
+                .dimensions(x, iconRowY, iconBtnW, iconBtnH)
                 .build();
-            addTipped(w, "Cycle active right gamemode (press 'I' in game).");
+            addTipped(w, "Cycle the active right gamemode (press 'I' in game).");
         });
-        rRef[0]++;
 
-        // ── Active service logo (centred, large badge) ────────────────────
-        // Click to cycle through services so the user can quickly switch
-        // primary tierlist without diving into Advanced.
-        rRef[0]++; // small spacer row above the logo for breathing room
-        final int logoRow = rRef[0]++;
-        final int logoY = rowY(logoRow);
-        final int logoH = ROW_H + 16;            // a bit taller than a normal row
-        final int logoW = Math.min(180, rowW() - 24);
-        final int logoX = rowX() + (rowW() - logoW) / 2;
-        final TierService primary = cfg.primaryServiceEnum();
-        final int primaryColor = primary == null ? 0xFFFFFFFF : rgb(primary.accentArgb);
-        final String primaryName = primary == null ? "?" : primary.displayName;
-
-        safeAdd("primaryServiceLogo", () -> {
+        // [⚒] Gamemode-icon visibility toggle.
+        safeAdd("toggleGameModeIcon", () -> {
+            int x = rowX() + 2 * (iconBtnW + iconGap);
+            boolean on = !cfg.disableIcons && cfg.showModeIcon;
             ClickableWidget w = ButtonWidget.builder(
-                    Text.literal(primaryName).formatted(Formatting.BOLD).withColor(primaryColor),
+                    Text.literal(on ? "\u00a7a\u26ED" : "\u00a77\u26ED").formatted(Formatting.BOLD),
                     b -> {
-                        TierService[] svcs = TierService.values();
-                        int idx = 0;
-                        for (int i = 0; i < svcs.length; i++) {
-                            if (svcs[i].id.equalsIgnoreCase(cfg.primaryService)) { idx = i; break; }
-                        }
-                        TierService next = svcs[(idx + 1) % svcs.length];
-                        cfg.primaryService = next.id;
+                        boolean nowOn = !(!cfg.disableIcons && cfg.showModeIcon);
+                        cfg.disableIcons = !nowOn;
+                        cfg.showModeIcon = nowOn;
                         cfg.save();
-                        try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {}
                         rebuildKeepingScroll();
                     })
-                .dimensions(logoX, logoY, logoW, logoH)
+                .dimensions(x, iconRowY, iconBtnW, iconBtnH)
                 .build();
-            addTipped(w, "Active service. Click to cycle through tierlists.");
+            addTipped(w, "Disable the gamemode icon next to the tier.");
         });
-        rRef[0]++; // logo occupies its own row + the extra height counted as 1 row
 
-        // ── Row 5: Display position ← • → ─────────────────────────────────
-        final int posY = rowY(rRef[0]);
-        final int posBtnW = 60;
-        final int posGap = 6;
-        final int posBlockW = posBtnW * 3 + posGap * 2;
-        final int posStartX = rowX() + (rowW() - posBlockW) / 2;
-        final String currentPos = cfg.tierDisplayPosition == null ? "right" : cfg.tierDisplayPosition;
+        // [≡] Tab-list visibility toggle.
+        safeAdd("toggleTablist", () -> {
+            int x = rowX() + 3 * (iconBtnW + iconGap);
+            boolean on = cfg.showInTab;
+            ClickableWidget w = ButtonWidget.builder(
+                    Text.literal(on ? "\u00a7a\u2630" : "\u00a77\u2630").formatted(Formatting.BOLD),
+                    b -> {
+                        cfg.showInTab = !cfg.showInTab;
+                        cfg.save();
+                        rebuildKeepingScroll();
+                    })
+                .dimensions(x, iconRowY, iconBtnW, iconBtnH)
+                .build();
+            addTipped(w, "Disable Tiers on the tab list.");
+        });
 
-        safeAdd("posLeft", () -> {
+        // [✎] Chat visibility toggle.
+        safeAdd("toggleChat", () -> {
+            int x = rowX() + 4 * (iconBtnW + iconGap);
+            boolean on = !cfg.disableInChat;
             ClickableWidget w = ButtonWidget.builder(
-                    Text.literal("left".equals(currentPos) ? "\u00a7e[\u2190]" : "\u2190"),
-                    b -> { cfg.tierDisplayPosition = "left"; cfg.save(); rebuildKeepingScroll(); })
-                .dimensions(posStartX, posY, posBtnW, BTN_H)
+                    Text.literal(on ? "\u00a7a\u270E" : "\u00a77\u270E").formatted(Formatting.BOLD),
+                    b -> {
+                        cfg.disableInChat = !cfg.disableInChat;
+                        cfg.save();
+                        rebuildKeepingScroll();
+                    })
+                .dimensions(x, iconRowY, iconBtnW, iconBtnH)
                 .build();
-            addTipped(w, "Display " + primaryName + " on the left.");
+            addTipped(w, "Disable Tiers in chat.");
         });
-        safeAdd("posCenter", () -> {
-            ClickableWidget w = ButtonWidget.builder(
-                    Text.literal("center".equals(currentPos) ? "\u00a7e[\u2022]" : "\u2022"),
-                    b -> { cfg.tierDisplayPosition = "center"; cfg.save(); rebuildKeepingScroll(); })
-                .dimensions(posStartX + posBtnW + posGap, posY, posBtnW, BTN_H)
-                .build();
-            addTipped(w, "Display " + primaryName + " centred above the player name.");
-        });
-        safeAdd("posRight", () -> {
-            ClickableWidget w = ButtonWidget.builder(
-                    Text.literal("right".equals(currentPos) ? "\u00a7e[\u2192]" : "\u2192"),
-                    b -> { cfg.tierDisplayPosition = "right"; cfg.save(); rebuildKeepingScroll(); })
-                .dimensions(posStartX + 2 * (posBtnW + posGap), posY, posBtnW, BTN_H)
-                .build();
-            addTipped(w, "Display " + primaryName + " on the right.");
-        });
+
+        // The icon row uses iconBtnH (28 px) which is taller than ROW_H (24 px),
+        // so consume an extra rRef++ to give the next widget vertical clearance.
+        rRef[0]++;
         rRef[0]++;
 
-        // ── Advanced… button (drops into legacy left/right routing) ───────
+        // ── Advanced Settings (renamed from "Advanced — Left/Right Routing…") ─
         rRef[0]++; // breathing room
         final int advY = rowY(rRef[0]);
         safeAdd("advanced", () -> {
             ClickableWidget w = ButtonWidget.builder(
-                    Text.literal("Advanced \u2014 Left/Right Routing\u2026"),
+                    Text.literal("Advanced Settings"),
                     b -> openAdvancedRouting(cfg))
                 .dimensions(rowX(), advY, rowW(), BTN_H)
                 .build();
@@ -1042,22 +1025,42 @@ public class TierConfigScreen extends Screen {
             }
 
             // 5. Re-draw the title strip ON TOP to cover any scrolled widget
-            //    that crept above bodyTop.
-            fillRect(ctx, panelX + 1, panelTop + 1, panelX + panelW - 1, TAB_STRIP_TOP, BG_HEADER);
+            //    that crept above bodyTop. We paint a soft vertical
+            //    gradient (lighter at the top, darker at the bottom) and
+            //    cap it with a thin yellow accent line — same style the
+            //    user described as "ein meisterwerk", but still subtle
+            //    enough to read in any colour scheme.
+            int titleX1 = panelX + 1;
+            int titleX2 = panelX + panelW - 1;
+            int titleY1 = panelTop + 1;
+            int titleY2 = TAB_STRIP_TOP;
+            verticalGradient(ctx, titleX1, titleY1, titleX2, titleY2, BG_HEADER_TOP, BG_HEADER_BOT);
+            // Soft accent glow line just below the title text.
+            fillRect(ctx, titleX1, titleY2 - 2, titleX2, titleY2 - 1, ACCENT_SOFT);
+            fillRect(ctx, titleX1, titleY2 - 1, titleX2, titleY2,     ACCENT);
+
             ctx.drawCenteredTextWithShadow(this.textRenderer,
                 Text.literal("TierTagger").formatted(Formatting.WHITE, Formatting.BOLD),
                 this.width / 2, panelTop + 6, 0xFFFFFFFF);
             ctx.drawCenteredTextWithShadow(this.textRenderer,
                 Text.literal("v" + TierTaggerCore.MOD_VERSION +
-                    "  \u00B7  /tiertagger help for chat commands")
+                    "  \u00B7  /tiertagger help for commands")
                     .withColor(rgb(FG_FAINT)),
                 this.width / 2, panelTop + 16, FG_FAINT);
 
-            // 6. Tab strip background — buttons render themselves, this just
-            //    paints the strip behind them so widgets that scrolled past
-            //    don't leak into the tab area.
-            // (Skipped — would cover button labels. Buttons handle their own
-            //  visuals; the title strip above already covers the gap.)
+            // 6. Active-tab accent: thin yellow underline beneath the
+            //    currently-selected tab. The tab buttons themselves are
+            //    already rendered by super.render(); this just adds the
+            //    glow strip so users can tell at a glance which tab is
+            //    active even with the simplified labels.
+            if (currentTab >= 0 && currentTab < tabBounds.length) {
+                int[] tb = tabBounds[currentTab];
+                int aX1 = tb[0] + 4;
+                int aX2 = tb[0] + tb[2] - 4;
+                int aY  = tb[1] + tb[3];
+                fillRect(ctx, aX1, aY,     aX2, aY + 1, ACCENT);
+                fillRect(ctx, aX1, aY + 1, aX2, aY + 2, ACCENT_SOFT);
+            }
 
             // 7. Scroll indicator.
             if (maxScroll > 0) {
@@ -1142,6 +1145,31 @@ public class TierConfigScreen extends Screen {
             ctx.fill(x,         y,         x + 1,     y + h,     argb);
             ctx.fill(x + w - 1, y,         x + w,     y + h,     argb);
         } catch (Throwable ignored) {}
+    }
+
+    /**
+     * Paint a smooth vertical gradient from {@code topArgb} at {@code y1}
+     * down to {@code botArgb} at {@code y2}. Uses 1-pixel horizontal
+     * stripes with linearly interpolated ARGB so it stays crisp at any
+     * panel size without needing a texture asset.
+     */
+    private static void verticalGradient(DrawContext ctx, int x1, int y1, int x2, int y2,
+                                         int topArgb, int botArgb) {
+        int h = y2 - y1;
+        if (h <= 0) return;
+        int aT = (topArgb >>> 24) & 0xFF, aB = (botArgb >>> 24) & 0xFF;
+        int rT = (topArgb >>> 16) & 0xFF, rB = (botArgb >>> 16) & 0xFF;
+        int gT = (topArgb >>>  8) & 0xFF, gB = (botArgb >>>  8) & 0xFF;
+        int bT =  topArgb         & 0xFF, bB =  botArgb         & 0xFF;
+        for (int i = 0; i < h; i++) {
+            float t = (float) i / Math.max(1, h - 1);
+            int a = (int) (aT + (aB - aT) * t) & 0xFF;
+            int r = (int) (rT + (rB - rT) * t) & 0xFF;
+            int g = (int) (gT + (gB - gT) * t) & 0xFF;
+            int b = (int) (bT + (bB - bT) * t) & 0xFF;
+            int argb = (a << 24) | (r << 16) | (g << 8) | b;
+            try { ctx.fill(x1, y1 + i, x2, y1 + i + 1, argb); } catch (Throwable ignored) {}
+        }
     }
 
     private void closeSafely() {

@@ -22,18 +22,18 @@ import java.util.Locale;
  * Injects a "TierTagger" button into Minecraft's Options screen so the user
  * can open the mod settings directly from Options without needing Mod Menu.
  *
- * Placement: directly between the vanilla "Telemetry Data" and
- * "Credits & Attribution" buttons. We scan the live widget tree at the end
- * of {@code init()} to find both vanilla buttons by their localised text,
- * compute the layout cell occupied by Credits, and:
- *   1. shift the Credits button (and any widget below it on the screen,
- *      e.g. "Done") DOWN by one row so the new button has a clear slot,
- *   2. place the TierTagger button at the original Credits position
- *      with the same width / height — making it sit visually between
- *      Telemetry (above-left) and Credits (now below).
+ * Placement: directly UNDER the vanilla "Credits & Attribution" button.
+ * We scan the live widget tree at the end of {@code init()} to find the
+ * Credits button by its localised text, compute the layout cell it
+ * occupies, and:
+ *   1. shift any widget visually below the Credits row (typically "Done")
+ *      DOWN by one row so the new button has a clear slot,
+ *   2. place the TierTagger button one row BELOW Credits with the same
+ *      width / height — making it sit visually directly under the
+ *      Credits & Attribution button, as the user requested.
  *
- * If we can't find both anchor buttons (e.g. a future MC rework), we
- * silently fall back to the legacy bottom-left position so the mod
+ * If we can't find the Credits anchor button (e.g. a future MC rework),
+ * we silently fall back to the legacy bottom-left position so the mod
  * keeps working everywhere.
  *
  * NOTE: This class extends Screen at compile time so that the `protected`
@@ -58,24 +58,24 @@ public abstract class OptionsScreenMixin extends Screen {
     @Inject(method = "init", at = @At("TAIL"), require = 0)
     private void tiertagger$addButton(CallbackInfo ci) {
         try {
-            ButtonWidget telemetry = findButtonByKey("options.telemetry", "telemetry");
-            ButtonWidget credits   = findButtonByKey("credits_and_attribution", "credits");
+            ButtonWidget credits = findButtonByKey("credits_and_attribution", "credits");
 
-            if (telemetry != null && credits != null) {
+            if (credits != null) {
                 int cx = credits.getX();
                 int cy = credits.getY();
                 int cw = credits.getWidth();
                 int ch = credits.getHeight();
                 int rowH = ch + 4;
 
-                // Push Credits — and anything visually below the
-                // Telemetry/Credits row (typically "Done") — down by one
-                // row, so the new button can occupy Credits' original slot
-                // and visually sit between the two anchors.
-                int rowYThreshold = Math.min(telemetry.getY(), credits.getY());
+                // Push anything visually BELOW the Credits row (typically
+                // "Done") down by one row so the new button can occupy
+                // the slot directly under Credits — that way TierTagger
+                // sits one row below Credits & Attribution, exactly where
+                // the user asked for it.
+                int rowYThreshold = credits.getY() + 1;
                 for (Element el : new ArrayList<>(this.children())) {
                     if (!(el instanceof ClickableWidget cw2)) continue;
-                    if (cw2 == telemetry) continue;
+                    if (cw2 == credits) continue;
                     if (cw2.getY() >= rowYThreshold) {
                         cw2.setY(cw2.getY() + rowH);
                     }
@@ -88,13 +88,13 @@ public abstract class OptionsScreenMixin extends Screen {
                             MinecraftClient mc = MinecraftClient.getInstance();
                             if (mc != null) mc.setScreen(new TierConfigScreen((Screen)(Object)this));
                         })
-                    .dimensions(cx, cy, cw, ch)
+                    .dimensions(cx, cy + rowH, cw, ch)
                     .build()
                 );
                 return;
             }
         } catch (Throwable t) {
-            TierTaggerCore.LOGGER.warn("[TierTagger] could not insert Options-screen button between Telemetry/Credits, falling back: {}", t.toString());
+            TierTaggerCore.LOGGER.warn("[TierTagger] could not insert Options-screen button under Credits, falling back: {}", t.toString());
         }
 
         // Fallback: original bottom-left position so older or non-vanilla
