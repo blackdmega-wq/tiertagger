@@ -28,11 +28,16 @@ dependencies {
     // Game is unobfuscated from 26.1+ — no `mappings` entry, no yarn.
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
 
-    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    // The modern `net.fabricmc.fabric-loom` plugin maps to `LoomNoRemapGradlePlugin`
+    // (verified via plugin descriptor in fabric-loom-1.15.jar). It does NOT
+    // expose `modImplementation` / `modCompileOnly` because there is no
+    // remapping step — the game and mod jars are already in Mojang names.
+    // Use plain `implementation` / `compileOnly` instead.
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
     if (project.hasProperty('modmenu_version') && !project.modmenu_version.toString().isBlank()) {
-        modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+        compileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
     }
 
     implementation project(':common')
