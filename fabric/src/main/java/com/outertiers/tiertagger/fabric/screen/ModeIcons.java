@@ -40,11 +40,11 @@ public final class ModeIcons {
         put("dia2v2",      "2v2");
         put("dia_2v2",     "2v2");
         put("overall",     "overall");
-        // PvPTiers crystal: official icon from pvptiers.com/icons/tiers/crystal.png
-        // — the previous bundled crystal.png used the wrong amethyst-style
-        // gem; the new one is the canonical purple End-Crystal badge.
+        // PvPTiers crystal: official icon from pvptiers.com/icons/tiers/
+        // (re-cropped to fill the 64×64 canvas the same way the other
+        // bundled icons do, so it doesn't look smaller in the UI).
         put("crystal",     "crystal");
-        // SubTiers-specific gamemodes
+        // SubTiers / OuterTiers gamemodes — original bundled artwork.
         put("trident",     "trident");
         put("creeper",     "creeper");
         put("minecart",    "minecart");
@@ -54,9 +54,6 @@ public final class ModeIcons {
         put("debuff",      "debuff");
         put("bow",         "bow");
         put("sumo",        "sumo");
-        // SubTiers bed / bedwars + elytra: official icons from
-        // subtiers.net/assets/{bed,elytra}-<hash>.svg, rasterised to
-        // 64×64 PNGs at build time (see fabric/src/main/resources/.../icons/).
         put("bed",         "bed");
         put("bedwars",     "bed");
         put("elytra",      "elytra");
