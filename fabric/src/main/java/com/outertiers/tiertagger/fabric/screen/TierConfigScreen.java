@@ -656,9 +656,8 @@ public class TierConfigScreen extends Screen {
         safeAdd("displayedTiers", () -> {
             String initial = cfg.displayedTiers == null ? "adaptive_highest" : cfg.displayedTiers;
             ClickableWidget w = CyclingButtonWidget
-                .<String>builder(s -> Text.literal(TierConfig.displayedTiersLabel(s)))
+                .<String>builder(s -> Text.literal(TierConfig.displayedTiersLabel(s)), initial)
                 .values(Arrays.asList(TierConfig.DISPLAYED_TIER_MODES))
-                .initially(initial)
                 .build(rowX(), row3y, rowW(), BTN_H,
                     Text.literal("Displayed Tiers"),
                     (b, v) -> { cfg.displayedTiers = v; cfg.save(); });
