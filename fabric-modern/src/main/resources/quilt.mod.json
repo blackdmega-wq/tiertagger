@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "quilt_loader": {
+    "group": "com.outertiers",
+    "id": "tiertagger",
+    "version": "${version}",
+    "metadata": {
+      "name": "TierTagger",
+      "description": "Displays OuterTiers tiers next to player names in the tab list and above their heads.",
+      "contributors": { "OuterTiers": "Owner" },
+      "contact": {
+        "homepage": "https://outertiers.com",
+        "sources":  "https://github.com/blackdmega-wq/tiertagger",
+        "issues":   "https://github.com/blackdmega-wq/tiertagger/issues"
+      },
+      "license": "MIT"
+    },
+    "intermediate_mappings": "net.fabricmc:intermediary",
+    "entrypoints": {
+      "client_init": "com.outertiers.tiertagger.fabric.TierTaggerFabric"
+    },
+    "depends": [
+      { "id": "quilt_loader", "versions": ">=0.20.0" },
+      { "id": "minecraft",    "versions": ">=1.18" },
+      { "id": "quilted_fabric_api", "versions": "*" }
+    ]
+  },
+  "mixin": "fabric.mixins.json"
+}

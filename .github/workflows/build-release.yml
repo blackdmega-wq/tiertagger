@@ -22,99 +22,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ────────────── Fabric ──────────────
-          # Loom plugin version is selected per-MC because Loom 1.7 only
-          # supports up to MC 1.21.4. Newer MC versions need Loom 1.8+.
+          # ────────────── Fabric — Yarn-mapped (legacy 1.21.x) ──────────────
           - loader: fabric
-            mc: '1.21.1'
-            java: 21
-            yarn: '1.21.1+build.3'
-            fabric_loader: '0.16.5'
-            fabric_api: '0.116.11+1.21.1'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-            experimental: true
-          - loader: fabric
-            mc: '1.21.2'
-            java: 21
-            yarn: '1.21.2+build.1'
-            fabric_loader: '0.16.7'
-            fabric_api: '0.106.1+1.21.2'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-            experimental: true
-          - loader: fabric
-            mc: '1.21.3'
-            java: 21
-            yarn: '1.21.3+build.2'
-            fabric_loader: '0.16.9'
-            fabric_api: '0.114.1+1.21.3'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-            experimental: true
-          - loader: fabric
-            mc: '1.21.4'
-            java: 21
-            yarn: '1.21.4+build.8'
-            fabric_loader: '0.16.10'
-            fabric_api: '0.119.4+1.21.4'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-            experimental: true
-          - loader: fabric
-            mc: '1.21.5'
-            java: 21
-            yarn: '1.21.5+build.1'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.128.2+1.21.5'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-            experimental: true
-          - loader: fabric
-            mc: '1.21.6'
-            java: 21
-            yarn: '1.21.6+build.1'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.128.2+1.21.6'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-          - loader: fabric
-            mc: '1.21.7'
-            java: 21
-            yarn: '1.21.7+build.8'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.129.0+1.21.7'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-          - loader: fabric
-            mc: '1.21.8'
-            java: 21
-            yarn: '1.21.8+build.1'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.136.1+1.21.8'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-          - loader: fabric
-            mc: '1.21.9'
-            java: 21
-            yarn: '1.21.9+build.1'
-            fabric_loader: '0.16.14'
-            # NB: 0.136.1+1.21.9 was never published — 0.134.1 is the
-            # actual latest fabric-api for 1.21.9.
-            fabric_api: '0.134.1+1.21.9'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-          - loader: fabric
-            mc: '1.21.10'
-            java: 21
-            yarn: '1.21.10+build.1'
-            fabric_loader: '0.16.14'
-            # NB: 0.136.1+1.21.10 was never published — 0.138.4 is the
-            # actual latest fabric-api for 1.21.10.
-            fabric_api: '0.138.4+1.21.10'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-          - loader: fabric
+            module: fabric
             mc: '1.21.11'
             java: 21
             yarn: '1.21.11+build.1'
@@ -127,6 +37,38 @@ jobs:
             loom: '1.11-SNAPSHOT'
             gradle: '8.14'
 
+          # ────────────── Fabric — Mojang-mapped (26.1+ unobfuscated) ──────────────
+          # MC 26.1+ ships unobfuscated. The :fabric-modern source set uses
+          # Mojang names directly, the new non-remapping Loom plugin
+          # `net.fabricmc.fabric-loom`, and Java 25.
+          - loader: fabric
+            module: fabric-modern
+            mc: '26.1'
+            java: 25
+            yarn: ''                # no yarn for 26.1+
+            fabric_loader: '0.19.2'
+            fabric_api: '0.145.1+26.1'
+            loom: '1.15-SNAPSHOT'
+            gradle: '9.4'
+          - loader: fabric
+            module: fabric-modern
+            mc: '26.1.1'
+            java: 25
+            yarn: ''
+            fabric_loader: '0.19.2'
+            fabric_api: '0.145.4+26.1.1'
+            loom: '1.15-SNAPSHOT'
+            gradle: '9.4'
+          - loader: fabric
+            module: fabric-modern
+            mc: '26.1.2'
+            java: 25
+            yarn: ''
+            fabric_loader: '0.19.2'
+            fabric_api: '0.146.1+26.1.2'
+            loom: '1.15-SNAPSHOT'
+            gradle: '9.4'
+
     steps:
       - uses: actions/checkout@v4
 
@@ -138,12 +80,18 @@ jobs:
 
       - name: Pin Loom plugin version in gradle.properties
         run: |
-          # settings.gradle's pluginManagement block reads ${loom_version} as a
-          # Groovy GString from gradle.properties.  Must run BEFORE
-          # setup-gradle/wrapper bootstrap because those also trigger settings
-          # evaluation and would fail with the wrong plugin version.
-          sed -i "s|^loom_version=.*|loom_version=${{ matrix.loom }}|" gradle.properties
-          grep -E '^loom_version=' gradle.properties
+          # settings.gradle's pluginManagement block reads BOTH ${loom_version}
+          # (legacy yarn-based loom for fabric module) and ${loom_modern_version}
+          # (new non-remapping loom for fabric-modern module) as Groovy GStrings
+          # from gradle.properties. Both MUST resolve to a real version even on
+          # builds that only use one of them, otherwise settings evaluation
+          # fails. We update the one that matches this matrix entry.
+          if [ "${{ matrix.module }}" = "fabric-modern" ]; then
+            sed -i "s|^loom_modern_version=.*|loom_modern_version=${{ matrix.loom }}|" gradle.properties
+          else
+            sed -i "s|^loom_version=.*|loom_version=${{ matrix.loom }}|" gradle.properties
+          fi
+          grep -E '^(loom_version|loom_modern_version)=' gradle.properties
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -161,20 +109,23 @@ jobs:
         id: build_fabric
         continue-on-error: ${{ matrix.experimental == true }}
         run: |
-          ./gradlew :fabric:build \
-            -Pminecraft_version=${{ matrix.mc }} \
-            -Pyarn_mappings=${{ matrix.yarn }} \
-            -Ploader_version=${{ matrix.fabric_loader }} \
-            -Pfabric_version=${{ matrix.fabric_api }} \
-            -Pjava_version=${{ matrix.java }} \
-            --no-daemon --stacktrace
+          GRADLE_ARGS="-Pminecraft_version=${{ matrix.mc }} \
+                      -Ploader_version=${{ matrix.fabric_loader }} \
+                      -Pfabric_version=${{ matrix.fabric_api }} \
+                      -Pjava_version=${{ matrix.java }}"
+          # Yarn is only relevant for the legacy :fabric module — :fabric-modern
+          # ships against the unobfuscated game and has no mappings dependency.
+          if [ -n "${{ matrix.yarn }}" ]; then
+            GRADLE_ARGS="$GRADLE_ARGS -Pyarn_mappings=${{ matrix.yarn }}"
+          fi
+          ./gradlew :${{ matrix.module }}:build $GRADLE_ARGS --no-daemon --stacktrace
 
       - name: Stage built JARs
         id: stage
         run: |
           mkdir -p staging
           shopt -s nullglob
-          for f in fabric/build/libs/*.jar; do
+          for f in ${{ matrix.module }}/build/libs/*.jar; do
             case "$f" in *-sources.jar|*-dev.jar) continue;; esac
             base=$(basename "$f" .jar)
             cp "$f" "staging/${base}-mc${{ matrix.mc }}.jar"

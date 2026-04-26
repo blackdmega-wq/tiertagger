@@ -1,0 +1,78 @@
+// Build module for Minecraft Java Edition 26.1+ (year.drop.hotfix format).
+// MC 26.1+ ships UNOBFUSCATED with native Mojang names, so:
+//   • the new `net.fabricmc.fabric-loom` plugin (1.15+) is used in
+//     non-remapping mode (no yarn, no intermediary)
+//   • dependencies use plain `implementation` instead of `modImplementation`
+//   • the produced `jar` task is the final artifact (no `remapJar` needed)
+//
+// The existing `:fabric` module (Yarn-based, 1.21.x) is unaffected.
+plugins {
+    id 'net.fabricmc.fabric-loom'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group   = project.maven_group
+
+base {
+    archivesName = "${project.archives_base_name}-fabric"
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'https://maven.fabricmc.net/' }
+    maven { url 'https://maven.terraformersmc.com/' }
+}
+
+dependencies {
+    // Game is unobfuscated from 26.1+ — no `mappings` entry, no yarn.
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    if (project.hasProperty('modmenu_version') && !project.modmenu_version.toString().isBlank()) {
+        modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+    }
+
+    implementation project(':common')
+    include        project(':common')
+}
+
+def mcVer = project.minecraft_version.toString()
+def mcRange = ">=${mcVer} <=${mcVer}"
+
+processResources {
+    inputs.property "version",          project.version
+    inputs.property "mc_version_range", mcRange
+    filesMatching("fabric.mod.json") {
+        expand(
+            "version":          project.version,
+            "mc_version_range": mcRange
+        )
+    }
+}
+
+java {
+    toolchain {
+        // MC 26.1+ requires Java 25 at runtime; we compile against the
+        // same toolchain so bytecode is Java 25-compatible.
+        languageVersion = JavaLanguageVersion.of(project.java_version as int)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = 'UTF-8'
+    it.options.release = project.java_version as int
+    // Anti-copy: strip line numbers, source-file names, and local variable
+    // names from released bytecode so decompilers produce unreadable output.
+    it.options.debug = false
+}
+
+tasks.matching { it.name == 'sourcesJar' }.configureEach {
+    it.enabled = false
+}
+
+jar {
+    from(rootProject.file("LICENSE")) { rename { "${it}_${project.archives_base_name}" } }
+}

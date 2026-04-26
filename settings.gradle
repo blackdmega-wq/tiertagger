@@ -5,9 +5,13 @@ pluginManagement {
         mavenCentral()
     }
     plugins {
-        // Loom version is selected per-MC by build-release.yml via -Ploom_version=...
-        // Default for local dev is taken from gradle.properties (loom_version).
+        // Legacy Yarn-based Loom for MC 1.21.x. Version selected per-MC by
+        // build-release.yml via -Ploom_version=... ; default for local dev is
+        // taken from gradle.properties (loom_version).
         id 'fabric-loom' version "${loom_version}"
+        // Modern non-remapping Loom for MC 26.1+ (year.drop.hotfix unobfuscated).
+        // Version is in gradle.properties (loom_modern_version).
+        id 'net.fabricmc.fabric-loom' version "${loom_modern_version}"
     }
 }
 
@@ -15,3 +19,4 @@ rootProject.name = 'tiertagger'
 
 include 'common'
 include 'fabric'
+include 'fabric-modern'

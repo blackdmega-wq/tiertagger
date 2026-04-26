@@ -1,0 +1,29 @@
+{
+  "providers": [
+    { "type": "bitmap", "file": "tiertagger:icons/vanilla.png",     "ascent": 8, "height": 9, "chars": ["\uE001"] },
+    { "type": "bitmap", "file": "tiertagger:icons/sword.png",       "ascent": 8, "height": 9, "chars": ["\uE002"] },
+    { "type": "bitmap", "file": "tiertagger:icons/axe.png",         "ascent": 8, "height": 9, "chars": ["\uE003"] },
+    { "type": "bitmap", "file": "tiertagger:icons/pot.png",         "ascent": 8, "height": 9, "chars": ["\uE004"] },
+    { "type": "bitmap", "file": "tiertagger:icons/nethop.png",      "ascent": 8, "height": 9, "chars": ["\uE005"] },
+    { "type": "bitmap", "file": "tiertagger:icons/smp.png",         "ascent": 8, "height": 9, "chars": ["\uE006"] },
+    { "type": "bitmap", "file": "tiertagger:icons/uhc.png",         "ascent": 8, "height": 9, "chars": ["\uE007"] },
+    { "type": "bitmap", "file": "tiertagger:icons/mace.png",        "ascent": 8, "height": 9, "chars": ["\uE008"] },
+    { "type": "bitmap", "file": "tiertagger:icons/speed.png",       "ascent": 8, "height": 9, "chars": ["\uE009"] },
+    { "type": "bitmap", "file": "tiertagger:icons/og_vanilla.png",  "ascent": 8, "height": 9, "chars": ["\uE00A"] },
+    { "type": "bitmap", "file": "tiertagger:icons/ogvanilla.png",   "ascent": 8, "height": 9, "chars": ["\uE00B"] },
+    { "type": "bitmap", "file": "tiertagger:icons/bed.png",         "ascent": 8, "height": 9, "chars": ["\uE00C"] },
+    { "type": "bitmap", "file": "tiertagger:icons/elytra.png",      "ascent": 8, "height": 9, "chars": ["\uE00D"] },
+    { "type": "bitmap", "file": "tiertagger:icons/2v2.png",         "ascent": 8, "height": 9, "chars": ["\uE00E"] },
+    { "type": "bitmap", "file": "tiertagger:icons/overall.png",     "ascent": 8, "height": 9, "chars": ["\uE00F"] },
+    { "type": "bitmap", "file": "tiertagger:icons/trident.png",     "ascent": 8, "height": 9, "chars": ["\uE010"] },
+    { "type": "bitmap", "file": "tiertagger:icons/creeper.png",     "ascent": 8, "height": 9, "chars": ["\uE011"] },
+    { "type": "bitmap", "file": "tiertagger:icons/minecart.png",    "ascent": 8, "height": 9, "chars": ["\uE012"] },
+    { "type": "bitmap", "file": "tiertagger:icons/manhunt.png",     "ascent": 8, "height": 9, "chars": ["\uE013"] },
+    { "type": "bitmap", "file": "tiertagger:icons/dia_smp.png",     "ascent": 8, "height": 9, "chars": ["\uE014"] },
+    { "type": "bitmap", "file": "tiertagger:icons/dia_crystal.png", "ascent": 8, "height": 9, "chars": ["\uE015"] },
+    { "type": "bitmap", "file": "tiertagger:icons/debuff.png",      "ascent": 8, "height": 9, "chars": ["\uE016"] },
+    { "type": "bitmap", "file": "tiertagger:icons/bow.png",         "ascent": 8, "height": 9, "chars": ["\uE017"] },
+    { "type": "bitmap", "file": "tiertagger:icons/crystal.png",     "ascent": 8, "height": 9, "chars": ["\uE018"] },
+    { "type": "bitmap", "file": "tiertagger:icons/sumo.png",        "ascent": 8, "height": 9, "chars": ["\uE019"] }
+  ]
+}

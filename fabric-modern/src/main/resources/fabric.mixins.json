@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "package": "com.outertiers.tiertagger.fabric.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "PlayerListHudMixin",
+    "PlayerEntityRendererMixin",
+    "LivingEntityRendererMixin",
+    "OptionsScreenMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}
