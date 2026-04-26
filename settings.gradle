@@ -1,4 +1,8 @@
-// Build target switching: BUILD_TARGET env var selects which Fabric module
+// NOTE: Gradle requires pluginManagement {} to be the FIRST block in
+// settings.gradle (no `def`, `if`, etc. allowed before it). We therefore
+// inline the BUILD_TARGET lookup inside both places that need it.
+//
+// Build-target switching: BUILD_TARGET env var selects which Fabric module
 // (and which Loom plugin) is configured. This is critical because:
 //   • the legacy `fabric-loom` plugin needed for the :fabric module pins
 //     Gradle 8.14 and Java 21, but
@@ -7,8 +11,7 @@
 // Pulling both plugins into ONE Gradle invocation tries to satisfy both
 // constraint sets at once and fails with "no matching variant" — even with
 // configureondemand=true. Splitting per-build via env var keeps each
-// invocation single-purpose.
-def target = (System.getenv('BUILD_TARGET') ?: 'fabric').trim()
+// invocation single-purpose. Default (no env var) = legacy :fabric.
 
 pluginManagement {
     repositories {
@@ -17,9 +20,10 @@ pluginManagement {
         mavenCentral()
     }
     plugins {
+        def target = (System.getenv('BUILD_TARGET') ?: 'fabric').trim()
         if (target == 'fabric') {
             // Legacy Yarn-based Loom for MC 1.21.x. Loom version is selected
-            // per-MC by build-release.yml via -Ploom_version=... ; default
+            // per-MC by build-release.yml via gradle.properties; default
             // for local dev is taken from gradle.properties (loom_version).
             id 'fabric-loom' version "${loom_version}"
         } else if (target == 'fabric-modern') {
@@ -31,9 +35,11 @@ pluginManagement {
 
 rootProject.name = 'tiertagger'
 
+def buildTarget = (System.getenv('BUILD_TARGET') ?: 'fabric').trim()
+
 include 'common'
-if (target == 'fabric') {
+if (buildTarget == 'fabric') {
     include 'fabric'
-} else if (target == 'fabric-modern') {
+} else if (buildTarget == 'fabric-modern') {
     include 'fabric-modern'
 }
