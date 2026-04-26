@@ -401,7 +401,7 @@ public class TierCompareScreen extends Screen {
                     else if (sB > sA)   { winner = 'B'; wins2++; }
                     else                { winner = '='; ties++; }
 
-                    renderCmpRow(ctx, mode, rA, rB, winner, x + 10, rowY, w - 20, alt);
+                    renderCmpRow(ctx, svc, mode, rA, rB, winner, x + 10, rowY, w - 20, alt);
                     rowY += ROW_H;
                     alt = !alt;
                 }
@@ -424,13 +424,15 @@ public class TierCompareScreen extends Screen {
         return y + 26;
     }
 
-    private void renderCmpRow(DrawContext ctx, String mode, Ranking rA, Ranking rB,
+    private void renderCmpRow(DrawContext ctx, TierService svc, String mode, Ranking rA, Ranking rB,
                               char winner, int x, int y, int w, boolean alt) {
         if (alt) fillRect(ctx, x - 4, y, x + w + 4, y + ROW_H, 0x14FFFFFF);
 
         int textX = x;
         boolean drewIcon = false;
-        Identifier tex = ModeIcons.textureFor(mode);
+        // Pass the service id so per-service overrides (PvPTiers art for
+        // sword/uhc/pot/…) win over the shared MCTiers/OuterTiers icon set.
+        Identifier tex = ModeIcons.textureFor(svc == null ? null : svc.id, mode);
         if (tex != null) {
             try {
                 Compat.drawTexture(ctx, tex, x, y - 1, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
@@ -550,7 +552,18 @@ public class TierCompareScreen extends Screen {
                 int dh = Math.max(1, (int) Math.floor(ih * scale));
                 int dx = x + (boxW - dw) / 2;
                 int dy = y + (boxH - dh) / 2;
-                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, iw, ih);
+                // See TierProfileScreen.drawHead for the full explanation:
+                // Compat.drawTexture(..., regionW, regionH, texW, texH) maps
+                // UV [0, regionW/texW] of the source image onto the screen
+                // quad — there is no separate "scale" arg. Passing
+                // texW=iw, texH=ih (256×272 from mc-heads.net) while
+                // regionW=dw≈70 only mapped the top-left ~25% of the
+                // source onto the box, leaving the actual head pixels
+                // off-screen and the slot looking empty (this was the
+                // "/tiertagger compare skins are invisible" bug). Passing
+                // texW=dw, texH=dh maps UV [0,1]×[0,1] (the whole image)
+                // onto the dw×dh quad, scaling the full head into the slot.
+                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh);
                 return;
             } catch (Throwable ignored) {}
         }

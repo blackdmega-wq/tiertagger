@@ -19,6 +19,17 @@ public final class ModeIcons {
     private static final String NS = "tiertagger";
     private static final Map<String, String> FILES = new HashMap<>();
 
+    /**
+     * Service-specific icon overrides. Keyed first by TierService.id (e.g.
+     * "pvptiers"), then by mode key. When a service has its own art for a
+     * given mode (e.g. PvPTiers ships a different sword/uhc/pot/… style than
+     * the OuterTiers/MCTiers shared set), the file lives under a per-service
+     * subfolder of {@code textures/icons/} (e.g. {@code textures/icons/pvptiers/sword.png})
+     * and gets registered here. Falls back to the shared {@link #FILES} map
+     * when no override exists for that (service, mode) pair.
+     */
+    private static final Map<String, Map<String, String>> SERVICE_FILES = new HashMap<>();
+
     static {
         // canonical id → png file name (without the .png suffix).
         // Aliases (e.g. "og_vanilla" / "ogvanilla", "nethpot" / "nethop") all
@@ -57,6 +68,26 @@ public final class ModeIcons {
         put("bed",         "bed");
         put("bedwars",     "bed");
         put("elytra",      "elytra");
+
+        // ── PvPTiers per-service overrides ──────────────────────────────────
+        // The shared icon set above mirrors mctiers.com / OuterTiers art,
+        // which does NOT match what pvptiers.com displays. The user wants
+        // PvPTiers rows to use the official pvptiers.com art. These eight
+        // PNGs were pulled from https://pvptiers.com/icons/tiers/<mode>.png
+        // and resampled to 64×64 to match the rest of the icon set, then
+        // dropped under textures/icons/pvptiers/. Note pvptiers.com names
+        // the netherite-pot icon "neth_pot.png" while our internal mode
+        // key is "nethpot", so the file is renamed on disk to nethpot.png.
+        putService("pvptiers", "crystal", "pvptiers/crystal");
+        putService("pvptiers", "sword",   "pvptiers/sword");
+        putService("pvptiers", "uhc",     "pvptiers/uhc");
+        putService("pvptiers", "pot",     "pvptiers/pot");
+        putService("pvptiers", "nethpot", "pvptiers/nethpot");
+        putService("pvptiers", "neth_pot","pvptiers/nethpot");
+        putService("pvptiers", "nethop",  "pvptiers/nethpot");
+        putService("pvptiers", "smp",     "pvptiers/smp");
+        putService("pvptiers", "axe",     "pvptiers/axe");
+        putService("pvptiers", "mace",    "pvptiers/mace");
     }
 
     private ModeIcons() {}
@@ -65,10 +96,33 @@ public final class ModeIcons {
         FILES.put(k.toLowerCase(Locale.ROOT), file);
     }
 
+    private static void putService(String svc, String mode, String file) {
+        SERVICE_FILES
+            .computeIfAbsent(svc.toLowerCase(Locale.ROOT), k -> new HashMap<>())
+            .put(mode.toLowerCase(Locale.ROOT), file);
+    }
+
     /** Identifier of the bundled PNG for {@code mode}, or {@code null}. */
     public static Identifier textureFor(String mode) {
+        return textureFor(null, mode);
+    }
+
+    /**
+     * Service-aware variant: prefers a per-service icon override (e.g. the
+     * pvptiers/ subfolder) when one exists for {@code (serviceId, mode)},
+     * otherwise falls back to the shared icon set used by every service.
+     * Returns {@code null} when no bundled PNG matches — callers then fall
+     * back to the legacy item-icon path.
+     */
+    public static Identifier textureFor(String serviceId, String mode) {
         if (mode == null) return null;
-        String f = FILES.get(mode.toLowerCase(Locale.ROOT));
+        String key = mode.toLowerCase(Locale.ROOT);
+        String f = null;
+        if (serviceId != null) {
+            Map<String, String> svcMap = SERVICE_FILES.get(serviceId.toLowerCase(Locale.ROOT));
+            if (svcMap != null) f = svcMap.get(key);
+        }
+        if (f == null) f = FILES.get(key);
         if (f == null) return null;
         try {
             return Identifier.of(NS, "textures/icons/" + f + ".png");

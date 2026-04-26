@@ -401,19 +401,21 @@ public class TierProfileScreen extends Screen {
         for (String mode : rowModes) {
             if (isModeHidden(svc, mode)) continue;
             Ranking r = sd.rankings.get(mode);
-            renderModeRow(ctx, mode, r, innerX, rowY, innerW, alt);
+            renderModeRow(ctx, svc, mode, r, innerX, rowY, innerW, alt);
             rowY += ROW_H;
             alt = !alt;
         }
     }
 
-    private void renderModeRow(DrawContext ctx, String mode, Ranking r,
+    private void renderModeRow(DrawContext ctx, TierService svc, String mode, Ranking r,
                                int x, int y, int w, boolean alt) {
         if (alt) fillRect(ctx, x - 4, y, x + w + 4, y + ROW_H, 0x14FFFFFF);
 
         int textX = x;
-        // 1) Try OuterTiers website-style PNG icon first.
-        Identifier tex = ModeIcons.textureFor(mode);
+        // 1) Try OuterTiers website-style PNG icon first. Pass the service id
+        //    so per-service overrides (e.g. PvPTiers art for sword/uhc/pot/…)
+        //    win over the shared MCTiers/OuterTiers set.
+        Identifier tex = ModeIcons.textureFor(svc == null ? null : svc.id, mode);
         boolean drewIcon = false;
         if (tex != null) {
             try {
@@ -504,7 +506,22 @@ public class TierProfileScreen extends Screen {
                 int dh = Math.max(1, (int) Math.floor(ih * scale));
                 int dx = x + (boxW - dw) / 2;
                 int dy = y + (boxH - dh) / 2;
-                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, iw, ih);
+                // CRITICAL: Compat.drawTexture is the 10-arg form
+                //   (id, x, y, u, v, regionW, regionH, texW, texH)
+                // which maps UV [u/texW, (u+regionW)/texW] of the texture
+                // onto a regionW × regionH quad on screen. There is NO
+                // independent "scale into a different size" here. Passing
+                // texW=iw, texH=ih (the natural 256×272 mc-heads.net
+                // dimensions) while regionW=dw=80 only mapped the top-left
+                // ~30% of the source onto the slot — i.e. mostly empty
+                // space, with the actual head pixels OFF-screen. Result:
+                // the player skin looked invisible in /tiertagger search
+                // and /tiertagger compare. Passing texW=dw, texH=dh makes
+                // the engine map UV [0,1]×[0,1] (the whole source image)
+                // onto the dw×dh quad, scaling the full head into the
+                // slot — same trick the icon row uses
+                // (drawTexture(..., ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE)).
+                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh);
                 return;
             } catch (Throwable ignored) {}
         }
