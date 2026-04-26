@@ -7,17 +7,15 @@
 //
 // The existing `:fabric` module (Yarn-based, 1.21.x) is unaffected.
 plugins {
-    // `net.fabricmc.fabric-loom-remap` (LoomRemapGradlePlugin) is the right
-    // plugin variant for MC 26.1.x: the GAME ships unobfuscated (Mojang
-    // names everywhere), but the published `fabric-api` jars on
-    // maven.fabricmc.net for 26.1.x are STILL packaged with intermediary
-    // namespace access wideners. The pure no-remap plugin
-    // (`net.fabricmc.fabric-loom`) rejects those with
-    //   "Expected official namespace for access widener entry, found: intermediary"
-    // — so we use the remap variant which transparently remaps the
-    // intermediary mod deps into the Mojang dev namespace at jar load.
-    // Project source still uses Mojang names directly.
-    id 'net.fabricmc.fabric-loom-remap'
+    // `net.fabricmc.fabric-loom` (LoomNoRemapGradlePlugin) is the modern
+    // non-remapping plugin variant. MC 26.1+ ships unobfuscated, so the
+    // game class names in source are already final and no remap step is
+    // needed. We use plain `implementation` for mod dependencies and
+    // `loom.noIntermediateMappings()` below to suppress the intermediary
+    // AW-namespace check (which would otherwise reject fabric-api jars
+    // that still tag their access wideners as "intermediary" namespace
+    // for legacy reasons even though no intermediary layer exists in 26.1+).
+    id 'net.fabricmc.fabric-loom'
     id 'maven-publish'
 }
 
@@ -34,24 +32,23 @@ repositories {
     maven { url 'https://maven.terraformersmc.com/' }
 }
 
+// Disable intermediary mappings entirely — see plugin block above for why.
+// This must come BEFORE `dependencies {}` so the plugin's setup runs without
+// trying to fetch a non-existent intermediary jar for 26.1.x.
+loom {
+    noIntermediateMappings()
+}
+
 dependencies {
+    // Game is unobfuscated from 26.1+ — no `mappings`, no yarn, no intermediary.
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
 
-    // The remap plugin still requires a `mappings` configuration even though
-    // MC 26.1+ ships unobfuscated. We declare the official Mojang mappings
-    // (which for an unobfuscated game are effectively a no-op identity map)
-    // so loom has a valid "dev namespace" to remap intermediary mod deps
-    // into.
-    mappings loom.officialMojangMappings()
-
-    // With `fabric-loom-remap`, mod deps go through `modImplementation` /
-    // `modCompileOnly` so that loom rewrites their intermediary refs into
-    // the project's Mojang dev namespace at jar load.
-    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    // No-remap plugin → plain `implementation` for mod deps.
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
     if (project.hasProperty('modmenu_version') && !project.modmenu_version.toString().isBlank()) {
-        modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+        compileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
     }
 
     implementation project(':common')
