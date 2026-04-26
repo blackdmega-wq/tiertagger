@@ -33,6 +33,7 @@ jobs:
             fabric_api: '0.116.11+1.21.1'
             loom: '1.7-SNAPSHOT'
             gradle: '8.10'
+            experimental: true
           - loader: fabric
             mc: '1.21.2'
             java: 21
@@ -41,6 +42,7 @@ jobs:
             fabric_api: '0.106.1+1.21.2'
             loom: '1.7-SNAPSHOT'
             gradle: '8.10'
+            experimental: true
           - loader: fabric
             mc: '1.21.3'
             java: 21
@@ -49,6 +51,7 @@ jobs:
             fabric_api: '0.114.1+1.21.3'
             loom: '1.7-SNAPSHOT'
             gradle: '8.10'
+            experimental: true
           - loader: fabric
             mc: '1.21.4'
             java: 21
@@ -57,6 +60,7 @@ jobs:
             fabric_api: '0.119.4+1.21.4'
             loom: '1.8-SNAPSHOT'
             gradle: '8.10'
+            experimental: true
           - loader: fabric
             mc: '1.21.5'
             java: 21
@@ -65,6 +69,7 @@ jobs:
             fabric_api: '0.128.2+1.21.5'
             loom: '1.10-SNAPSHOT'
             gradle: '8.12'
+            experimental: true
           - loader: fabric
             mc: '1.21.6'
             java: 21
@@ -89,10 +94,6 @@ jobs:
             fabric_api: '0.136.1+1.21.8'
             loom: '1.11-SNAPSHOT'
             gradle: '8.14'
-          # ── Best-effort newer Fabric builds ─────────────────────────────
-          # These MC versions changed vanilla rendering/registry APIs that
-          # our mixins reference. The build is allowed to fail without
-          # blocking the release (experimental=true → continue-on-error).
           - loader: fabric
             mc: '1.21.9'
             java: 21
@@ -101,7 +102,6 @@ jobs:
             fabric_api: '0.136.1+1.21.9'
             loom: '1.11-SNAPSHOT'
             gradle: '8.14'
-            experimental: true
           - loader: fabric
             mc: '1.21.10'
             java: 21
@@ -110,7 +110,6 @@ jobs:
             fabric_api: '0.136.1+1.21.10'
             loom: '1.11-SNAPSHOT'
             gradle: '8.14'
-            experimental: true
           - loader: fabric
             mc: '1.21.11'
             java: 21
@@ -119,54 +118,6 @@ jobs:
             fabric_api: '0.136.1+1.21.11'
             loom: '1.11-SNAPSHOT'
             gradle: '8.14'
-            experimental: true
-
-          # ────────────── NeoForge ──────────────
-          - loader: neoforge
-            mc: '1.21.1'
-            java: 21
-            neoforge: '21.1.95'
-            moddev: '1.0.24'
-            gradle: '8.10'
-          - loader: neoforge
-            mc: '1.21.3'
-            java: 21
-            neoforge: '21.3.96'
-            moddev: '1.0.24'
-            gradle: '8.10'
-          - loader: neoforge
-            mc: '1.21.4'
-            java: 21
-            neoforge: '21.4.157'
-            moddev: '2.0.78'
-            gradle: '8.10'
-          - loader: neoforge
-            mc: '1.21.5'
-            java: 21
-            neoforge: '21.5.97'
-            moddev: '2.0.78'
-            gradle: '8.10'
-          - loader: neoforge
-            mc: '1.21.8'
-            java: 21
-            neoforge: '21.8.53'
-            moddev: '2.0.141'
-            gradle: '8.10'
-          # ── Best-effort newer NeoForge builds ───────────────────────────
-          - loader: neoforge
-            mc: '1.21.10'
-            java: 21
-            neoforge: '21.10.0-beta'
-            moddev: '2.0.141'
-            gradle: '8.10'
-            experimental: true
-          - loader: neoforge
-            mc: '1.21.11'
-            java: 21
-            neoforge: '21.11.0-beta'
-            moddev: '2.0.141'
-            gradle: '8.10'
-            experimental: true
 
     steps:
       - uses: actions/checkout@v4
@@ -177,18 +128,14 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.java }}
 
-      - name: Pin plugin versions in gradle.properties
+      - name: Pin Loom plugin version in gradle.properties
         run: |
-          # settings.gradle's pluginManagement block reads ${loom_version} /
-          # ${moddev_version} as a Groovy GString from gradle.properties.
-          # Must run BEFORE setup-gradle/wrapper bootstrap because those also
-          # trigger settings evaluation and would fail with the wrong plugin version.
-          if [ "${{ matrix.loader }}" = "fabric" ]; then
-            sed -i "s|^loom_version=.*|loom_version=${{ matrix.loom }}|" gradle.properties
-          else
-            sed -i "s|^moddev_version=.*|moddev_version=${{ matrix.moddev }}|" gradle.properties
-          fi
-          grep -E '^(loom_version|moddev_version)=' gradle.properties
+          # settings.gradle's pluginManagement block reads ${loom_version} as a
+          # Groovy GString from gradle.properties.  Must run BEFORE
+          # setup-gradle/wrapper bootstrap because those also trigger settings
+          # evaluation and would fail with the wrong plugin version.
+          sed -i "s|^loom_version=.*|loom_version=${{ matrix.loom }}|" gradle.properties
+          grep -E '^loom_version=' gradle.properties
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -203,7 +150,6 @@ jobs:
           chmod +x ./gradlew
 
       - name: Build Fabric JAR
-        if: matrix.loader == 'fabric'
         id: build_fabric
         continue-on-error: ${{ matrix.experimental == true }}
         run: |
@@ -215,35 +161,16 @@ jobs:
             -Pjava_version=${{ matrix.java }} \
             --no-daemon --stacktrace
 
-      - name: Build NeoForge JAR
-        if: matrix.loader == 'neoforge'
-        id: build_neoforge
-        continue-on-error: ${{ matrix.experimental == true }}
-        run: |
-          ./gradlew :neoforge:build \
-            -Pminecraft_version=${{ matrix.mc }} \
-            -Pneoforge_version=${{ matrix.neoforge }} \
-            -Pjava_version=${{ matrix.java }} \
-            --no-daemon --stacktrace
-
       - name: Stage built JARs
         id: stage
         run: |
           mkdir -p staging
           shopt -s nullglob
-          if [ "${{ matrix.loader }}" = "fabric" ]; then
-            for f in fabric/build/libs/*.jar; do
-              case "$f" in *-sources.jar|*-dev.jar) continue;; esac
-              base=$(basename "$f" .jar)
-              cp "$f" "staging/${base}-mc${{ matrix.mc }}.jar"
-            done
-          else
-            for f in neoforge/build/libs/*.jar; do
-              case "$f" in *-sources.jar|*-dev.jar) continue;; esac
-              base=$(basename "$f" .jar)
-              cp "$f" "staging/${base}-mc${{ matrix.mc }}.jar"
-            done
-          fi
+          for f in fabric/build/libs/*.jar; do
+            case "$f" in *-sources.jar|*-dev.jar) continue;; esac
+            base=$(basename "$f" .jar)
+            cp "$f" "staging/${base}-mc${{ matrix.mc }}.jar"
+          done
           ls -la staging/ || true
           if ls staging/*.jar >/dev/null 2>&1; then
             echo "has_jars=true" >> $GITHUB_OUTPUT
@@ -319,12 +246,7 @@ jobs:
           fi
 
       # ─────────────── Modrinth ───────────────
-      # Skips silently if MODRINTH_TOKEN or MODRINTH_PROJECT_ID is not set,
-      # so this job is harmless until you opt in by adding both:
-      #   Repo → Settings → Secrets → Actions → New repository secret:
-      #     MODRINTH_TOKEN       (Modrinth → Settings → PATs, scope: WRITE_VERSION)
-      #   Repo → Settings → Variables → Actions → New repository variable:
-      #     MODRINTH_PROJECT_ID  (slug or id from your Modrinth project URL)
+      # Skips silently if MODRINTH_TOKEN or MODRINTH_PROJECT_ID is not set.
       - name: Publish to Modrinth
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
@@ -346,21 +268,19 @@ jobs:
           CHANGELOG="See https://github.com/${{ github.repository }}/releases/tag/${TAG}"
           for jar in "${jars[@]}"; do
             base=$(basename "$jar" .jar)
-            # Filename format: tiertagger-<loader>-<modver>-mc<mcver>.jar
-            loader=$(echo "$base" | sed -E 's/^tiertagger-(fabric|neoforge)-.*/\1/')
-            mc=$(echo    "$base" | sed -E 's/.*-mc([0-9]+\.[0-9]+(\.[0-9]+)?)$/\1/')
-            if [ -z "$loader" ] || [ -z "$mc" ]; then
-              echo "::warning::Could not parse loader/mc from $base — skipping."
+            # Filename format: tiertagger-fabric-<modver>-mc<mcver>.jar
+            mc=$(echo "$base" | sed -E 's/.*-mc([0-9]+\.[0-9]+(\.[0-9]+)?)$/\1/')
+            if [ -z "$mc" ]; then
+              echo "::warning::Could not parse mc from $base — skipping."
               continue
             fi
-            ver_num="${VERSION}+${loader}-mc${mc}"
-            echo ">>> Modrinth upload: $base  (loader=$loader  mc=$mc  version=$ver_num)"
+            ver_num="${VERSION}+fabric-mc${mc}"
+            echo ">>> Modrinth upload: $base  (mc=$mc  version=$ver_num)"
             data=$(jq -nc \
-              --arg name        "TierTagger $VERSION ($loader $mc)" \
+              --arg name        "TierTagger $VERSION (fabric $mc)" \
               --arg version_num "$ver_num" \
               --arg changelog   "$CHANGELOG" \
               --arg project_id  "$MODRINTH_PROJECT_ID" \
-              --arg loader      "$loader" \
               --arg mc          "$mc" \
               --arg fname       "$base.jar" \
               '{
@@ -370,7 +290,7 @@ jobs:
                 dependencies:   [],
                 game_versions:  [$mc],
                 version_type:   "release",
-                loaders:        [$loader],
+                loaders:        ["fabric"],
                 featured:       false,
                 project_id:     $project_id,
                 file_parts:     [$fname],
@@ -391,12 +311,6 @@ jobs:
           done
 
       # ─────────────── CurseForge ───────────────
-      # Skips silently if CURSEFORGE_TOKEN or CURSEFORGE_PROJECT_ID is not set.
-      # Setup:
-      #   Repo → Settings → Secrets → Actions → New repository secret:
-      #     CURSEFORGE_TOKEN      (https://legacy.curseforge.com/account/api-tokens)
-      #   Repo → Settings → Variables → Actions → New repository variable:
-      #     CURSEFORGE_PROJECT_ID (numeric "Project ID" shown on your CF mod page)
       - name: Publish to CurseForge
         env:
           CURSEFORGE_TOKEN:     ${{ secrets.CURSEFORGE_TOKEN }}
@@ -414,7 +328,6 @@ jobs:
             echo "::warning::No JARs in dist/ — nothing to publish."
             exit 0
           fi
-          # Fetch CurseForge's numeric game-version table once.
           curl -sS -H "X-Api-Token: ${CURSEFORGE_TOKEN}" \
             "https://minecraft.curseforge.com/api/game/versions" > /tmp/cf_versions.json
           if ! jq -e '.[0].id' /tmp/cf_versions.json >/dev/null 2>&1; then
@@ -426,28 +339,24 @@ jobs:
           CHANGELOG="See https://github.com/${{ github.repository }}/releases/tag/${TAG}"
           for jar in "${jars[@]}"; do
             base=$(basename "$jar" .jar)
-            loader=$(echo "$base" | sed -E 's/^tiertagger-(fabric|neoforge)-.*/\1/')
-            mc=$(echo    "$base" | sed -E 's/.*-mc([0-9]+\.[0-9]+(\.[0-9]+)?)$/\1/')
-            if [ -z "$loader" ] || [ -z "$mc" ]; then
-              echo "::warning::Could not parse loader/mc from $base — skipping."
+            mc=$(echo "$base" | sed -E 's/.*-mc([0-9]+\.[0-9]+(\.[0-9]+)?)$/\1/')
+            if [ -z "$mc" ]; then
+              echo "::warning::Could not parse mc from $base — skipping."
               continue
             fi
-            # CF uses two version IDs: one for the MC version, one for the loader.
             mc_id=$(jq --arg n "$mc" '.[] | select(.name == $n) | .id' /tmp/cf_versions.json | head -1)
-            loader_name="Fabric"; [ "$loader" = "neoforge" ] && loader_name="NeoForge"
-            loader_id=$(jq --arg n "$loader_name" '.[] | select(.name == $n) | .id' /tmp/cf_versions.json | head -1)
-            # Also tag the Java version slot.
+            loader_id=$(jq --arg n "Fabric" '.[] | select(.name == $n) | .id' /tmp/cf_versions.json | head -1)
             java_id=$(jq '.[] | select(.name == "Java 21") | .id' /tmp/cf_versions.json | head -1)
             ids=$(jq -nc --argjson a "${mc_id:-0}" --argjson b "${loader_id:-0}" --argjson c "${java_id:-0}" \
                   '[$a, $b, $c] | map(select(. != 0))')
             if [ "$ids" = "[]" ]; then
-              echo "::warning::No CurseForge IDs resolved for $base (mc=$mc loader=$loader) — skipping."
+              echo "::warning::No CurseForge IDs resolved for $base (mc=$mc) — skipping."
               continue
             fi
             echo ">>> CurseForge upload: $base  (gameVersions=$ids)"
             metadata=$(jq -nc \
               --arg changelog "$CHANGELOG" \
-              --arg display   "TierTagger $VERSION ($loader $mc)" \
+              --arg display   "TierTagger $VERSION (fabric $mc)" \
               --argjson ids   "$ids" \
               '{
                 changelog:        $changelog,

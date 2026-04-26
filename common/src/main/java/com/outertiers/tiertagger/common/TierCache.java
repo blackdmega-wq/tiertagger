@@ -98,17 +98,52 @@ public class TierCache {
             "dia_2v2",  new String[] { "dia_2v2", "dia2v2", "diamond_2v2" }
     );
 
-    /** First non-null JSON object child found under any of the provided keys, or {@code null}. */
+    /**
+     * First non-null JSON child found under the canonical mode key, any of its
+     * registered {@link #MODE_ALIASES}, or — as a last resort — any parent key
+     * that {@code equalsIgnoreCase()} matches the canonical id or any alias.
+     *
+     * <p>The case-insensitive parent-key sweep is what fixes the long-standing
+     * "PvPTiers nethpot tier never loads" bug: PvPTiers' API has historically
+     * shipped that mode under {@code "Nethpot"}, {@code "NethPot"} and lately
+     * {@code "nethPot"} — Gson's {@link JsonObject#get(String)} is strictly
+     * case-sensitive, so every lookup against our lowercase canonical id
+     * returned {@code null} and the tier was silently dropped from the cached
+     * rankings.
+     */
     private static JsonElement firstAlias(JsonObject parent, String mode) {
         if (parent == null || mode == null) return null;
-        String[] keys = MODE_ALIASES.get(mode.toLowerCase(Locale.ROOT));
-        if (keys == null) {
+        String canonical = mode.toLowerCase(Locale.ROOT);
+        String[] aliases = MODE_ALIASES.get(canonical);
+        // 1) Direct exact-case lookups (canonical id + every registered alias).
+        if (aliases == null) {
             JsonElement v = parent.get(mode);
-            return v == null ? null : v;
-        }
-        for (String k : keys) {
-            JsonElement v = parent.get(k);
             if (v != null && !v.isJsonNull()) return v;
+        } else {
+            for (String k : aliases) {
+                JsonElement v = parent.get(k);
+                if (v != null && !v.isJsonNull()) return v;
+            }
+        }
+        // 2) Case-insensitive sweep over the parent's actual keys. We compare
+        //    against canonical id + aliases AND a "no underscores" version so
+        //    "Netherite_Pot", "netheritePot", and "NETHPOT" all match nethpot.
+        for (Map.Entry<String, JsonElement> e : parent.entrySet()) {
+            String k = e.getKey();
+            if (k == null) continue;
+            String kn = k.toLowerCase(Locale.ROOT);
+            String knStripped = kn.replace("_", "");
+            if (kn.equals(canonical) || knStripped.equals(canonical.replace("_", ""))) {
+                if (e.getValue() != null && !e.getValue().isJsonNull()) return e.getValue();
+            }
+            if (aliases != null) {
+                for (String a : aliases) {
+                    String al = a.toLowerCase(Locale.ROOT);
+                    if (kn.equals(al) || knStripped.equals(al.replace("_", ""))) {
+                        if (e.getValue() != null && !e.getValue().isJsonNull()) return e.getValue();
+                    }
+                }
+            }
         }
         return null;
     }
@@ -303,7 +338,13 @@ public class TierCache {
         String inflightKey = username.toLowerCase(Locale.ROOT) + "|" + service.id;
         long now = System.currentTimeMillis();
         Long last = inflight.get(inflightKey);
-        if (last != null && now - last < 30_000) return;
+        // The inflight marker is removed in `finally` after the fetch completes,
+        // so this gate only kicks in when a request is genuinely still running.
+        // 8 s is a healthy safety net (HTTP timeout itself is 12 s) without
+        // serialising tab-list refreshes the way the previous 30 s gate did —
+        // every player slot used to be stuck on "loading…" for half a minute
+        // whenever a single fetch hung.
+        if (last != null && now - last < 8_000) return;
         inflight.put(inflightKey, now);
         EXEC.submit(() -> {
             try { fetchOne(username, data, service); }
@@ -478,15 +519,41 @@ public class TierCache {
     }
 
     /**
-     * Alias-aware {@link #optStr}: tries the canonical mode key first, then
-     * falls through every alias registered in {@link #MODE_ALIASES}. Used by
-     * the OuterTiers parser so renamed upstream JSON keys don't drop tiers.
+     * Alias-aware {@link #optStr} that ALSO falls through to a case-insensitive
+     * sweep of the parent's actual keys.  Mirrors {@link #firstAlias} so the
+     * OuterTiers parser shows the same tolerance to upstream key renames as
+     * the standard parser — important because OuterTiers occasionally ships
+     * legacy keys like {@code "OG_Vanilla"} or {@code "Netherite_Pot"} with
+     * mixed case that strict {@link JsonObject#get(String)} would miss.
      */
     private static String optStrAlias(JsonObject o, String mode) {
         if (o == null || mode == null) return null;
-        String[] keys = MODE_ALIASES.get(mode.toLowerCase(Locale.ROOT));
-        if (keys == null) return optStr(o, mode);
-        for (String k : keys) {
+        String canonical = mode.toLowerCase(Locale.ROOT);
+        String[] aliases = MODE_ALIASES.get(canonical);
+        // 1) Exact-case canonical / alias matches.
+        if (aliases == null) {
+            String s = optStr(o, mode);
+            if (s != null) return s;
+        } else {
+            for (String k : aliases) {
+                String s = optStr(o, k);
+                if (s != null) return s;
+            }
+        }
+        // 2) Case-insensitive parent-key sweep (with underscores stripped).
+        for (Map.Entry<String, JsonElement> e : o.entrySet()) {
+            String k = e.getKey();
+            if (k == null) continue;
+            String kn = k.toLowerCase(Locale.ROOT);
+            String knStripped = kn.replace("_", "");
+            boolean matches = kn.equals(canonical) || knStripped.equals(canonical.replace("_", ""));
+            if (!matches && aliases != null) {
+                for (String a : aliases) {
+                    String al = a.toLowerCase(Locale.ROOT);
+                    if (kn.equals(al) || knStripped.equals(al.replace("_", ""))) { matches = true; break; }
+                }
+            }
+            if (!matches) continue;
             String s = optStr(o, k);
             if (s != null) return s;
         }
