@@ -35,8 +35,14 @@ repositories {
 }
 
 dependencies {
-    // Game is unobfuscated from 26.1+ — no `mappings` entry, no yarn.
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
+
+    // The remap plugin still requires a `mappings` configuration even though
+    // MC 26.1+ ships unobfuscated. We declare the official Mojang mappings
+    // (which for an unobfuscated game are effectively a no-op identity map)
+    // so loom has a valid "dev namespace" to remap intermediary mod deps
+    // into.
+    mappings loom.officialMojangMappings()
 
     // With `fabric-loom-remap`, mod deps go through `modImplementation` /
     // `modCompileOnly` so that loom rewrites their intermediary refs into
