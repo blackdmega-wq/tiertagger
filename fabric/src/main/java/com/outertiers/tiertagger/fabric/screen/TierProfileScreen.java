@@ -502,30 +502,27 @@ public class TierProfileScreen extends Screen {
                 SkinFetcher.Skin sk = fetched.get();
                 int iw = Math.max(1, sk.width);
                 int ih = Math.max(1, sk.height);
-                // Fit the image inside the box, preserving aspect ratio.
+                // Crop to the TOP HALF of the body render → "bust"
+                // (head + chest + arms only, no legs). The user
+                // explicitly asked for "half the skin" — see SkinFetcher
+                // header for why we crop client-side instead of using
+                // a /bust/ URL (mc-heads.net returns 404 for that path).
+                int displayH = Math.max(1, ih / 2);
                 double sx = (double) boxW / iw;
-                double sy = (double) boxH / ih;
+                double sy = (double) boxH / displayH;
                 double scale = Math.min(sx, sy);
                 int dw = Math.max(1, (int) Math.floor(iw * scale));
-                int dh = Math.max(1, (int) Math.floor(ih * scale));
+                int dh = Math.max(1, (int) Math.floor(displayH * scale));
                 int dx = x + (boxW - dw) / 2;
                 int dy = y + (boxH - dh) / 2;
-                // CRITICAL: Compat.drawTexture is the 10-arg form
-                //   (id, x, y, u, v, regionW, regionH, texW, texH)
-                // which maps UV [u/texW, (u+regionW)/texW] of the texture
-                // onto a regionW × regionH quad on screen. There is NO
-                // independent "scale into a different size" here. Passing
-                // texW=iw, texH=ih (the natural 256×272 mc-heads.net
-                // dimensions) while regionW=dw=80 only mapped the top-left
-                // ~30% of the source onto the slot — i.e. mostly empty
-                // space, with the actual head pixels OFF-screen. Result:
-                // the player skin looked invisible in /tiertagger search
-                // and /tiertagger compare. Passing texW=dw, texH=dh makes
-                // the engine map UV [0,1]×[0,1] (the whole source image)
-                // onto the dw×dh quad, scaling the full head into the
-                // slot — same trick the icon row uses
-                // (drawTexture(..., ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE)).
-                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh);
+                // UV-crop trick: Compat.drawTexture(...,regionW,regionH,texW,texH)
+                // maps UV [0, regionW/texW] × [0, regionH/texH] of the
+                // source onto the regionW × regionH screen quad. Passing
+                //   regionW=dw, regionH=dh, texW=dw, texH=dh*2
+                // gives UV [0,1] × [0, 0.5] — i.e. the top half of the
+                // image, scaled to fit the dw × dh slot. This is how we
+                // get a "bust" crop without needing a separate texture.
+                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh * 2);
                 return;
             } catch (Throwable ignored) {}
         }

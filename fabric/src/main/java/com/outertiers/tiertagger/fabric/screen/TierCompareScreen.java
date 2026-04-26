@@ -547,25 +547,20 @@ public class TierCompareScreen extends Screen {
                 SkinFetcher.Skin sk = fetched.get();
                 int iw = Math.max(1, sk.width);
                 int ih = Math.max(1, sk.height);
+                // Crop to the TOP HALF of the body render → "bust"
+                // (head + chest + arms only, no legs). See
+                // TierProfileScreen.drawHead for the UV-crop explanation:
+                //   regionW=dw, regionH=dh, texW=dw, texH=dh*2
+                // → UV [0,1] × [0, 0.5] of the source onto the dw×dh slot.
+                int displayH = Math.max(1, ih / 2);
                 double sx = (double) boxW / iw;
-                double sy = (double) boxH / ih;
+                double sy = (double) boxH / displayH;
                 double scale = Math.min(sx, sy);
                 int dw = Math.max(1, (int) Math.floor(iw * scale));
-                int dh = Math.max(1, (int) Math.floor(ih * scale));
+                int dh = Math.max(1, (int) Math.floor(displayH * scale));
                 int dx = x + (boxW - dw) / 2;
                 int dy = y + (boxH - dh) / 2;
-                // See TierProfileScreen.drawHead for the full explanation:
-                // Compat.drawTexture(..., regionW, regionH, texW, texH) maps
-                // UV [0, regionW/texW] of the source image onto the screen
-                // quad — there is no separate "scale" arg. Passing
-                // texW=iw, texH=ih (256×272 from mc-heads.net) while
-                // regionW=dw≈70 only mapped the top-left ~25% of the
-                // source onto the box, leaving the actual head pixels
-                // off-screen and the slot looking empty (this was the
-                // "/tiertagger compare skins are invisible" bug). Passing
-                // texW=dw, texH=dh maps UV [0,1]×[0,1] (the whole image)
-                // onto the dw×dh quad, scaling the full head into the slot.
-                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh);
+                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh * 2);
                 return;
             } catch (Throwable ignored) {}
         }

@@ -1,8 +1,14 @@
 package com.outertiers.tiertagger.fabric.screen;
 
+import com.outertiers.tiertagger.common.PlayerData;
+import com.outertiers.tiertagger.common.Ranking;
+import com.outertiers.tiertagger.common.ServiceData;
 import com.outertiers.tiertagger.common.TierConfig;
 import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
+import com.outertiers.tiertagger.fabric.BadgeRenderer;
+import com.outertiers.tiertagger.fabric.SkinFetcher;
+import com.outertiers.tiertagger.fabric.compat.Compat;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -11,13 +17,18 @@ import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.gui.widget.CyclingButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -90,6 +101,17 @@ public class TierConfigScreen extends Screen {
     private int bodyTop   = TAB_STRIP_TOP + TAB_H + 4;
     private int bodyBottom = 0;
     private int maxRowUsed = 0;
+
+    // ── Live nametag preview ────────────────────────────────────────────────
+    /** Display name used in the preview. Picked so the rendered skin actually
+     *  exists on mc-heads.net (Notch is the canonical "always-available" UUID). */
+    private static final String PREVIEW_NAME = "Notch";
+    /** Bounds of the preview panel. Set to {@code w<=0} when no preview is shown. */
+    private int previewX = 0, previewY = 0, previewW = 0, previewH = 0;
+    /** Cached fake PlayerData populated with one HT3 ranking per gamemode in
+     *  every service so {@link BadgeRenderer#wrapNametag} always has something
+     *  to display regardless of which left/right service the user picks. */
+    private static volatile PlayerData PREVIEW_DATA = null;
 
     public TierConfigScreen(Screen parent) {
         super(Text.literal("TierTagger \u2014 Settings"));
@@ -234,6 +256,10 @@ public class TierConfigScreen extends Screen {
         sectionHeaders.clear();
         sectionHeadersText.clear();
         maxRowUsed = 0;
+        // Disable preview by default; only the Tiers Config tab (and its
+        // Advanced Settings sub-screen) re-enables it by setting positive
+        // bounds at the end of its builder.
+        previewW = 0;
 
         TierConfig cfg = TierTaggerCore.config();
         if (cfg == null) {
@@ -682,22 +708,33 @@ public class TierConfigScreen extends Screen {
         final int iconGap   = 6;
         final int iconBtnW  = (rowW() - iconGap * (iconCount - 1)) / iconCount;
 
-        // [↻] Reload tier cache.
+        // ── Image-icon buttons (v1.21.11.35) ─────────────────────────────
+        // The previous implementation rendered Unicode glyphs (\u21BB / \u25C9
+        // / \u26ED / \u2630 / \u270E). On many resource packs and shaders
+        // those rendered as fuzzy squares or "tofu". We now use vanilla
+        // item icons drawn through the item renderer (see ItemIconButton),
+        // which stay crisp at any GUI scale and read instantly. Toggle
+        // buttons get a translucent overlay + red diagonal slash when OFF
+        // so users can tell their state at a glance.
+
+        // [Clock] Reload tier cache.
         safeAdd("reloadCache", () -> {
             int x = rowX();
-            ClickableWidget w = ButtonWidget.builder(
-                    Text.literal("\u00a7e\u21BB").formatted(Formatting.BOLD),
-                    b -> { try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {} })
-                .dimensions(x, iconRowY, iconBtnW, iconBtnH)
-                .build();
+            ClickableWidget w = new ItemIconButton(
+                    x, iconRowY, iconBtnW, iconBtnH,
+                    new ItemStack(Items.CLOCK), null,
+                    Text.literal("Reload tier cache"),
+                    b -> { try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {} });
             addTipped(w, "Reload the tier cache.");
         });
 
-        // [◎] Cycle active right gamemode (in-game "I" hotkey).
+        // [Ender Eye] Cycle active right gamemode (in-game "I" hotkey).
         safeAdd("cycleRightMode", () -> {
             int x = rowX() + (iconBtnW + iconGap);
-            ClickableWidget w = ButtonWidget.builder(
-                    Text.literal("\u00a7d\u25C9").formatted(Formatting.BOLD),
+            ClickableWidget w = new ItemIconButton(
+                    x, iconRowY, iconBtnW, iconBtnH,
+                    new ItemStack(Items.ENDER_EYE), null,
+                    Text.literal("Cycle right gamemode"),
                     b -> {
                         TierService rightSvc = cfg.rightServiceEnum();
                         if (rightSvc == null) return;
@@ -709,60 +746,58 @@ public class TierConfigScreen extends Screen {
                         cfg.rightMode = modes.get((idx < 0 ? 0 : (idx + 1) % modes.size()));
                         cfg.save();
                         rebuildKeepingScroll();
-                    })
-                .dimensions(x, iconRowY, iconBtnW, iconBtnH)
-                .build();
+                    });
             addTipped(w, "Cycle the active right gamemode (press 'I' in game).");
         });
 
-        // [⚒] Gamemode-icon visibility toggle.
+        // [Iron Sword] Gamemode-icon visibility toggle.
         safeAdd("toggleGameModeIcon", () -> {
             int x = rowX() + 2 * (iconBtnW + iconGap);
-            boolean on = !cfg.disableIcons && cfg.showModeIcon;
-            ClickableWidget w = ButtonWidget.builder(
-                    Text.literal(on ? "\u00a7a\u26ED" : "\u00a77\u26ED").formatted(Formatting.BOLD),
+            ClickableWidget w = new ItemIconButton(
+                    x, iconRowY, iconBtnW, iconBtnH,
+                    new ItemStack(Items.IRON_SWORD),
+                    () -> cfg.disableIcons || !cfg.showModeIcon,
+                    Text.literal("Toggle gamemode icon"),
                     b -> {
                         boolean nowOn = !(!cfg.disableIcons && cfg.showModeIcon);
                         cfg.disableIcons = !nowOn;
                         cfg.showModeIcon = nowOn;
                         cfg.save();
                         rebuildKeepingScroll();
-                    })
-                .dimensions(x, iconRowY, iconBtnW, iconBtnH)
-                .build();
-            addTipped(w, "Disable the gamemode icon next to the tier.");
+                    });
+            addTipped(w, "Show / hide the small gamemode icon next to the tier.");
         });
 
-        // [≡] Tab-list visibility toggle.
+        // [Paper] Tab-list visibility toggle.
         safeAdd("toggleTablist", () -> {
             int x = rowX() + 3 * (iconBtnW + iconGap);
-            boolean on = cfg.showInTab;
-            ClickableWidget w = ButtonWidget.builder(
-                    Text.literal(on ? "\u00a7a\u2630" : "\u00a77\u2630").formatted(Formatting.BOLD),
+            ClickableWidget w = new ItemIconButton(
+                    x, iconRowY, iconBtnW, iconBtnH,
+                    new ItemStack(Items.PAPER),
+                    () -> !cfg.showInTab,
+                    Text.literal("Toggle tab list tiers"),
                     b -> {
                         cfg.showInTab = !cfg.showInTab;
                         cfg.save();
                         rebuildKeepingScroll();
-                    })
-                .dimensions(x, iconRowY, iconBtnW, iconBtnH)
-                .build();
-            addTipped(w, "Disable Tiers on the tab list.");
+                    });
+            addTipped(w, "Show / hide Tiers on the tab list.");
         });
 
-        // [✎] Chat visibility toggle.
+        // [Writable Book] Chat visibility toggle.
         safeAdd("toggleChat", () -> {
             int x = rowX() + 4 * (iconBtnW + iconGap);
-            boolean on = !cfg.disableInChat;
-            ClickableWidget w = ButtonWidget.builder(
-                    Text.literal(on ? "\u00a7a\u270E" : "\u00a77\u270E").formatted(Formatting.BOLD),
+            ClickableWidget w = new ItemIconButton(
+                    x, iconRowY, iconBtnW, iconBtnH,
+                    new ItemStack(Items.WRITABLE_BOOK),
+                    () -> cfg.disableInChat,
+                    Text.literal("Toggle chat tiers"),
                     b -> {
                         cfg.disableInChat = !cfg.disableInChat;
                         cfg.save();
                         rebuildKeepingScroll();
-                    })
-                .dimensions(x, iconRowY, iconBtnW, iconBtnH)
-                .build();
-            addTipped(w, "Disable Tiers in chat.");
+                    });
+            addTipped(w, "Show / hide Tiers in chat.");
         });
 
         // The icon row uses iconBtnH (28 px) which is taller than ROW_H (24 px),
@@ -784,6 +819,18 @@ public class TierConfigScreen extends Screen {
                 "Use this if you want PvPTiers on one side and OuterTiers on the other.");
         });
         rRef[0]++;
+        rRef[0]++; // breathing room before preview
+
+        // ── Live nametag preview (v1.21.11.35) ────────────────────────────
+        // Anchored below "Advanced Settings". Re-renders on every settings
+        // change because rebuildKeepingScroll() runs at the end of every
+        // toggle handler — so the badge format, brackets, icon position,
+        // service colours etc. all update in real time.
+        previewX = rowX();
+        previewY = rowY(rRef[0]);
+        previewW = rowW();
+        previewH = 84;
+        rRef[0] += 4; // reserve scroll space for the preview
     }
 
     /**
@@ -923,6 +970,170 @@ public class TierConfigScreen extends Screen {
                 addTipped(w, "Show " + svc.displayName + " on the RIGHT side of player names.");
             });
         }
+
+        // ── Live nametag preview (v1.21.11.35) ────────────────────────────
+        // Anchored below the SubTiers / services list inside the Advanced
+        // Settings sub-screen. Updates in real time when the user clicks
+        // [←] / [→] on any row because each handler calls
+        // rebuildKeepingScroll() which re-runs this builder.
+        rRef[0]++; // breathing room
+        previewX = rowX();
+        previewY = rowY(rRef[0]);
+        previewW = rowW();
+        previewH = 84;
+        rRef[0] += 4;
+    }
+
+    /**
+     * Build (once, lazily) the fake {@link PlayerData} used by the live
+     * preview. Populates an HT-{1..3} ranking for every gamemode in every
+     * known service so that no matter which left/right service or mode
+     * the user picks the badge has something to show.
+     */
+    private static PlayerData ensurePreviewData() {
+        PlayerData cached = PREVIEW_DATA;
+        if (cached != null) return cached;
+        synchronized (TierConfigScreen.class) {
+            if (PREVIEW_DATA != null) return PREVIEW_DATA;
+            try {
+                PlayerData pd = new PlayerData(PREVIEW_NAME,
+                        // Notch's canonical undashed UUID. Used only as a
+                        // stable cache key — the screen itself fetches the
+                        // skin via SkinFetcher.skinFor("Notch").
+                        "069a79f444e94726a5befca90e38aaf5");
+                int seed = 1;
+                for (TierService svc : TierService.values()) {
+                    LinkedHashMap<String, Ranking> map = new LinkedHashMap<>();
+                    for (String mode : svc.modes) {
+                        // Cycle through HT1, HT2, HT3, LT2, HT1, … so the
+                        // preview shows a believable spread of tiers.
+                        int level = 1 + (seed % 3);
+                        boolean high = (seed % 4) != 0;
+                        map.put(mode, Ranking.simple(level, high));
+                        seed++;
+                    }
+                    pd.services.put(svc, new ServiceData(
+                            svc, map, "EU", 1234, 42,
+                            System.currentTimeMillis(), false));
+                }
+                PREVIEW_DATA = pd;
+                return pd;
+            } catch (Throwable t) {
+                return null;
+            }
+        }
+    }
+
+    /**
+     * Render the live nametag preview panel: rounded card with a small
+     * Steve-style bust on the left and the live-formatted nametag floating
+     * above the head. Visual only — does NOT register a widget so it can't
+     * eat clicks. Bounds are set during {@link #buildTiersConfigTab} (or
+     * the advanced routing view).
+     */
+    private void drawPreview(DrawContext ctx) {
+        if (previewW <= 0 || previewH <= 0) return;
+        // Don't render if scrolled outside the visible body area.
+        if (previewY + previewH < bodyTop || previewY > bodyBottom) return;
+        if (currentTab != 2) return;
+
+        TierConfig cfg = TierTaggerCore.config();
+        PlayerData pd = ensurePreviewData();
+        if (pd == null) return;
+
+        ctx.enableScissor(0, bodyTop, this.width, bodyBottom);
+        try {
+            // Card background with subtle gradient + accent border.
+            verticalGradient(ctx, previewX, previewY,
+                    previewX + previewW, previewY + previewH,
+                    0xFF14181F, 0xFF0B0E13);
+            outlineRect(ctx, previewX, previewY, previewW, previewH, 0xFF2C313A);
+            // Yellow accent stripe on the left edge — same accent the
+            // active-tab underline uses, ties the preview to the rest of
+            // the design.
+            fillRect(ctx, previewX, previewY, previewX + 2, previewY + previewH, ACCENT);
+            // Tiny "PREVIEW" caption in the top-right corner.
+            Text caption = Text.literal("LIVE PREVIEW").formatted(Formatting.GRAY, Formatting.BOLD);
+            int capW = this.textRenderer.getWidth(caption);
+            ctx.drawTextWithShadow(this.textRenderer, caption,
+                    previewX + previewW - capW - 6, previewY + 4, 0xFF8A8F99);
+
+            // Skin slot (left side of the card).
+            int padX = 8;
+            int slotW = 44;
+            int slotH = previewH - 16;
+            int slotX = previewX + padX;
+            int slotY = previewY + 12;
+            // Slot background (very subtle so the bust still pops).
+            fillRect(ctx, slotX, slotY, slotX + slotW, slotY + slotH, 0x40000000);
+            outlineRect(ctx, slotX, slotY, slotW, slotH, 0x40FFFFFF);
+            drawPreviewBust(ctx, slotX, slotY, slotW, slotH);
+
+            // Build the live wrapped nametag and float it above the head.
+            MutableText baseName = Text.literal(PREVIEW_NAME).formatted(Formatting.WHITE);
+            Text wrapped;
+            try {
+                Text wt = BadgeRenderer.wrapNametag(cfg, pd, baseName);
+                wrapped = wt != null ? wt : baseName;
+            } catch (Throwable t) {
+                wrapped = baseName;
+            }
+
+            int tagW = this.textRenderer.getWidth(wrapped);
+            int tagPad = 4;
+            int tagBoxW = tagW + tagPad * 2;
+            int tagBoxH = 12;
+            int tagBoxX = slotX + slotW + 12;
+            // Vertically center the floating nametag in the card.
+            int tagBoxY = previewY + (previewH - tagBoxH) / 2 - 2;
+            // Vanilla nametag look: 25%-alpha black background with white text.
+            fillRect(ctx, tagBoxX, tagBoxY, tagBoxX + tagBoxW, tagBoxY + tagBoxH, 0x40000000);
+            ctx.drawTextWithShadow(this.textRenderer, wrapped,
+                    tagBoxX + tagPad, tagBoxY + 2, 0xFFFFFFFF);
+
+            // Helper hint underneath so users understand what they're seeing.
+            Text hint = Text.literal("\u2191 how players will see your tiers")
+                    .withColor(rgb(FG_FAINT));
+            ctx.drawTextWithShadow(this.textRenderer, hint,
+                    tagBoxX, tagBoxY + tagBoxH + 4, FG_FAINT);
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] preview render", t);
+        } finally {
+            try { ctx.disableScissor(); } catch (Throwable ignored) {}
+        }
+    }
+
+    /**
+     * Draws the top-half bust crop of the preview player's skin into
+     * the given slot, mirroring the UV-crop technique used by
+     * {@link TierProfileScreen#drawHead} and {@link TierCompareScreen#drawHead}.
+     * Falls back to a soft silhouette while the skin is still being fetched.
+     */
+    private void drawPreviewBust(DrawContext ctx, int x, int y, int boxW, int boxH) {
+        Optional<SkinFetcher.Skin> fetched = Optional.empty();
+        try { fetched = SkinFetcher.skinFor(PREVIEW_NAME); } catch (Throwable ignored) {}
+        if (fetched.isPresent()) {
+            try {
+                SkinFetcher.Skin sk = fetched.get();
+                int iw = Math.max(1, sk.width);
+                int ih = Math.max(1, sk.height);
+                int displayH = Math.max(1, ih / 2);
+                double sx = (double) boxW / iw;
+                double sy = (double) boxH / displayH;
+                double scale = Math.min(sx, sy);
+                int dw = Math.max(1, (int) Math.floor(iw * scale));
+                int dh = Math.max(1, (int) Math.floor(displayH * scale));
+                int dx = x + (boxW - dw) / 2;
+                int dy = y + (boxH - dh) / 2;
+                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh * 2);
+                return;
+            } catch (Throwable ignored) {}
+        }
+        // Loading placeholder.
+        int cx = x + boxW / 2;
+        int cy = y + boxH / 2;
+        fillRect(ctx, cx - 6, cy - 10, cx + 6, cy - 2, 0xFFB78462); // head
+        fillRect(ctx, cx - 8, cy - 2,  cx + 8, cy + 10, 0xFF4A6FA5); // torso
     }
 
     private void rebuildKeepingScroll() {
@@ -997,6 +1208,11 @@ public class TierConfigScreen extends Screen {
             //    never clipped. Anything that leaks above the body is repainted
             //    by the title strip / tab strip below.
             super.render(ctx, mouseX, mouseY, delta);
+
+            // 3b. Live nametag preview (Tiers Config tab only). Drawn AFTER
+            //     widgets so its translucent backdrop sits on top of any
+            //     buttons whose body region overlaps the preview slot.
+            try { drawPreview(ctx); } catch (Throwable ignored) {}
 
             // 4. Tier Colors tab: per-row tier label + colour swatch overlay.
             if (currentTab == 1) {

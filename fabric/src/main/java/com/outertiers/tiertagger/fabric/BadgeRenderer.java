@@ -273,16 +273,28 @@ public final class BadgeRenderer {
         boolean hasIcon = icon != Text.empty()
             && icon.getString() != null && !icon.getString().isEmpty();
 
+        // Icon position rule (v1.21.11.35):
+        //   • LEFT badge  → icon BEFORE the tier text  ("[ICON HT1]" / "ICON HT1")
+        //   • RIGHT badge → icon AFTER  the tier text  ("[HT1 ICON]" / "HT1 ICON")
+        // The right badge always sits to the RIGHT of the player name, so its
+        // gamemode icon must visually trail the tier so the icon ends up
+        // furthest from the name (mirroring how the left badge's icon sits
+        // furthest from the name on the opposite side). serviceLabelLeading
+        // is true for the LEFT badge and false for the RIGHT badge — see
+        // buildTabPrefix vs buildTabSuffix below.
+        boolean iconLeading = serviceLabelLeading;
         MutableText core;
         if (TierFormat.useBrackets()) {
             core = Text.literal("[").formatted(Formatting.GRAY);
-            if (hasIcon) core.append(icon).append(Text.literal(" ").formatted(Formatting.GRAY));
+            if (hasIcon && iconLeading) core.append(icon).append(Text.literal(" ").formatted(Formatting.GRAY));
             core.append(Text.literal(label).setStyle(tierStyle));
+            if (hasIcon && !iconLeading) core.append(Text.literal(" ").formatted(Formatting.GRAY)).append(icon);
             core.append(Text.literal("]").formatted(Formatting.GRAY));
         } else {
             core = Text.literal("");
-            if (hasIcon) core.append(icon).append(Text.literal(" "));
+            if (hasIcon && iconLeading) core.append(icon).append(Text.literal(" "));
             core.append(Text.literal(label).setStyle(tierStyle));
+            if (hasIcon && !iconLeading) core.append(Text.literal(" ")).append(icon);
         }
 
         if (!TierFormat.showServiceLabel()) return core;

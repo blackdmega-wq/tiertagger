@@ -26,13 +26,15 @@ import java.util.concurrent.Executors;
  * local player tab list).
  *
  * Implementation notes:
- *  - Uses {@code https://mc-heads.net/bust/<name>/<size>.png} which returns
- *    a 3D rendered UPPER-BODY ("bust") at a 3/4 angle, showing head + chest
- *    + arms (no legs) with the hat / outer-layer overlays baked in
- *    (≈ 256x328 for size=256, native ~1:1.3 aspect). The user explicitly
- *    asked for "half the skin" — a portrait-style bust crop — so the
- *    profile / compare slots only have to allocate a roughly square slot
- *    instead of the tall 1:2.4 needed for a full-body render.
+ *  - Uses {@code https://mc-heads.net/body/<name>/<size>.png} which returns
+ *    a 3D rendered FULL body at a 3/4 angle with the hat / outer-layer
+ *    overlays baked in (≈ 256x624 for size=256, native ~1:2.4 aspect).
+ *    Callers (drawHead in TierProfileScreen / TierCompareScreen) crop to
+ *    just the TOP HALF of the texture via UV math so the on-screen result
+ *    is a "bust" (head + chest + arms only). This achieves the
+ *    portrait-style crop the user asked for — mc-heads.net does NOT expose
+ *    a {@code /bust/} endpoint (it returns 404), so we always fetch the
+ *    body image and crop client-side at draw time.
  *    The natural image dimensions are read off the decoded
  *    {@link NativeImage} and cached alongside the texture so callers
  *    can scale the image with the correct aspect ratio (no stretching).
@@ -43,8 +45,8 @@ import java.util.concurrent.Executors;
  */
 public final class SkinFetcher {
 
-    /** Decoded bust-render size requested from mc-heads.net. */
-    private static final int BUST_REQUEST_SIZE = 256;
+    /** Decoded body-render size requested from mc-heads.net. */
+    private static final int BODY_REQUEST_SIZE = 256;
 
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(8))
@@ -111,14 +113,17 @@ public final class SkinFetcher {
         if (!IN_FLIGHT.add(key)) return;
         CompletableFuture.runAsync(() -> {
             try {
-                // /bust/ endpoint = 3D rendered UPPER body (head + chest +
-                // arms, no legs) at a 3/4 angle with the hat / outer-layer
-                // overlays baked in (~256x328 at size=256, native ≈1:1.3
-                // aspect). The user explicitly asked for "half the skin"
-                // — a portrait-style bust crop — so we use this instead
-                // of the /body/ endpoint that previously rendered the
-                // full body and ate too much vertical space.
-                URI uri = URI.create("https://mc-heads.net/bust/" + key + "/" + BUST_REQUEST_SIZE + ".png");
+                // /body/ endpoint = 3D rendered FULL body at a 3/4 angle
+                // with the hat / outer-layer overlays baked in
+                // (~256x624 at size=256, native ≈1:2.4 aspect). We use
+                // this because mc-heads.net does NOT expose a /bust/
+                // endpoint (it returns HTTP 404 — confirmed in 1.21.11.35
+                // testing, which is why the previous version's skins
+                // appeared invisible in /tiertagger compare and search).
+                // The drawHead() implementations crop to the top half of
+                // this texture via UV math to produce the portrait /
+                // "bust" look the user wanted.
+                URI uri = URI.create("https://mc-heads.net/body/" + key + "/" + BODY_REQUEST_SIZE + ".png");
                 HttpRequest req = HttpRequest.newBuilder(uri)
                         .timeout(Duration.ofSeconds(15))
                         .header("User-Agent", "TierTagger/" + TierTaggerCore.MOD_VERSION)
