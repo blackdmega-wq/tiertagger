@@ -39,9 +39,6 @@ public final class ModeIcons {
         put("2v2",         "2v2");
         put("dia2v2",      "2v2");
         put("dia_2v2",     "2v2");
-        put("bed",         "bed");
-        put("bedwars",     "bed");
-        put("elytra",      "elytra");
         put("overall",     "overall");
         // SubTiers-specific gamemodes
         put("trident",     "trident");
@@ -52,10 +49,17 @@ public final class ModeIcons {
         put("dia_crystal", "dia_crystal");
         put("debuff",      "debuff");
         put("bow",         "bow");
-        // Crystal & sumo retained as aliases in case a server still serves them
-        // — they just don't appear in the main mode lists any more.
-        put("crystal",     "crystal");
         put("sumo",        "sumo");
+        // NOTE: PvPTiers "crystal", SubTiers "elytra", and SubTiers
+        // "bedwars"/"bed" are intentionally NOT registered here. Their
+        // bundled PNGs (crystal.png, elytra.png, bed.png) used the wrong
+        // visuals (an amethyst-style gem, a teal triangle, and a vague
+        // red bar) which made them unrecognisable at icon size. By
+        // omitting them here, the screen renderer falls through to
+        // ctx.drawItem() with the proper Minecraft items configured in
+        // {@link com.outertiers.tiertagger.common.TierIcons} (END_CRYSTAL,
+        // ELYTRA, RED_BED) — those are the canonical, instantly
+        // recognisable game icons the user asked for.
     }
 
     private ModeIcons() {}

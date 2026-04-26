@@ -26,12 +26,14 @@ import java.util.concurrent.Executors;
  * local player tab list).
  *
  * Implementation notes:
- *  - Uses {@code https://mc-heads.net/body/<name>/<size>.png} which returns
- *    a 2D full-body render (1:2 aspect) — the same look as the OuterTiers
- *    website player previews. The actual image dimensions are read off the
- *    decoded {@link NativeImage} and cached alongside the texture so
- *    callers can scale the image with the correct aspect ratio (without
- *    stretching the player into a square).
+ *  - Uses {@code https://mc-heads.net/player/<name>/<size>.png} which returns
+ *    a 3D rendered player at a slight 3/4 angle — the look the user wants
+ *    in the profile / compare screens (small, angled body, hat overlay
+ *    baked in). Previously we used the {@code /body/} endpoint which
+ *    returned a flat 2D render that came out oversized in the panel slot.
+ *    The actual image dimensions are read off the decoded
+ *    {@link NativeImage} and cached alongside the texture so callers can
+ *    scale the image with the correct aspect ratio (no stretching).
  *  - All HTTP work happens off the render thread; texture upload is then
  *    bounced back onto the client tick executor (mandatory for GL).
  *  - Successful fetches are cached for the lifetime of the process; failed
@@ -107,11 +109,13 @@ public final class SkinFetcher {
         if (!IN_FLIGHT.add(key)) return;
         CompletableFuture.runAsync(() -> {
             try {
-                // Body endpoint = full-body 2D render with the hat overlay
-                // baked in. This is what the user wants instead of the old
-                // square head-only avatar that looked oversized in the
-                // profile / compare screens.
-                URI uri = URI.create("https://mc-heads.net/body/" + key + "/" + BODY_REQUEST_SIZE + ".png");
+                // Player endpoint = 3D rendered full body at a 3/4 angle
+                // with the hat overlay baked in. This is what the user
+                // wants — matches the OuterTiers website's player preview
+                // pose. The previous /body/ endpoint produced a flat 2D
+                // front-facing render that came out way too big inside
+                // the profile / compare panel slots.
+                URI uri = URI.create("https://mc-heads.net/player/" + key + "/" + BODY_REQUEST_SIZE + ".png");
                 HttpRequest req = HttpRequest.newBuilder(uri)
                         .timeout(Duration.ofSeconds(15))
                         .header("User-Agent", "TierTagger/" + TierTaggerCore.MOD_VERSION)

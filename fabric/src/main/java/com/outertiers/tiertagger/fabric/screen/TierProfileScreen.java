@@ -144,10 +144,12 @@ public class TierProfileScreen extends Screen {
             fillRect(ctx, panelX, panelTop, panelX + panelW, panelBottom, BG_PANEL);
             outlineRect(ctx, panelX, panelTop, panelW, panelBottom - panelTop, BG_PANEL_BORDER);
 
-            // Header taller now that the player slot shows a full-body
-            // render (1:2 aspect) instead of a square head — matches the
-            // OuterTiers website's player card.
-            int headerH = 92;
+            // Header sized to fit the 3D-angled player render at a
+            // comfortable scale. We previously used a much taller header
+            // (92px) which made the body render dominate the panel and
+            // hid the actual skin detail — the user explicitly asked for
+            // a smaller, angled render here.
+            int headerH = 72;
             renderHeader(ctx, panelX + CARD_PAD, panelTop + CARD_PAD,
                          panelW - CARD_PAD * 2, headerH);
 

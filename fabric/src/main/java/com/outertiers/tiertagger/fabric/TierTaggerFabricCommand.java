@@ -182,25 +182,17 @@ public class TierTaggerFabricCommand {
                     ctx.getSource().sendFeedback(Text.literal("§7[TierTagger] §rOpening config…"));
                     return 1;
                 }))
-                // /tiertagger search <player> — opens the profile UI. Renamed
-                // from "profile" per user request; "profile" is preserved as
-                // an alias so existing macros / muscle memory keep working.
+                // /tiertagger search <player> — opens the player lookup UI.
+                // Renamed from the old "profile" subcommand per user request;
+                // the old "profile" literal has been fully removed (use
+                // "search" instead).
                 .then(ClientCommandManager.literal("search")
                     .then(ClientCommandManager.argument("player", StringArgumentType.word())
                         .executes(ctx -> {
                             String name = StringArgumentType.getString(ctx, "player");
                             try { TierTaggerCore.cache().peekData(name); } catch (Throwable ignored) {}
                             PendingScreen.open(new TierProfileScreen(null, name));
-                            ctx.getSource().sendFeedback(Text.literal("§7[TierTagger] §rOpening profile for §e" + name + "§r…"));
-                            return 1;
-                        })))
-                .then(ClientCommandManager.literal("profile")
-                    .then(ClientCommandManager.argument("player", StringArgumentType.word())
-                        .executes(ctx -> {
-                            String name = StringArgumentType.getString(ctx, "player");
-                            try { TierTaggerCore.cache().peekData(name); } catch (Throwable ignored) {}
-                            PendingScreen.open(new TierProfileScreen(null, name));
-                            ctx.getSource().sendFeedback(Text.literal("§7[TierTagger] §rOpening profile for §e" + name + "§r…"));
+                            ctx.getSource().sendFeedback(Text.literal("§7[TierTagger] §rSearching for §e" + name + "§r…"));
                             return 1;
                         })))
                 .then(ClientCommandManager.literal("doctor")

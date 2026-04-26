@@ -169,10 +169,12 @@ public class TierCompareScreen extends Screen {
             PlayerData dA = optA.orElse(null);
             PlayerData dB = optB.orElse(null);
 
-            // Taller header now that the player slots show full-body
-            // renders (1:2 aspect) and a centered OuterTiers logo instead
-            // of a square head + small "vs" pill.
-            int headerH = 92;
+            // Header sized to fit the 3D-angled player render at a
+            // comfortable scale alongside the centered OuterTiers logo.
+            // Previously 92px which made the body renders dominate the
+            // panel and obscure skin detail — the user explicitly asked
+            // for a smaller, angled render here (matches profile screen).
+            int headerH = 72;
             renderHeader(ctx, dA, dB, panelX + CARD_PAD, panelTop + CARD_PAD,
                          panelW - CARD_PAD * 2, headerH);
 
