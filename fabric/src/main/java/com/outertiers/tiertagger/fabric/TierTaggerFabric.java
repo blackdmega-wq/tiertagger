@@ -38,6 +38,11 @@ public class TierTaggerFabric implements ClientModInitializer {
             TierTaggerCore.LOGGER.warn("[TierTagger] keybind register failed: {}", t.toString());
         }
         try {
+            CycleKeyCapture.register();
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] cycle-key capture register failed: {}", t.toString());
+        }
+        try {
             TierTaggerFabricCommand.register();
         } catch (Throwable t) {
             TierTaggerCore.LOGGER.warn("[TierTagger] command register failed: {}", t.toString());
