@@ -1,5 +1,7 @@
 package com.outertiers.tiertagger.fabric;
 
+import com.outertiers.tiertagger.common.TierConfig;
+import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
 import com.outertiers.tiertagger.fabric.screen.TierConfigScreen;
 import com.outertiers.tiertagger.fabric.screen.TierProfileScreen;
@@ -11,10 +13,15 @@ import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.projectile.ProjectileUtil;
+import net.minecraft.text.Text;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * Registers TierTagger's client-side key bindings. The user can rebind any of
@@ -26,6 +33,10 @@ import org.lwjgl.glfw.GLFW;
  *   <li>{@code key.tiertagger.profile} &mdash; opens the profile screen for
  *       the player you are currently looking at, up to 64 blocks away
  *       (default {@code J}).</li>
+ *   <li>{@code key.tiertagger.cyclemode} &mdash; cycles the active right-side
+ *       gamemode through {@code highest} and every mode the right service
+ *       exposes, mirroring the in-config "Cycle Right Mode" button so the
+ *       same action is reachable from the keyboard (default {@code I}).</li>
  * </ul>
  *
  * <p>Set any binding to <em>Not bound</em> in the controls menu to disable
@@ -38,6 +49,7 @@ public final class TierKeybinds {
     private static volatile boolean registered = false;
     private static KeyBinding openConfig;
     private static KeyBinding openProfile;
+    private static KeyBinding cycleRightMode;
 
     private TierKeybinds() {}
 
@@ -55,6 +67,16 @@ public final class TierKeybinds {
                     "key.tiertagger.profile",
                     InputUtil.Type.KEYSYM,
                     GLFW.GLFW_KEY_J,
+                    KeyBinding.Category.MISC
+            ));
+            // 'I' cycles the right-side gamemode (mirrors the in-config
+            // "Cycle Right Mode" button). Lives in the same MISC category as
+            // the other TierTagger binds so users find them grouped together
+            // in vanilla Controls → Key Binds.
+            cycleRightMode = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                    "key.tiertagger.cyclemode",
+                    InputUtil.Type.KEYSYM,
+                    GLFW.GLFW_KEY_I,
                     KeyBinding.Category.MISC
             ));
             ClientTickEvents.END_CLIENT_TICK.register(TierKeybinds::onTick);
@@ -80,6 +102,47 @@ public final class TierKeybinds {
                     : target.getName().getString();
             if (name == null || name.isEmpty()) continue;
             PendingScreen.open(new TierProfileScreen(null, name));
+        }
+        // 'I' — cycle right-side gamemode, regardless of whether a screen is
+        // open (we want the binding usable from in-game AND from inventory).
+        while (cycleRightMode != null && cycleRightMode.wasPressed()) {
+            cycleRightModeAction(client);
+        }
+    }
+
+    /**
+     * Cycle TierConfig#rightMode through {@code "highest"} + every mode the
+     * currently-selected right service exposes. This is the keyboard twin of
+     * the "Cycle Right Mode" icon button on the Tiers Config tab so users
+     * can flip modes without opening the menu mid-fight.
+     */
+    private static void cycleRightModeAction(MinecraftClient client) {
+        try {
+            TierConfig cfg = TierTaggerCore.config();
+            if (cfg == null) return;
+            TierService rightSvc = cfg.rightServiceEnum();
+            if (rightSvc == null) return;
+            List<String> modes = new ArrayList<>();
+            modes.add("highest");
+            for (String m : rightSvc.modes) if (!modes.contains(m)) modes.add(m);
+            String cur = cfg.rightMode == null ? "highest" : cfg.rightMode.toLowerCase(Locale.ROOT);
+            int idx = modes.indexOf(cur);
+            cfg.rightMode = modes.get((idx < 0 ? 0 : (idx + 1) % modes.size()));
+            cfg.save();
+            // Brief actionbar feedback so users see the new mode right away.
+            try {
+                if (client != null && client.player != null) {
+                    String label = "highest".equalsIgnoreCase(cfg.rightMode)
+                            ? "Highest"
+                            : Character.toUpperCase(cfg.rightMode.charAt(0)) + cfg.rightMode.substring(1);
+                    client.player.sendMessage(
+                            Text.literal("\u00a7e[TierTagger] \u00a7rRight mode: \u00a7a" + label
+                                    + " \u00a77(" + rightSvc.shortLabel + ")"),
+                            true);
+                }
+            } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] cycle-right-mode keybind failed: {}", t.toString());
         }
     }
 

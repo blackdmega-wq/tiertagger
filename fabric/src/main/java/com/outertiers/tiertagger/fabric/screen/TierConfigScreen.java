@@ -22,7 +22,10 @@ import net.minecraft.item.Items;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.Util;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -104,9 +107,11 @@ public class TierConfigScreen extends Screen {
     private int maxRowUsed = 0;
 
     // ── Live nametag preview ────────────────────────────────────────────────
-    /** Display name used in the preview. Picked so the rendered skin actually
-     *  exists on mc-heads.net (Notch is the canonical "always-available" UUID). */
-    private static final String PREVIEW_NAME = "Notch";
+    /** Display name used in the preview. The OuterTiers maintainer asked
+     *  that the live preview render the project's own player skin instead
+     *  of the previous Notch placeholder, so users see the badge format
+     *  applied to the real Outversal account when tweaking settings. */
+    private static final String PREVIEW_NAME = "Outversal";
     /** Bounds of the preview panel. Set to {@code w<=0} when no preview is shown. */
     private int previewX = 0, previewY = 0, previewW = 0, previewH = 0;
     /** Cached fake PlayerData populated with one HT3 ranking per gamemode in
@@ -125,6 +130,22 @@ public class TierConfigScreen extends Screen {
      * is the simplest cross-version-friendly approach.
      */
     private final List<Object[]> iconOverlays = new ArrayList<>();
+
+    /**
+     * Square 18x18 link buttons rendered in the title strip. Each entry is
+     * {@code [button, brandColor, label, optionalTextureId]}. Painted in
+     * render() with a coloured square background and either a bold initial
+     * or the OuterTiers logo texture overlaid on top of the vanilla button.
+     */
+    private final List<Object[]> headerLinks = new ArrayList<>();
+
+    /** Identifier for the bundled OuterTiers logo PNG used in the header. */
+    private static final Identifier OT_LOGO = Identifier.of("tiertagger", "textures/logo/outertiers.png");
+
+    /** Brand colours for the three link buttons. */
+    private static final int DISCORD_BLURPLE = 0xFF5865F2;
+    private static final int OT_BRAND        = 0xFF1A1F28;
+    private static final int LINKTREE_GREEN  = 0xFF43E660;
 
     public TierConfigScreen(Screen parent) {
         super(Text.literal("TierTagger \u2014 Settings"));
@@ -147,6 +168,21 @@ public class TierConfigScreen extends Screen {
     }
 
     private static int rgb(int argb) { return argb & 0xFFFFFF; }
+
+    /** Lighten an ARGB colour towards white by {@code amt} (0..1). Used
+     *  to produce a hover state for the brand-coloured header link buttons. */
+    private static int lighten(int argb, float amt) {
+        if (amt <= 0f) return argb;
+        if (amt >= 1f) amt = 1f;
+        int a = (argb >>> 24) & 0xFF;
+        int r = (argb >>> 16) & 0xFF;
+        int g = (argb >>> 8)  & 0xFF;
+        int b =  argb         & 0xFF;
+        r = Math.min(255, Math.round(r + (255 - r) * amt));
+        g = Math.min(255, Math.round(g + (255 - g) * amt));
+        b = Math.min(255, Math.round(b + (255 - b) * amt));
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
 
     private volatile String lastInitError = null;
 
@@ -187,6 +223,74 @@ public class TierConfigScreen extends Screen {
      * background is rendered separately in {@link #render} on top of the panel
      * but BEHIND these buttons so the labels stay clickable.
      */
+    /**
+     * Build the three square link buttons that live in the title strip:
+     * Discord, OuterTiers website, Linktree. Each button is a plain
+     * {@link ButtonWidget} with empty text — the coloured square + initial
+     * (or OuterTiers logo) is painted on top in {@link #render}. Clicking
+     * a button opens the matching URL through {@link Util#getOperatingSystem()}.
+     */
+    private void addHeaderLinkButtons() {
+        int totalW  = BTN_W * 2 + BTN_GAP;
+        int panelW  = Math.min(PANEL_W_MAX, this.width - 24);
+        panelW      = Math.max(panelW, totalW + 24);
+        int panelX  = (this.width - panelW) / 2;
+        int panelTop = 8;
+
+        int btnSize = 18;
+        int gap     = 4;
+        int rightEdge = panelX + panelW - 6;
+        int yTop      = panelTop + 4;
+
+        // Right-to-left: Linktree, OuterTiers, Discord (so reading order is
+        // Discord → OuterTiers → Linktree, left to right).
+        Object[][] specs = new Object[][] {
+            { "https://discord.gg/6eAaPqg4up",     DISCORD_BLURPLE, "D", null },
+            { "https://outertiers.onrender.com/",  OT_BRAND,        "O", OT_LOGO },
+            { "https://linktr.ee/Outversal",       LINKTREE_GREEN,  "L", null },
+        };
+
+        for (int i = specs.length - 1; i >= 0; i--) {
+            final String url    = (String)     specs[i][0];
+            final int    color  = (Integer)    specs[i][1];
+            final String label  = (String)     specs[i][2];
+            final Identifier tx = (Identifier) specs[i][3];
+
+            int btnX = rightEdge - btnSize;
+            rightEdge -= (btnSize + gap);
+
+            ButtonWidget btn;
+            try {
+                btn = ButtonWidget.builder(Text.empty(), b -> openUrl(url))
+                        .dimensions(btnX, yTop, btnSize, btnSize)
+                        .build();
+                this.addDrawableChild(btn);
+                String tipText = url.contains("discord")     ? "Join the Discord"
+                               : url.contains("linktr")      ? "OuterTiers Linktree"
+                               : "Visit the OuterTiers website";
+                tip(btn, tipText + "\n" + url);
+            } catch (Throwable t) {
+                continue;
+            }
+            headerLinks.add(new Object[]{ btn, color, label, tx });
+        }
+    }
+
+    /**
+     * Hand the URL to the OS default handler (browser). Wrapped so a
+     * sandboxed env / missing handler can't crash the screen.
+     */
+    private static void openUrl(String url) {
+        if (url == null || url.isEmpty()) return;
+        try { Util.getOperatingSystem().open(URI.create(url)); }
+        catch (Throwable t) {
+            try { Util.getOperatingSystem().open(url); }
+            catch (Throwable ignored) {
+                TierTaggerCore.LOGGER.warn("[TierTagger] could not open URL {}: {}", url, t.toString());
+            }
+        }
+    }
+
     private void addTabButtons() {
         int totalW = BTN_W * 2 + BTN_GAP;
         int panelW = Math.min(PANEL_W_MAX, this.width - 24);
@@ -270,6 +374,7 @@ public class TierConfigScreen extends Screen {
         sectionHeadersText.clear();
         maxRowUsed = 0;
         iconOverlays.clear();
+        headerLinks.clear();
         // Disable preview by default; only the Tiers Config tab (and its
         // Advanced Settings sub-screen) re-enables it by setting positive
         // bounds at the end of its builder.
@@ -281,6 +386,11 @@ public class TierConfigScreen extends Screen {
                 .dimensions(this.width / 2 - 75, this.height / 2, 150, BTN_H).build());
             return;
         }
+
+        // Header link buttons (Discord / Outertiers / Linktree) sit in the
+        // title strip and must be added BEFORE the tab buttons so their
+        // hit-rects line up with the painted overlays in render().
+        addHeaderLinkButtons();
 
         // Tab strip first so the tab buttons sit at a stable z-index above
         // the rest of the body widgets.
@@ -830,16 +940,18 @@ public class TierConfigScreen extends Screen {
         rRef[0]++;
         rRef[0]++; // breathing room before preview
 
-        // ── Live nametag preview (v1.21.11.35) ────────────────────────────
+        // ── Live nametag preview (v1.21.11.37) ────────────────────────────
         // Anchored below "Advanced Settings". Re-renders on every settings
         // change because rebuildKeepingScroll() runs at the end of every
         // toggle handler — so the badge format, brackets, icon position,
         // service colours etc. all update in real time.
+        // Tall enough to fit the full-body Outversal render head-to-toe
+        // (≈1:2.4 aspect) with the nametag floating above the head.
         previewX = rowX();
         previewY = rowY(rRef[0]);
         previewW = rowW();
-        previewH = 84;
-        rRef[0] += 4; // reserve scroll space for the preview
+        previewH = 170;
+        rRef[0] += 8; // reserve scroll space for the taller preview
     }
 
     /**
@@ -980,7 +1092,7 @@ public class TierConfigScreen extends Screen {
             });
         }
 
-        // ── Live nametag preview (v1.21.11.35) ────────────────────────────
+        // ── Live nametag preview (v1.21.11.37) ────────────────────────────
         // Anchored below the SubTiers / services list inside the Advanced
         // Settings sub-screen. Updates in real time when the user clicks
         // [←] / [→] on any row because each handler calls
@@ -989,8 +1101,8 @@ public class TierConfigScreen extends Screen {
         previewX = rowX();
         previewY = rowY(rRef[0]);
         previewW = rowW();
-        previewH = 84;
-        rRef[0] += 4;
+        previewH = 170;
+        rRef[0] += 8;
     }
 
     /**
@@ -1034,11 +1146,12 @@ public class TierConfigScreen extends Screen {
     }
 
     /**
-     * Render the live nametag preview panel: rounded card with a small
-     * Steve-style bust on the left and the live-formatted nametag floating
-     * above the head. Visual only — does NOT register a widget so it can't
-     * eat clicks. Bounds are set during {@link #buildTiersConfigTab} (or
-     * the advanced routing view).
+     * Render the live nametag preview panel. v1.21.11.37 redesign: shows
+     * the FULL-body Outversal render (head-to-toe, ≈1:2.4 aspect) centered
+     * inside the card with the live-formatted nametag floating directly
+     * above the head — exactly like an in-game player nametag. Visual only,
+     * does NOT register a widget so it can't eat clicks. Bounds are set
+     * during {@link #buildTiersConfigTab} (or the advanced routing view).
      */
     private void drawPreview(DrawContext ctx) {
         if (previewW <= 0 || previewH <= 0) return;
@@ -1061,24 +1174,14 @@ public class TierConfigScreen extends Screen {
             // active-tab underline uses, ties the preview to the rest of
             // the design.
             fillRect(ctx, previewX, previewY, previewX + 2, previewY + previewH, ACCENT);
-            // Tiny "PREVIEW" caption in the top-right corner.
+            // Tiny "LIVE PREVIEW" caption in the top-left corner.
             Text caption = Text.literal("LIVE PREVIEW").formatted(Formatting.GRAY, Formatting.BOLD);
-            int capW = this.textRenderer.getWidth(caption);
             ctx.drawTextWithShadow(this.textRenderer, caption,
-                    previewX + previewW - capW - 6, previewY + 4, 0xFF8A8F99);
+                    previewX + 8, previewY + 4, 0xFF8A8F99);
 
-            // Skin slot (left side of the card).
-            int padX = 8;
-            int slotW = 44;
-            int slotH = previewH - 16;
-            int slotX = previewX + padX;
-            int slotY = previewY + 12;
-            // Slot background (very subtle so the bust still pops).
-            fillRect(ctx, slotX, slotY, slotX + slotW, slotY + slotH, 0x40000000);
-            outlineRect(ctx, slotX, slotY, slotW, slotH, 0x40FFFFFF);
-            drawPreviewBust(ctx, slotX, slotY, slotW, slotH);
-
-            // Build the live wrapped nametag and float it above the head.
+            // Build the live wrapped nametag — same renderer that produces
+            // real in-game nametags, so the preview matches what other
+            // players see.
             MutableText baseName = Text.literal(PREVIEW_NAME).formatted(Formatting.WHITE);
             Text wrapped;
             try {
@@ -1088,23 +1191,37 @@ public class TierConfigScreen extends Screen {
                 wrapped = baseName;
             }
 
-            int tagW = this.textRenderer.getWidth(wrapped);
-            int tagPad = 4;
+            // Reserve room at the top for the caption + the floating
+            // nametag. The skin slot fills the remaining vertical space and
+            // is centered horizontally inside the card.
+            int topPad   = 18;        // caption row
+            int tagBoxH  = 12;
+            int bottomPad = 6;
+            int slotTop = previewY + topPad + tagBoxH + 4;
+            int slotBot = previewY + previewH - bottomPad;
+            int slotH   = Math.max(40, slotBot - slotTop);
+            // Body render is ≈ 1:2.4; pick a width that keeps that aspect
+            // (slightly wider than ih/2.4 so the arms have breathing room).
+            int slotW   = Math.max(36, slotH * 5 / 12);
+            int slotX   = previewX + (previewW - slotW) / 2;
+            int slotY   = slotTop;
+
+            // Draw the full-body Outversal skin — head, chest, arms, legs.
+            // Anchor it to the bottom of the slot so the feet align to the
+            // bottom edge (matches the OuterTiers website player cards).
+            drawPreviewBody(ctx, slotX, slotY, slotW, slotH);
+
+            // Floating nametag — vanilla look (25%-alpha black background,
+            // white text). Positioned right above the head of the rendered
+            // skin so the visual association is unmistakable.
+            int tagW    = this.textRenderer.getWidth(wrapped);
+            int tagPad  = 4;
             int tagBoxW = tagW + tagPad * 2;
-            int tagBoxH = 12;
-            int tagBoxX = slotX + slotW + 12;
-            // Vertically center the floating nametag in the card.
-            int tagBoxY = previewY + (previewH - tagBoxH) / 2 - 2;
-            // Vanilla nametag look: 25%-alpha black background with white text.
+            int tagBoxX = previewX + (previewW - tagBoxW) / 2;
+            int tagBoxY = slotY - tagBoxH - 2;
             fillRect(ctx, tagBoxX, tagBoxY, tagBoxX + tagBoxW, tagBoxY + tagBoxH, 0x40000000);
             ctx.drawTextWithShadow(this.textRenderer, wrapped,
                     tagBoxX + tagPad, tagBoxY + 2, 0xFFFFFFFF);
-
-            // Helper hint underneath so users understand what they're seeing.
-            Text hint = Text.literal("\u2191 how players will see your tiers")
-                    .withColor(rgb(FG_FAINT));
-            ctx.drawTextWithShadow(this.textRenderer, hint,
-                    tagBoxX, tagBoxY + tagBoxH + 4, FG_FAINT);
         } catch (Throwable t) {
             TierTaggerCore.LOGGER.warn("[TierTagger] preview render", t);
         } finally {
@@ -1113,12 +1230,14 @@ public class TierConfigScreen extends Screen {
     }
 
     /**
-     * Draws the top-half bust crop of the preview player's skin into
-     * the given slot, mirroring the UV-crop technique used by
-     * {@link TierProfileScreen#drawHead} and {@link TierCompareScreen#drawHead}.
-     * Falls back to a soft silhouette while the skin is still being fetched.
+     * Draws the FULL body of the preview player's skin (head to toe),
+     * scaled to fit inside {@code (boxW, boxH)} while preserving the
+     * natural ≈1:2.4 aspect of mc-heads.net's /body/ render. Anchored to
+     * the BOTTOM of the slot so the feet always touch the bottom edge.
+     * Falls back to a soft Steve-coloured silhouette while the skin is
+     * still being fetched.
      */
-    private void drawPreviewBust(DrawContext ctx, int x, int y, int boxW, int boxH) {
+    private void drawPreviewBody(DrawContext ctx, int x, int y, int boxW, int boxH) {
         Optional<SkinFetcher.Skin> fetched = Optional.empty();
         try { fetched = SkinFetcher.skinFor(PREVIEW_NAME); } catch (Throwable ignored) {}
         if (fetched.isPresent()) {
@@ -1126,23 +1245,39 @@ public class TierConfigScreen extends Screen {
                 SkinFetcher.Skin sk = fetched.get();
                 int iw = Math.max(1, sk.width);
                 int ih = Math.max(1, sk.height);
-                int displayH = Math.max(1, ih / 2);
+                // Fit-inside scaling using the FULL image (no UV crop).
                 double sx = (double) boxW / iw;
-                double sy = (double) boxH / displayH;
+                double sy = (double) boxH / ih;
                 double scale = Math.min(sx, sy);
                 int dw = Math.max(1, (int) Math.floor(iw * scale));
-                int dh = Math.max(1, (int) Math.floor(displayH * scale));
+                int dh = Math.max(1, (int) Math.floor(ih * scale));
                 int dx = x + (boxW - dw) / 2;
-                int dy = y + (boxH - dh) / 2;
-                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh * 2);
+                int dy = y + (boxH - dh);   // anchor to bottom of slot
+                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh);
                 return;
             } catch (Throwable ignored) {}
         }
-        // Loading placeholder.
+        // Loading placeholder — Steve-coloured head + torso + legs anchored
+        // to the bottom so the layout matches the eventual real render.
         int cx = x + boxW / 2;
-        int cy = y + boxH / 2;
-        fillRect(ctx, cx - 6, cy - 10, cx + 6, cy - 2, 0xFFB78462); // head
-        fillRect(ctx, cx - 8, cy - 2,  cx + 8, cy + 10, 0xFF4A6FA5); // torso
+        int feetY = y + boxH;
+        int legH   = Math.max(8, boxH * 5 / 16);
+        int torsoH = Math.max(10, boxH * 6 / 16);
+        int headH  = Math.max(8, boxH * 4 / 16);
+        int torsoBot = feetY - legH;
+        int torsoTop = torsoBot - torsoH;
+        int headBot  = torsoTop;
+        int headTop  = headBot - headH;
+        // Legs
+        fillRect(ctx, cx - 4, torsoBot, cx,     feetY,    0xFF1E2A45);
+        fillRect(ctx, cx,     torsoBot, cx + 4, feetY,    0xFF1E2A45);
+        // Torso
+        fillRect(ctx, cx - 6, torsoTop, cx + 6, torsoBot, 0xFF4A6FA5);
+        // Arms
+        fillRect(ctx, cx - 9, torsoTop, cx - 6, torsoBot, 0xFFB78462);
+        fillRect(ctx, cx + 6, torsoTop, cx + 9, torsoBot, 0xFFB78462);
+        // Head
+        fillRect(ctx, cx - 4, headTop,  cx + 4, headBot,  0xFFB78462);
     }
 
     private void rebuildKeepingScroll() {
@@ -1298,14 +1433,86 @@ public class TierConfigScreen extends Screen {
             fillRect(ctx, titleX1, titleY2 - 2, titleX2, titleY2 - 1, ACCENT_SOFT);
             fillRect(ctx, titleX1, titleY2 - 1, titleX2, titleY2,     ACCENT);
 
-            ctx.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("TierTagger").formatted(Formatting.WHITE, Formatting.BOLD),
-                this.width / 2, panelTop + 6, 0xFFFFFFFF);
-            ctx.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("v" + TierTaggerCore.MOD_VERSION +
-                    "  \u00B7  /tiertagger help for commands")
-                    .withColor(rgb(FG_FAINT)),
-                this.width / 2, panelTop + 16, FG_FAINT);
+            // Header layout (v1.21.11.37): OuterTiers logo + bold
+            // "TierTagger" wordmark on the LEFT; the three square link
+            // buttons (Discord / OuterTiers / Linktree) live on the
+            // RIGHT and are painted further down on top of their hidden
+            // ButtonWidget hit-rects.
+            int logoSize = 16;
+            int logoX = panelX + 8;
+            int logoY = panelTop + 4;
+            // Subtle dark square behind the logo so it reads on any
+            // gradient — and a fallback "OT" monogram if the bundled
+            // texture is missing in this build.
+            fillRect(ctx, logoX - 1, logoY - 1, logoX + logoSize + 1, logoY + logoSize + 1, 0xFF0E1218);
+            outlineRect(ctx, logoX - 1, logoY - 1, logoSize + 2, logoSize + 2, 0x80FFFFFF);
+            boolean drewLogo = false;
+            try {
+                Compat.drawTexture(ctx, OT_LOGO, logoX, logoY, 0, 0,
+                        logoSize, logoSize, logoSize, logoSize);
+                drewLogo = true;
+            } catch (Throwable ignored) {
+                drewLogo = false;
+            }
+            if (!drewLogo) {
+                Text mono = Text.literal("OT").formatted(Formatting.YELLOW, Formatting.BOLD);
+                int monoW = this.textRenderer.getWidth(mono);
+                ctx.drawTextWithShadow(this.textRenderer, mono,
+                        logoX + (logoSize - monoW) / 2, logoY + 4, 0xFFFFFF55);
+            }
+
+            // Bold "TierTagger" wordmark right of the logo, plus a small
+            // version line below it. Left-aligned because the right side
+            // is reserved for the three link buttons.
+            int titleTextX = logoX + logoSize + 6;
+            ctx.drawTextWithShadow(this.textRenderer,
+                    Text.literal("TierTagger").formatted(Formatting.WHITE, Formatting.BOLD),
+                    titleTextX, panelTop + 4, 0xFFFFFFFF);
+            ctx.drawTextWithShadow(this.textRenderer,
+                    Text.literal("v" + TierTaggerCore.MOD_VERSION +
+                            "  \u00B7  /tiertagger help")
+                            .withColor(rgb(FG_FAINT)),
+                    titleTextX, panelTop + 15, FG_FAINT);
+
+            // Paint the three link buttons (Discord, OuterTiers, Linktree)
+            // on top of their invisible ButtonWidget hit-rects so the
+            // colour and icon match the brand instead of the vanilla
+            // grey-button look. Drawn AFTER super.render() so we cover
+            // the default button face.
+            for (Object[] hl : headerLinks) {
+                ButtonWidget btn   = (ButtonWidget) hl[0];
+                int          col   = (Integer)      hl[1];
+                String       lbl   = (String)       hl[2];
+                Identifier   tx    = (Identifier)   hl[3];
+                int bx = btn.getX();
+                int by = btn.getY();
+                int bw = btn.getWidth();
+                int bh = btn.getHeight();
+                boolean hover = mouseX >= bx && mouseX < bx + bw
+                             && mouseY >= by && mouseY < by + bh;
+                int face = hover ? lighten(col, 0.18f) : col;
+                fillRect(ctx, bx, by, bx + bw, by + bh, face);
+                outlineRect(ctx, bx, by, bw, bh, hover ? 0xFFFFFFFF : 0xFF000000);
+                boolean drewIcon = false;
+                if (tx != null) {
+                    try {
+                        int pad = 2;
+                        Compat.drawTexture(ctx, tx, bx + pad, by + pad, 0, 0,
+                                bw - pad * 2, bh - pad * 2,
+                                bw - pad * 2, bh - pad * 2);
+                        drewIcon = true;
+                    } catch (Throwable ignored) {}
+                }
+                if (!drewIcon) {
+                    Text initial = Text.literal(lbl)
+                            .formatted(Formatting.WHITE, Formatting.BOLD);
+                    int iw = this.textRenderer.getWidth(initial);
+                    ctx.drawTextWithShadow(this.textRenderer, initial,
+                            bx + (bw - iw) / 2 + 1,
+                            by + (bh - 8) / 2,
+                            0xFFFFFFFF);
+                }
+            }
 
             // 6. Active-tab accent: thin yellow underline beneath the
             //    currently-selected tab. The tab buttons themselves are

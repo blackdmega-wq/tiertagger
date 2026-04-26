@@ -221,19 +221,20 @@ public class TierCompareScreen extends Screen {
                               int x, int y, int w, int h) {
         fillRect(ctx, x, y, x + w, y + h, BG_HEADER);
 
-        // Tall body slots — sized for the 3D-angled FULL body render
-        // returned by mc-heads.net /body/ (~256×624, ≈1:2.4 aspect). The
-        // user explicitly asked for the chest and arms to be visible
-        // looking diagonally to the side, so we allocate a portrait slot
-        // (≈ 1:2 aspect) for the player render. drawHead() preserves the
-        // image's real aspect inside this box, so the body never stretches.
+        // Square skin slots (v1.21.11.37) — the OuterTiers maintainer
+        // asked for both player skins to face each other inside a
+        // TRANSPARENT square box, with the right-hand skin horizontally
+        // mirrored so the two players visually look at each other. The
+        // skin keeps its natural ≈1:2.4 body aspect and is anchored to
+        // the BOTTOM of the box (feet on the floor) — drawHead() handles
+        // both the bottom-anchoring and the optional mirror.
         int bodyH      = h - 8;
-        int bodyW      = Math.max(28, bodyH / 2);
+        int bodyW      = bodyH;            // square box
         int leftHeadX  = x + 10;
         int rightHeadX = x + w - 10 - bodyW;
         int headY      = y + (h - bodyH) / 2;
-        drawHead(ctx, nameA, leftHeadX,  headY, bodyW, bodyH);
-        drawHead(ctx, nameB, rightHeadX, headY, bodyW, bodyH);
+        drawHead(ctx, nameA, leftHeadX,  headY, bodyW, bodyH, false);
+        drawHead(ctx, nameB, rightHeadX, headY, bodyW, bodyH, true);
 
         // ── Left side text block ──
         int leftTextX = leftHeadX + bodyW + 10;
@@ -532,14 +533,21 @@ public class TierCompareScreen extends Screen {
 
     // ── helpers ─────────────────────────────────────────────────────────────
 
-    private void drawHead(DrawContext ctx, String name, int x, int y, int boxW, int boxH) {
-        ctx.fill(x - 2, y - 2, x + boxW + 2, y + boxH + 2, 0xFF1A1A1A);
-
+    /**
+     * Render a player's full body inside a transparent square slot.
+     * v1.21.11.37: dropped the dark backdrop fill (was 0xFF1A1A1A) so the
+     * box is now fully transparent — only the skin pixels are visible.
+     * The skin is anchored to the BOTTOM of the slot (feet touch the
+     * floor) and, when {@code mirror} is true, is horizontally flipped so
+     * the right-hand player visually faces the left-hand player.
+     */
+    private void drawHead(DrawContext ctx, String name, int x, int y,
+                          int boxW, int boxH, boolean mirror) {
         // Use mc-heads.net via SkinFetcher for ALL players (online + offline).
-        // The /body/ endpoint returns a 2D full-body render (~1:2 aspect)
+        // The /body/ endpoint returns a 2D full-body render (~1:2.4 aspect)
         // matching the OuterTiers website player cards. We honour the actual
         // decoded image dimensions so the body keeps its real aspect — fit
-        // inside the box, centered, no stretching.
+        // inside the box, centered horizontally, anchored to the bottom.
         Optional<SkinFetcher.Skin> fetched = Optional.empty();
         try { fetched = SkinFetcher.skinFor(name); } catch (Throwable ignored) {}
         if (fetched.isPresent()) {
@@ -547,32 +555,62 @@ public class TierCompareScreen extends Screen {
                 SkinFetcher.Skin sk = fetched.get();
                 int iw = Math.max(1, sk.width);
                 int ih = Math.max(1, sk.height);
-                // Crop to the TOP HALF of the body render → "bust"
-                // (head + chest + arms only, no legs). See
-                // TierProfileScreen.drawHead for the UV-crop explanation:
-                //   regionW=dw, regionH=dh, texW=dw, texH=dh*2
-                // → UV [0,1] × [0, 0.5] of the source onto the dw×dh slot.
-                int displayH = Math.max(1, ih / 2);
+                // Fit-inside scaling using the FULL image — head, chest,
+                // arms, legs all visible head-to-toe (no UV crop).
                 double sx = (double) boxW / iw;
-                double sy = (double) boxH / displayH;
+                double sy = (double) boxH / ih;
                 double scale = Math.min(sx, sy);
                 int dw = Math.max(1, (int) Math.floor(iw * scale));
-                int dh = Math.max(1, (int) Math.floor(displayH * scale));
+                int dh = Math.max(1, (int) Math.floor(ih * scale));
                 int dx = x + (boxW - dw) / 2;
-                int dy = y + (boxH - dh) / 2;
-                Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh * 2);
+                int dy = y + (boxH - dh);     // anchor to bottom (feet down)
+                if (mirror) {
+                    // Horizontal flip via matrix scale(-1,1,1). We translate
+                    // to (dx+dw, dy) first so the mirrored image lands back
+                    // in the same screen rect. Wrapped in try/catch so a
+                    // matrix-API mismatch on a future MC version can't
+                    // crash the screen — falls back to an unmirrored draw.
+                    boolean pushed = false;
+                    try {
+                        ctx.getMatrices().push();
+                        pushed = true;
+                        ctx.getMatrices().translate(dx + dw, 0f, 0f);
+                        ctx.getMatrices().scale(-1f, 1f, 1f);
+                        Compat.drawTexture(ctx, sk.id, 0, dy, 0, 0, dw, dh, dw, dh);
+                    } catch (Throwable t) {
+                        try { Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh); }
+                        catch (Throwable ignored) {}
+                    } finally {
+                        if (pushed) {
+                            try { ctx.getMatrices().pop(); } catch (Throwable ignored) {}
+                        }
+                    }
+                } else {
+                    Compat.drawTexture(ctx, sk.id, dx, dy, 0, 0, dw, dh, dw, dh);
+                }
                 return;
             } catch (Throwable ignored) {}
         }
 
-        // Placeholder while the body render is downloading or if
-        // mc-heads.net is unreachable. Stable layout, no empty box.
+        // Loading placeholder — still anchored to the bottom of the box
+        // and respecting the mirror flag, so the layout doesn't jump
+        // when the real skin finishes downloading.
         try {
-            ctx.fill(x, y, x + boxW, y + boxH, 0xFF26303B);
             int cx = x + boxW / 2;
-            int hSize = Math.max(4, boxW / 2);
-            ctx.fill(cx - hSize / 2, y + 4, cx + hSize / 2, y + 4 + hSize, 0xFF6E4A2A);
-            ctx.fill(cx - hSize, y + 6 + hSize, cx + hSize, y + boxH - 4, 0xFF3F2A18);
+            int feetY = y + boxH;
+            int legH   = Math.max(6, boxH * 5 / 16);
+            int torsoH = Math.max(8, boxH * 6 / 16);
+            int headH  = Math.max(6, boxH * 4 / 16);
+            int torsoBot = feetY - legH;
+            int torsoTop = torsoBot - torsoH;
+            int headBot  = torsoTop;
+            int headTop  = headBot - headH;
+            ctx.fill(cx - 4, torsoBot, cx,     feetY,    0xFF1E2A45);
+            ctx.fill(cx,     torsoBot, cx + 4, feetY,    0xFF1E2A45);
+            ctx.fill(cx - 6, torsoTop, cx + 6, torsoBot, 0xFF4A6FA5);
+            ctx.fill(cx - 9, torsoTop, cx - 6, torsoBot, 0xFFB78462);
+            ctx.fill(cx + 6, torsoTop, cx + 9, torsoBot, 0xFFB78462);
+            ctx.fill(cx - 4, headTop,  cx + 4, headBot,  0xFFB78462);
         } catch (Throwable ignored) {}
     }
 

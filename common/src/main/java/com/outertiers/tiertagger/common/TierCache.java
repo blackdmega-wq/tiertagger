@@ -72,7 +72,7 @@ public class TierCache {
     // compare screen filled the queue and tab-list lookups for other players
     // had to wait until one of those 8 fetches finished, making "loading…"
     // labels in the tab list visibly stick around for several seconds.
-    private static final ExecutorService EXEC = Executors.newFixedThreadPool(16, r -> {
+    private static final ExecutorService EXEC = Executors.newFixedThreadPool(32, r -> {
         Thread t = new Thread(r, "TierTagger-Fetcher");
         t.setDaemon(true);
         return t;
@@ -296,7 +296,7 @@ public class TierCache {
             }
             url = service.apiBase + urlSuffix;
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofSeconds(12))
+                    .timeout(Duration.ofSeconds(8))
                     .header("User-Agent", "TierTagger/" + TierTaggerCore.MOD_VERSION + " (+https://github.com/blackdmega-wq/tiertagger)")
                     .header("Accept", "application/json")
                     .GET().build();
@@ -340,11 +340,12 @@ public class TierCache {
         Long last = inflight.get(inflightKey);
         // The inflight marker is removed in `finally` after the fetch completes,
         // so this gate only kicks in when a request is genuinely still running.
-        // 8 s is a healthy safety net (HTTP timeout itself is 12 s) without
+        // 4 s is a healthy safety net (HTTP timeout itself is 8 s) without
         // serialising tab-list refreshes the way the previous 30 s gate did —
         // every player slot used to be stuck on "loading…" for half a minute
-        // whenever a single fetch hung.
-        if (last != null && now - last < 8_000) return;
+        // whenever a single fetch hung. v1.21.11.37 cuts the gate from 8 s
+        // to 4 s so retries kick in faster when a service is slow.
+        if (last != null && now - last < 4_000) return;
         inflight.put(inflightKey, now);
         EXEC.submit(() -> {
             try { fetchOne(username, data, service); }
@@ -378,7 +379,7 @@ public class TierCache {
 
             String url = service.apiBase + urlSuffix;
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofSeconds(12))
+                    .timeout(Duration.ofSeconds(8))
                     .header("User-Agent", "TierTagger/" + TierTaggerCore.MOD_VERSION + " (+https://github.com/blackdmega-wq/tiertagger)")
                     .header("Accept", "application/json")
                     .GET().build();
