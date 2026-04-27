@@ -2098,8 +2098,17 @@ public class TierConfigScreen extends Screen {
     /** Y offset (px) inside the thumb where the drag started. */
     private int     dragOffsetInThumb  = 0;
 
+    // ─── Scrollbar drag handlers ───────────────────────────────────────
+    // MC 1.21.6+ Yarn refactored the mouse* methods on Element/Screen to
+    // take a `Click` record instead of (double mx, double my, int button).
+    // We extract the legacy fields at the top of each method so the body
+    // stays unchanged.
+
     @Override
-    public boolean mouseClicked(double mx, double my, int button) {
+    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+        double mx = click.x();
+        double my = click.y();
+        int button = click.button();
         if (button == 0 && maxScroll > 0) {
             int tx = scrollTrack[0], ty = scrollTrack[1];
             int tw = scrollTrack[2], th = scrollTrack[3];
@@ -2125,11 +2134,13 @@ public class TierConfigScreen extends Screen {
                 return true;
             }
         }
-        return super.mouseClicked(mx, my, button);
+        return super.mouseClicked(click, doubled);
     }
 
     @Override
-    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+    public boolean mouseDragged(net.minecraft.client.gui.Click click, double dx, double dy) {
+        double my = click.y();
+        int button = click.button();
         if (draggingScrollbar && button == 0 && maxScroll > 0) {
             int th = scrollTrack[3];
             int thumbH = computeThumbHeight(th);
@@ -2137,16 +2148,17 @@ public class TierConfigScreen extends Screen {
             setScrollFromThumbY(th, thumbH, newThumbY);
             return true;
         }
-        return super.mouseDragged(mx, my, button, dx, dy);
+        return super.mouseDragged(click, dx, dy);
     }
 
     @Override
-    public boolean mouseReleased(double mx, double my, int button) {
+    public boolean mouseReleased(net.minecraft.client.gui.Click click) {
+        int button = click.button();
         if (draggingScrollbar && button == 0) {
             draggingScrollbar = false;
             return true;
         }
-        return super.mouseReleased(mx, my, button);
+        return super.mouseReleased(click);
     }
 
     private int computeThumbHeight(int trackH) {

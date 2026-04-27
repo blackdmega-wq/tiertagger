@@ -95,7 +95,7 @@ public abstract class OptionsScreenMixin extends Screen {
             // Initial dimensions are placeholders — render() re-anchors
             // before the first draw, so the user never sees the (4,4) spot.
             super(4, 4, SIZE, SIZE,
-                  Text.literal(""),
+                  net.minecraft.text.Text.literal(""),
                   btn -> {
                       MinecraftClient mc = MinecraftClient.getInstance();
                       if (mc != null) mc.setScreen(new TierConfigScreen(parent));
@@ -105,35 +105,34 @@ public abstract class OptionsScreenMixin extends Screen {
             // Tooltip so users know what the icon does on first hover.
             try {
                 this.setTooltip(net.minecraft.client.gui.tooltip.Tooltip.of(
-                    Text.literal("\u00a7eTierTagger\u00a7r\nOpen the OuterTiers configuration screen.")));
+                    net.minecraft.text.Text.literal("\u00a7eTierTagger\u00a7r\nOpen the OuterTiers configuration screen.")));
             } catch (Throwable ignored) {}
             // Compute an initial anchor immediately so the very first
             // render frame has the right hit-rect for input handling.
             try { anchorToControls(); } catch (Throwable ignored) {}
         }
 
+        /**
+         * PressableWidget's only abstract method on 1.21.5+. Called from
+         * the (final) renderWidget after the button frame is painted.
+         *
+         * <p>We re-anchor to Controls at the top of every frame so window
+         * resize / F11 / DPI changes track. {@code render()} and
+         * {@code renderWidget()} on ClickableWidget / PressableWidget are
+         * both final in 1.21.5+, so {@code drawIcon} is the only per-
+         * frame hook we have. The button frame for THIS frame may be one
+         * frame stale after a resize, but vanilla also re-runs
+         * {@link Screen#init()} on resize which re-anchors via the
+         * constructor — so the visible flicker is at most a single frame.
+         *
+         * <p>After anchoring we paint the OT logo inset 2 px on every
+         * side, with a yellow "OT" monogram fallback if the bundled
+         * texture is missing.
+         */
         @Override
-        protected void renderWidget(DrawContext ctx, int mouseX, int mouseY, float delta) {
-            // Re-anchor BEFORE drawing so the user never sees a flicker
-            // at the wrong position after a screen resize.
+        protected void drawIcon(DrawContext ctx, int mouseX, int mouseY, float delta) {
             try { anchorToControls(); } catch (Throwable ignored) {}
-
             int x = this.getX(), y = this.getY(), w = this.getWidth(), h = this.getHeight();
-            boolean hovered = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
-
-            // Vanilla-style square frame so the button reads as a native
-            // Options-screen control instead of a floating sprite.
-            int bg     = hovered ? 0xFF606060 : 0xFF303030;
-            int border = hovered ? 0xFFFFFFFF : 0xFFA0A0A0;
-            ctx.fill(x,         y,         x + w,     y + h,     bg);
-            ctx.fill(x,         y,         x + w,     y + 1,     border);
-            ctx.fill(x,         y + h - 1, x + w,     y + h,     border);
-            ctx.fill(x,         y,         x + 1,     y + h,     border);
-            ctx.fill(x + w - 1, y,         x + w,     y + h,     border);
-
-            // Draw the OT logo inset by 2 px on every side so the frame
-            // remains visible. Falls back to a yellow "OT" monogram if
-            // the bundled texture is missing in this build.
             int icoPad = 2;
             int icoX = x + icoPad;
             int icoY = y + icoPad;
@@ -146,7 +145,7 @@ public abstract class OptionsScreenMixin extends Screen {
                 drewLogo = false;
             }
             if (!drewLogo) {
-                Text fallback = Text.literal("\u00a7eOT");
+                net.minecraft.text.Text fallback = net.minecraft.text.Text.literal("\u00a7eOT");
                 int tw = MinecraftClient.getInstance().textRenderer.getWidth(fallback);
                 ctx.drawTextWithShadow(MinecraftClient.getInstance().textRenderer, fallback,
                         x + (w - tw) / 2,
