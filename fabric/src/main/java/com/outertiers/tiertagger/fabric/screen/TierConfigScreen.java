@@ -5,11 +5,13 @@ import com.outertiers.tiertagger.common.TierService;
 import com.outertiers.tiertagger.common.TierTaggerCore;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.ConfirmLinkScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.CyclingButtonWidget;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.Util;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -87,7 +89,7 @@ public class TierConfigScreen extends Screen {
         sectionHeaders.clear();
         maxRowUsed = 0;
         bodyTop = 36;
-        bodyBottom = this.height - 32 - ROW_H;  // reserve two bottom rows
+        bodyBottom = this.height - 32 - 2 * ROW_H;  // reserve link row + refresh/done row
         try { buildWidgets(); }
         catch (Throwable t) {
             TierTaggerCore.LOGGER.warn("[TierTagger] config screen init failed", t);
@@ -295,6 +297,18 @@ public class TierConfigScreen extends Screen {
 
         // ── Bottom action bar (anchored, never scrolls) ────────────────────
         int bottomY = this.height - 27;
+        // Discord + Modrinth Link-Buttons direkt über Refresh/Done.
+        // Beide öffnen den Browser nach einer ConfirmLinkScreen-Bestätigung.
+        int linkY = bottomY - ROW_H;
+        safeAdd("discordLink", () -> this.addDrawableChild(ButtonWidget.builder(
+                Text.literal("Discord").formatted(Formatting.AQUA, Formatting.UNDERLINE),
+                b -> openLink("https://discord.gg/outertiers"))
+            .dimensions(colX(0), linkY, BTN_W, BTN_H).build()));
+        safeAdd("modrinthLink", () -> this.addDrawableChild(ButtonWidget.builder(
+                Text.literal("Modrinth").formatted(Formatting.GREEN, Formatting.UNDERLINE),
+                b -> openLink("https://modrinth.com/mod/outertiers-tiertagger"))
+            .dimensions(colX(1), linkY, BTN_W, BTN_H).build()));
+
         safeAdd("refreshCache", () -> this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("Refresh Cache"),
                 b -> { try { TierTaggerCore.cache().invalidate(); } catch (Throwable ignored) {} })
@@ -421,6 +435,27 @@ public class TierConfigScreen extends Screen {
     private void closeSafely() {
         MinecraftClient mc = this.client != null ? this.client : MinecraftClient.getInstance();
         if (mc != null) mc.setScreen(parent);
+    }
+
+    /**
+     * Öffnet einen externen Link im System-Browser. Vorher zeigt MC den
+     * Standard-{@link ConfirmLinkScreen}, damit der User die URL sieht und
+     * bestätigen muss — Pflicht für jegliche Out-Of-Game-Navigation.
+     */
+    private void openLink(String url) {
+        try {
+            MinecraftClient mc = this.client != null ? this.client : MinecraftClient.getInstance();
+            if (mc != null) {
+                mc.setScreen(new ConfirmLinkScreen(open -> {
+                    if (open) Util.getOperatingSystem().open(url);
+                    mc.setScreen(this);
+                }, url, true));
+            } else {
+                Util.getOperatingSystem().open(url);
+            }
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] could not open link: {}", url, t);
+        }
     }
 
     @Override

@@ -144,7 +144,11 @@ public final class BadgeRenderer {
 
         // CRITICAL: must mask with 0xFFFFFF — Style.withColor(int) in MC 1.21.5+
         // throws IllegalArgumentException for any value outside 0..0xFFFFFF.
-        MutableText svcLabel = Text.literal(svc.shortLabel).withColor(svc.accentArgb & 0xFFFFFF);
+        // Service-Tag (MCT/OT/PVP/ST) wird wie die Tier-Abkürzung BOLD dargestellt,
+        // sonst wirkt es im Spielertab/Nametag visuell schwächer als z.B. "HT3".
+        MutableText svcLabel = Text.literal(svc.shortLabel)
+            .formatted(Formatting.BOLD)
+            .withColor(svc.accentArgb & 0xFFFFFF);
         return serviceLabelLeading
             ? svcLabel.append(Text.literal(" ")).append(core)
             : core.append(Text.literal(" ")).append(svcLabel);
