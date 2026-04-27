@@ -74,7 +74,7 @@ jobs:
             java: 25
             yarn: ''                # no yarn for 26.1+
             fabric_loader: '0.19.2'
-            fabric_api: '0.145.1+26.1'
+            fabric_api: '0.147.0+26.1.2'
             loom: '1.15-SNAPSHOT'
             gradle: '9.4.0'
           - loader: fabric
@@ -83,7 +83,7 @@ jobs:
             java: 25
             yarn: ''
             fabric_loader: '0.19.2'
-            fabric_api: '0.145.4+26.1.1'
+            fabric_api: '0.147.0+26.1.2'
             loom: '1.15-SNAPSHOT'
             gradle: '9.4.0'
           - loader: fabric
@@ -92,7 +92,7 @@ jobs:
             java: 25
             yarn: ''
             fabric_loader: '0.19.2'
-            fabric_api: '0.146.1+26.1.2'
+            fabric_api: '0.147.0+26.1.2'
             loom: '1.15-SNAPSHOT'
             gradle: '9.4.0'
 
