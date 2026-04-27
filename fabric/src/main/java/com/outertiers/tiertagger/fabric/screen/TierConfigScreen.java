@@ -164,12 +164,28 @@ public class TierConfigScreen extends Screen {
     private static net.minecraft.util.Identifier localPlayerSkinTexture() {
         try {
             MinecraftClient mc = MinecraftClient.getInstance();
-            if (mc != null && mc.player != null) {
-                Object skin = mc.player.getSkinTextures();
-                if (skin != null) {
-                    return (net.minecraft.util.Identifier)
-                            skin.getClass().getMethod("texture").invoke(skin);
-                }
+            if (mc == null || mc.player == null) return null;
+
+            // Yarn renamed the SkinTextures accessor multiple times across
+            // 1.21.x (getSkinTextures / getSkin / method_55821). Use full
+            // reflection so the same source compiles against every legacy
+            // yarn build in the matrix.
+            Object player = mc.player;
+            Object skin = null;
+            for (String name : new String[]{"getSkinTextures", "getSkin", "method_55821", "method_52814"}) {
+                try {
+                    skin = player.getClass().getMethod(name).invoke(player);
+                    if (skin != null) break;
+                } catch (NoSuchMethodException nsme) { /* try next */ }
+            }
+            if (skin == null) return null;
+
+            // SkinTextures.texture() / .getTexture() (depending on version).
+            for (String name : new String[]{"texture", "getTexture"}) {
+                try {
+                    Object id = skin.getClass().getMethod(name).invoke(skin);
+                    if (id instanceof net.minecraft.util.Identifier i) return i;
+                } catch (NoSuchMethodException nsme) { /* try next */ }
             }
         } catch (Throwable ignored) {}
         return null;
