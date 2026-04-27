@@ -712,7 +712,7 @@ public class TierConfigScreen extends Screen {
         // first entry guarantees the user sees the skin immediately —
         // the new draggable scrollbar (right edge) lets them scroll
         // back UP to read every option.
-        if (currentTab == 2 && previewW > 0 && previewH > 0
+        if ((currentTab == 2 || currentTab == 0) && previewW > 0 && previewH > 0
                 && !autoScrolledForTab[currentTab] && maxScroll > 0) {
             scrollY = maxScroll;
             scrollByTab[currentTab] = scrollY;
@@ -1012,6 +1012,17 @@ public class TierConfigScreen extends Screen {
             addTipped(w, "Pick which gamemodes contribute to the badge shown above player heads.");
         });
         rRef[0]++;
+
+        // ── Live nametag preview (v1.21.11.52) ───────────────────────────
+        // The user asked to see their skin in the Settings tab too so
+        // every tweak above can be sanity-checked against the actual
+        // nametag without hopping over to the Tiers Config tab.
+        rRef[0]++; // breathing room before preview
+        previewX = rowX();
+        previewY = rowY(rRef[0]);
+        previewW = rowW();
+        previewH = 280;
+        rRef[0] += 13; // reserve scroll space for the taller preview
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1581,7 +1592,10 @@ public class TierConfigScreen extends Screen {
         if (previewW <= 0 || previewH <= 0) return;
         // Don't render if scrolled outside the visible body area.
         if (previewY + previewH < bodyTop || previewY > bodyBottom) return;
-        if (currentTab != 2) return;
+        // (v1.21.11.52) The Settings tab also reserves a preview block now,
+        // so allow tab 0 in addition to tab 2. The Tier Colors tab (1) does
+        // its own per-row colour swatch overlay so we still skip it here.
+        if (currentTab != 2 && currentTab != 0) return;
 
         TierConfig cfg = TierTaggerCore.config();
         PlayerData pd = ensurePreviewData();

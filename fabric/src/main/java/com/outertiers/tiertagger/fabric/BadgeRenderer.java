@@ -329,7 +329,7 @@ public final class BadgeRenderer {
         TierTaggerCore.TierPick pick =
             TierTaggerCore.pickForService(data, leftSvc, tabFilter, cfg.leftMode);
         if (pick == null || pick.tier == null || pick.tier.isBlank()) return null;
-        return formatBadge(leftSvc, pick.tier, pick.mode, true).append(Text.literal(" "));
+        return formatBadge(leftSvc, pick.tier, pick.mode, true).append(separator(cfg, pick.tier));
     }
 
     /**
@@ -342,7 +342,31 @@ public final class BadgeRenderer {
         TierTaggerCore.TierPick pick =
             TierTaggerCore.pickForService(data, rightSvc, tabFilter, cfg.rightMode);
         if (pick == null || pick.tier == null || pick.tier.isBlank()) return null;
-        return Text.literal(" ").append(formatBadge(rightSvc, pick.tier, pick.mode, false));
+        return separator(cfg, pick.tier).append(formatBadge(rightSvc, pick.tier, pick.mode, false));
+    }
+
+    /**
+     * Builds the visual separator between a dual-badge and the player name.
+     *
+     * <p>When {@link TierConfig#dynamicSeparator} is OFF we keep a single
+     * neutral space — the original behaviour every existing user is used to.
+     * When ON we emit {@code " | "} with the pipe coloured to match the
+     * supplied tier (so the bar adopts the dominant tier colour, exactly
+     * what the option's tooltip and TierConfig javadoc promise).
+     *
+     * <p>The pipe is bold so it visually balances the bold tier text on the
+     * other side, and the surrounding spaces are left uncoloured so they
+     * don't bleed into the player name's own colour.
+     */
+    private static MutableText separator(TierConfig cfg, String tier) {
+        if (cfg == null || !cfg.dynamicSeparator) {
+            return Text.literal(" ");
+        }
+        int rgb = TierTaggerCore.argbFor(tier) & 0xFFFFFF;
+        MutableText sep = Text.literal(" ");
+        sep.append(Text.literal("|").setStyle(Style.EMPTY.withColor(rgb).withBold(true)));
+        sep.append(Text.literal(" "));
+        return sep;
     }
 
     /**
@@ -364,11 +388,11 @@ public final class BadgeRenderer {
         MutableText out = Text.empty();
         if (hasLeft) {
             out.append(formatBadge(leftSvc, leftPick.tier, leftPick.mode, true))
-               .append(Text.literal(" "));
+               .append(separator(cfg, leftPick.tier));
         }
         out.append(original == null ? Text.empty() : original.copy());
         if (hasRight) {
-            out.append(Text.literal(" "))
+            out.append(separator(cfg, rightPick.tier))
                .append(formatBadge(rightSvc, rightPick.tier, rightPick.mode, false));
         }
         return out;

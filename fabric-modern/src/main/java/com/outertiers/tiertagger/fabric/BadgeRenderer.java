@@ -323,13 +323,34 @@ public final class BadgeRenderer {
      * actually appears LEFT of the name (which used to be the bug — both
      * badges were appended to the right).
      */
+
+    /**
+     * Builds the visual separator between a dual-badge and the player name.
+     *
+     * <p>When {@link TierConfig#dynamicSeparator} is OFF we keep a single
+     * neutral space — the original behaviour every existing user is used to.
+     * When ON we emit {@code " | "} with the pipe coloured to match the
+     * supplied tier (so the bar adopts the dominant tier colour, exactly
+     * what the option's tooltip and TierConfig javadoc promise).
+     */
+    private static MutableComponent separator(TierConfig cfg, String tier) {
+        if (cfg == null || !cfg.dynamicSeparator) {
+            return Component.literal(" ");
+        }
+        int rgb = TierTaggerCore.argbFor(tier) & 0xFFFFFF;
+        MutableComponent sep = Component.literal(" ");
+        sep.append(Component.literal("|").setStyle(Style.EMPTY.withColor(rgb).withBold(true)));
+        sep.append(Component.literal(" "));
+        return sep;
+    }
+
     public static MutableComponent buildTabPrefix(TierConfig cfg, PlayerData data) {
         TierService leftSvc = cfg.leftServiceEnum();
         java.util.function.Predicate<String> tabFilter = cfg::isTabModeEnabled;
         TierTaggerCore.TierPick pick =
             TierTaggerCore.pickForService(data, leftSvc, tabFilter, cfg.leftMode);
         if (pick == null || pick.tier == null || pick.tier.isBlank()) return null;
-        return formatBadge(leftSvc, pick.tier, pick.mode, true).append(Component.literal(" "));
+        return formatBadge(leftSvc, pick.tier, pick.mode, true).append(separator(cfg, pick.tier));
     }
 
     /**
@@ -342,7 +363,7 @@ public final class BadgeRenderer {
         TierTaggerCore.TierPick pick =
             TierTaggerCore.pickForService(data, rightSvc, tabFilter, cfg.rightMode);
         if (pick == null || pick.tier == null || pick.tier.isBlank()) return null;
-        return Component.literal(" ").append(formatBadge(rightSvc, pick.tier, pick.mode, false));
+        return separator(cfg, pick.tier).append(formatBadge(rightSvc, pick.tier, pick.mode, false));
     }
 
     /**
@@ -364,11 +385,11 @@ public final class BadgeRenderer {
         MutableComponent out = Component.empty();
         if (hasLeft) {
             out.append(formatBadge(leftSvc, leftPick.tier, leftPick.mode, true))
-               .append(Component.literal(" "));
+               .append(separator(cfg, leftPick.tier));
         }
         out.append(original == null ? Component.empty() : original.copy());
         if (hasRight) {
-            out.append(Component.literal(" "))
+            out.append(separator(cfg, rightPick.tier))
                .append(formatBadge(rightSvc, rightPick.tier, rightPick.mode, false));
         }
         return out;
