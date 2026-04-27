@@ -8,7 +8,7 @@ public final class TierTaggerCore {
     public static final String MOD_ID  = "tiertagger";
     public static final String MOD_NAME = "TierTagger";
     public static final Logger LOGGER  = LoggerFactory.getLogger(MOD_NAME);
-    public static final String MOD_VERSION = "1.21.11.33";
+    public static final String MOD_VERSION = "1.21.11.48";
 
     private static TierConfig CONFIG;
     private static TierCache  CACHE;
@@ -21,6 +21,13 @@ public final class TierTaggerCore {
         CACHE  = new TierCache(CONFIG);
         LOGGER.info("[TierTagger] core initialised — primary service: {}, mode: {}",
                 CONFIG.primaryService, CONFIG.displayMode);
+        // Kick off a background "is there a newer release on Modrinth?" check.
+        // Result is cached in UpdateChecker; consumers call
+        // UpdateChecker.isOutdated() / latestVersion() to read it. We never
+        // block init on the network call.
+        try { UpdateChecker.checkAsync(); } catch (Throwable t) {
+            LOGGER.warn("[TierTagger] update check failed to start: {}", t.toString());
+        }
     }
 
     public static TierConfig config() { return CONFIG; }

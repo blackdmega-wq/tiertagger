@@ -111,11 +111,39 @@ public class TierConfigScreen extends Screen {
     private int maxRowUsed = 0;
 
     // ── Live nametag preview ────────────────────────────────────────────────
-    /** Display name used in the preview. The OuterTiers maintainer asked
-     *  that the live preview render the project's own player skin instead
-     *  of the previous Notch placeholder, so users see the badge format
-     *  applied to the real Outversal account when tweaking settings. */
-    private static final String PREVIEW_NAME = "Outversal";
+    /**
+     * Display / lookup name used by the live preview card.
+     *
+     * v1.21.11.48: previously hard-coded to "Outversal" so every user saw
+     * the same skin in the preview. The user asked for the preview to show
+     * THEIR currently-worn Minecraft skin instead, so we now look up the
+     * client's local username on demand and fall back to "Outversal" when
+     * we can't (e.g. screen opened from the title screen with no session).
+     * The skin itself is fetched by mc-heads.net via {@link SkinFetcher},
+     * which keys off the username — so swapping the name swaps the skin.
+     */
+    private static final String PREVIEW_NAME_FALLBACK = "Outversal";
+
+    private static String previewName() {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc != null) {
+                if (mc.player != null && mc.player.getGameProfile() != null) {
+                    String n = mc.player.getGameProfile().getName();
+                    if (n != null && !n.isBlank()) return n;
+                }
+                if (mc.getUser() != null) {
+                    String n = mc.getUser().getName();
+                    if (n != null && !n.isBlank()) return n;
+                }
+            }
+        } catch (Throwable ignored) {}
+        return PREVIEW_NAME_FALLBACK;
+    }
+
+    /** Tracked so {@link #ensurePreviewData()} rebuilds when the local
+     *  player's name changes (e.g. user switched accounts). */
+    private static volatile String LAST_PREVIEW_NAME = null;
     /** Bounds of the preview panel. Set to {@code w<=0} when no preview is shown. */
     private int previewX = 0, previewY = 0, previewW = 0, previewH = 0;
     /** Cached fake PlayerData populated with one HT3 ranking per gamemode in
@@ -492,6 +520,33 @@ public class TierConfigScreen extends Screen {
             safeAdd("done", () -> this.addDrawableChild(Button.builder(
                     Component.literal("Done"), b -> closeSafely())
                 .dimensions(colX(1), bottomY, BTN_W, BTN_H).build()));
+
+            // v1.21.11.48: explicit "Scroll to Live Preview" button on the
+            // Tiers Config tab. The user reported the preview skin was off-
+            // screen and they didn't know they had to mouse-wheel down to
+            // reveal it — this button jumps straight to the bottom (where
+            // the preview lives) with one click.
+            if (targetTab == 2) {
+                int scrollBtnSize = BTN_H;
+                int scrollBtnX    = colX(1) + BTN_W + 4;
+                int maxX = this.width - scrollBtnSize - 4;
+                if (scrollBtnX > maxX) scrollBtnX = maxX;
+                final int btnX = scrollBtnX;
+                safeAdd("scrollToPreview", () -> {
+                    Button b = Button.builder(
+                            Component.literal("\u25BC"),
+                            btn -> {
+                                scrollY = maxScroll;
+                                scrollByTab[currentTab] = scrollY;
+                                rebuildKeepingScroll();
+                            })
+                        .dimensions(btnX, bottomY, scrollBtnSize, scrollBtnSize)
+                        .build();
+                    addTipped(b, "Scroll down to the Live Preview\n" +
+                            "(shows your current Minecraft skin with the badge format applied).");
+                    this.addDrawableChild(b);
+                });
+            }
         }
 
         int contentH = (maxRowUsed + 2) * ROW_H;
@@ -1234,12 +1289,13 @@ public class TierConfigScreen extends Screen {
      * the user picks the badge has something to show.
      */
     private static PlayerData ensurePreviewData() {
+        String currentName = previewName();
         PlayerData cached = PREVIEW_DATA;
-        if (cached != null) return cached;
+        if (cached != null && currentName.equals(LAST_PREVIEW_NAME)) return cached;
         synchronized (TierConfigScreen.class) {
-            if (PREVIEW_DATA != null) return PREVIEW_DATA;
+            if (PREVIEW_DATA != null && currentName.equals(LAST_PREVIEW_NAME)) return PREVIEW_DATA;
             try {
-                PlayerData pd = new PlayerData(PREVIEW_NAME,
+                PlayerData pd = new PlayerData(currentName,
                         // Notch's canonical undashed UUID. Used only as a
                         // stable cache key — the screen itself fetches the
                         // skin via SkinFetcher.skinFor("Notch").
@@ -1260,6 +1316,7 @@ public class TierConfigScreen extends Screen {
                             System.currentTimeMillis(), false));
                 }
                 PREVIEW_DATA = pd;
+                LAST_PREVIEW_NAME = currentName;
                 return pd;
             } catch (Throwable t) {
                 return null;
@@ -1333,7 +1390,7 @@ public class TierConfigScreen extends Screen {
             // Build the live wrapped nametag — same renderer that produces
             // real in-game nametags, so the preview matches what other
             // players see.
-            MutableComponent baseName = Component.literal(PREVIEW_NAME).formatted(ChatFormatting.WHITE);
+            MutableComponent baseName = Component.literal(previewName()).formatted(ChatFormatting.WHITE);
             Component wrapped;
             try {
                 Component wt = BadgeRenderer.wrapNametag(cfg, pd, baseName);
@@ -1412,7 +1469,7 @@ public class TierConfigScreen extends Screen {
      */
     private void drawPreviewBody(GuiGraphics ctx, int x, int y, int boxW, int boxH) {
         Optional<SkinFetcher.Skin> fetched = Optional.empty();
-        try { fetched = SkinFetcher.skinFor(PREVIEW_NAME); } catch (Throwable ignored) {}
+        try { fetched = SkinFetcher.skinFor(previewName()); } catch (Throwable ignored) {}
         if (fetched.isPresent()) {
             try {
                 SkinFetcher.Skin sk = fetched.get();
@@ -1670,11 +1727,23 @@ public class TierConfigScreen extends Screen {
             ctx.drawTextWithShadow(this.textRenderer,
                     Component.literal("TierTagger").formatted(ChatFormatting.WHITE, ChatFormatting.BOLD),
                     titleTextX, panelTop + 4, 0xFFFFFFFF);
+            // v1.21.11.48: append "(update available!)" when the background
+            // UpdateChecker has detected a newer release on GitHub. This is
+            // the visible-in-UI counterpart to the LOG warning emitted from
+            // TierTaggerCore.init() so users running an outdated jar see
+            // it the moment they open the settings screen.
+            String latestVersion = null;
+            try { latestVersion = com.outertiers.tiertagger.common.UpdateChecker.latestVersion(); } catch (Throwable ignored) {}
+            boolean outdated = false;
+            try { outdated = com.outertiers.tiertagger.common.UpdateChecker.isOutdated(); } catch (Throwable ignored) {}
+            String versionLine = "v" + TierTaggerCore.MOD_VERSION + "  \u00B7  /tiertagger help";
+            if (outdated && latestVersion != null) {
+                versionLine = "v" + TierTaggerCore.MOD_VERSION + "  \u00B7  Update available: v" + latestVersion;
+            }
             ctx.drawTextWithShadow(this.textRenderer,
-                    Component.literal("v" + TierTaggerCore.MOD_VERSION +
-                            "  \u00B7  /tiertagger help")
-                            .withColor(rgb(FG_FAINT)),
-                    titleTextX, panelTop + 15, FG_FAINT);
+                    Component.literal(versionLine)
+                            .withColor(outdated ? 0xFFFF6464 : rgb(FG_FAINT)),
+                    titleTextX, panelTop + 15, outdated ? 0xFFFF6464 : FG_FAINT);
 
             // Paint the three link buttons (Discord, OuterTiers, Linktree)
             // on top of their invisible Button hit-rects so the

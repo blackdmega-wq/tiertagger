@@ -301,7 +301,12 @@ public final class BadgeRenderer {
 
         // CRITICAL: must mask with 0xFFFFFF — Style.withColor(int) in MC 1.21.5+
         // throws IllegalArgumentException for any value outside 0..0xFFFFFF.
-        MutableText svcLabel = Text.literal(svc.shortLabel).withColor(svc.accentArgb & 0xFFFFFF);
+        // v1.21.11.48: render the service short label in BOLD so it visually
+        // matches the bold tier text right next to it. Previously the
+        // service tag (e.g. "MCT", "OT") looked thin and washed out next to
+        // the chunky tier badge.
+        MutableText svcLabel = Text.literal(svc.shortLabel)
+                .setStyle(Style.EMPTY.withColor(svc.accentArgb & 0xFFFFFF).withBold(true));
         return serviceLabelLeading
             ? svcLabel.append(Text.literal(" ")).append(core)
             : core.append(Text.literal(" ")).append(svcLabel);

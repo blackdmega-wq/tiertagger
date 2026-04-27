@@ -111,11 +111,39 @@ public class TierConfigScreen extends Screen {
     private int maxRowUsed = 0;
 
     // ── Live nametag preview ────────────────────────────────────────────────
-    /** Display name used in the preview. The OuterTiers maintainer asked
-     *  that the live preview render the project's own player skin instead
-     *  of the previous Notch placeholder, so users see the badge format
-     *  applied to the real Outversal account when tweaking settings. */
-    private static final String PREVIEW_NAME = "Outversal";
+    /**
+     * Display / lookup name used by the live preview card.
+     *
+     * v1.21.11.48: previously hard-coded to "Outversal" so every user saw
+     * the same skin in the preview. The user asked for the preview to show
+     * THEIR currently-worn Minecraft skin instead, so we now look up the
+     * client's local username on demand and fall back to "Outversal" when
+     * we can't (e.g. screen opened from the title screen with no session).
+     * The skin itself is fetched by mc-heads.net via {@link SkinFetcher},
+     * which keys off the username — so swapping the name swaps the skin.
+     */
+    private static final String PREVIEW_NAME_FALLBACK = "Outversal";
+
+    private static String previewName() {
+        try {
+            MinecraftClient mc = MinecraftClient.getInstance();
+            if (mc != null) {
+                if (mc.player != null && mc.player.getGameProfile() != null) {
+                    String n = mc.player.getGameProfile().getName();
+                    if (n != null && !n.isBlank()) return n;
+                }
+                if (mc.getSession() != null) {
+                    String n = mc.getSession().getUsername();
+                    if (n != null && !n.isBlank()) return n;
+                }
+            }
+        } catch (Throwable ignored) {}
+        return PREVIEW_NAME_FALLBACK;
+    }
+
+    /** Tracked so {@link #ensurePreviewData()} rebuilds when the local
+     *  player's name changes (e.g. user switched accounts). */
+    private static volatile String LAST_PREVIEW_NAME = null;
     /** Bounds of the preview panel. Set to {@code w<=0} when no preview is shown. */
     private int previewX = 0, previewY = 0, previewW = 0, previewH = 0;
     /** Cached fake PlayerData populated with one HT3 ranking per gamemode in
@@ -157,10 +185,11 @@ public class TierConfigScreen extends Screen {
     /** Identifier for the bundled OuterTiers logo PNG used in the header. */
     private static final Identifier OT_LOGO = Identifier.of("tiertagger", "textures/logo/outertiers.png");
 
-    /** Brand colours for the three link buttons. */
+    /** Brand colours for the four link buttons. */
     private static final int DISCORD_BLURPLE = 0xFF5865F2;
     private static final int OT_BRAND        = 0xFF1A1F28;
     private static final int LINKTREE_GREEN  = 0xFF43E660;
+    private static final int MODRINTH_GREEN  = 0xFF1BD96A;
 
     public TierConfigScreen(Screen parent) {
         super(Text.literal("TierTagger \u2014 Settings"));
@@ -289,12 +318,13 @@ public class TierConfigScreen extends Screen {
         int rightEdge = panelX + panelW - 6;
         int yTop      = panelTop + 4;
 
-        // Right-to-left: Linktree, OuterTiers, Discord (so reading order is
-        // Discord → OuterTiers → Linktree, left to right).
+        // Right-to-left: Modrinth, Linktree, OuterTiers, Discord (so reading
+        // order is Discord → OuterTiers → Linktree → Modrinth, left to right).
         Object[][] specs = new Object[][] {
-            { "https://discord.gg/6eAaPqg4up",     DISCORD_BLURPLE, "D", null },
-            { "https://outertiers.onrender.com/",  OT_BRAND,        "O", OT_LOGO },
-            { "https://linktr.ee/Outversal",       LINKTREE_GREEN,  "L", null },
+            { "https://discord.gg/6eAaPqg4up",        DISCORD_BLURPLE, "D", null },
+            { "https://outertiers.onrender.com/",     OT_BRAND,        "O", OT_LOGO },
+            { "https://linktr.ee/Outversal",          LINKTREE_GREEN,  "L", null },
+            { "https://modrinth.com/mod/tiertagger",  MODRINTH_GREEN,  "M", null },
         };
 
         for (int i = specs.length - 1; i >= 0; i--) {
@@ -314,6 +344,7 @@ public class TierConfigScreen extends Screen {
                 this.addDrawableChild(btn);
                 String tipText = url.contains("discord")     ? "Join the Discord"
                                : url.contains("linktr")      ? "OuterTiers Linktree"
+                               : url.contains("modrinth")    ? "TierTagger on Modrinth"
                                : "Visit the OuterTiers website";
                 tip(btn, tipText + "\n" + url);
             } catch (Throwable t) {
@@ -489,6 +520,36 @@ public class TierConfigScreen extends Screen {
             safeAdd("done", () -> this.addDrawableChild(ButtonWidget.builder(
                     Text.literal("Done"), b -> closeSafely())
                 .dimensions(colX(1), bottomY, BTN_W, BTN_H).build()));
+
+            // v1.21.11.48: explicit "Scroll to Live Preview" button on the
+            // Tiers Config tab. The user reported the preview skin was off-
+            // screen and they didn't know they had to mouse-wheel down to
+            // reveal it — this button jumps straight to the bottom (where
+            // the preview lives) with one click.
+            if (targetTab == 2) {
+                int scrollBtnSize = BTN_H;
+                int scrollBtnX    = colX(1) + BTN_W + 4;
+                // If we'd run off the right edge of the screen, slot above the
+                // Done button instead (only visible when the window is wide
+                // enough — clamped here so we never draw outside the panel).
+                int maxX = this.width - scrollBtnSize - 4;
+                if (scrollBtnX > maxX) scrollBtnX = maxX;
+                final int btnX = scrollBtnX;
+                safeAdd("scrollToPreview", () -> {
+                    ButtonWidget b = ButtonWidget.builder(
+                            Text.literal("\u25BC"),
+                            btn -> {
+                                scrollY = maxScroll;
+                                scrollByTab[currentTab] = scrollY;
+                                rebuildKeepingScroll();
+                            })
+                        .dimensions(btnX, bottomY, scrollBtnSize, scrollBtnSize)
+                        .build();
+                    addTipped(b, "Scroll down to the Live Preview\n" +
+                            "(shows your current Minecraft skin with the badge format applied).");
+                    this.addDrawableChild(b);
+                });
+            }
         }
 
         int contentH = (maxRowUsed + 2) * ROW_H;
@@ -1231,12 +1292,13 @@ public class TierConfigScreen extends Screen {
      * the user picks the badge has something to show.
      */
     private static PlayerData ensurePreviewData() {
+        String currentName = previewName();
         PlayerData cached = PREVIEW_DATA;
-        if (cached != null) return cached;
+        if (cached != null && currentName.equals(LAST_PREVIEW_NAME)) return cached;
         synchronized (TierConfigScreen.class) {
-            if (PREVIEW_DATA != null) return PREVIEW_DATA;
+            if (PREVIEW_DATA != null && currentName.equals(LAST_PREVIEW_NAME)) return PREVIEW_DATA;
             try {
-                PlayerData pd = new PlayerData(PREVIEW_NAME,
+                PlayerData pd = new PlayerData(currentName,
                         // Notch's canonical undashed UUID. Used only as a
                         // stable cache key — the screen itself fetches the
                         // skin via SkinFetcher.skinFor("Notch").
@@ -1257,6 +1319,7 @@ public class TierConfigScreen extends Screen {
                             System.currentTimeMillis(), false));
                 }
                 PREVIEW_DATA = pd;
+                LAST_PREVIEW_NAME = currentName;
                 return pd;
             } catch (Throwable t) {
                 return null;
@@ -1330,7 +1393,7 @@ public class TierConfigScreen extends Screen {
             // Build the live wrapped nametag — same renderer that produces
             // real in-game nametags, so the preview matches what other
             // players see.
-            MutableText baseName = Text.literal(PREVIEW_NAME).formatted(Formatting.WHITE);
+            MutableText baseName = Text.literal(previewName()).formatted(Formatting.WHITE);
             Text wrapped;
             try {
                 Text wt = BadgeRenderer.wrapNametag(cfg, pd, baseName);
@@ -1409,7 +1472,7 @@ public class TierConfigScreen extends Screen {
      */
     private void drawPreviewBody(DrawContext ctx, int x, int y, int boxW, int boxH) {
         Optional<SkinFetcher.Skin> fetched = Optional.empty();
-        try { fetched = SkinFetcher.skinFor(PREVIEW_NAME); } catch (Throwable ignored) {}
+        try { fetched = SkinFetcher.skinFor(previewName()); } catch (Throwable ignored) {}
         if (fetched.isPresent()) {
             try {
                 SkinFetcher.Skin sk = fetched.get();
@@ -1667,11 +1730,23 @@ public class TierConfigScreen extends Screen {
             ctx.drawTextWithShadow(this.textRenderer,
                     Text.literal("TierTagger").formatted(Formatting.WHITE, Formatting.BOLD),
                     titleTextX, panelTop + 4, 0xFFFFFFFF);
+            // v1.21.11.48: append "(update available!)" when the background
+            // UpdateChecker has detected a newer release on GitHub. This is
+            // the visible-in-UI counterpart to the LOG warning emitted from
+            // TierTaggerCore.init() so users running an outdated jar see
+            // it the moment they open the settings screen.
+            String latestVersion = null;
+            try { latestVersion = com.outertiers.tiertagger.common.UpdateChecker.latestVersion(); } catch (Throwable ignored) {}
+            boolean outdated = false;
+            try { outdated = com.outertiers.tiertagger.common.UpdateChecker.isOutdated(); } catch (Throwable ignored) {}
+            String versionLine = "v" + TierTaggerCore.MOD_VERSION + "  \u00B7  /tiertagger help";
+            if (outdated && latestVersion != null) {
+                versionLine = "v" + TierTaggerCore.MOD_VERSION + "  \u00B7  Update available: v" + latestVersion;
+            }
             ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal("v" + TierTaggerCore.MOD_VERSION +
-                            "  \u00B7  /tiertagger help")
-                            .withColor(rgb(FG_FAINT)),
-                    titleTextX, panelTop + 15, FG_FAINT);
+                    Text.literal(versionLine)
+                            .withColor(outdated ? 0xFFFF6464 : rgb(FG_FAINT)),
+                    titleTextX, panelTop + 15, outdated ? 0xFFFF6464 : FG_FAINT);
 
             // Paint the three link buttons (Discord, OuterTiers, Linktree)
             // on top of their invisible ButtonWidget hit-rects so the

@@ -44,6 +44,33 @@ jobs:
             loom: '1.11-SNAPSHOT'
             gradle: '8.14'
 
+          # 1.21.10 and 1.21.8 builds — same legacy yarn pipeline as 1.21.11.
+          # Fabric API and yarn versions track Modrinth's "best match" for each
+          # MC version (last versions of fabric-api and yarn that target that
+          # specific MC release). experimental:true keeps the rest of the
+          # release pipeline running even if a single legacy build trips on
+          # an upstream mappings change.
+          - loader: fabric
+            module: fabric
+            mc: '1.21.10'
+            java: 21
+            yarn: '1.21.10+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.136.0+1.21.10'
+            loom: '1.11-SNAPSHOT'
+            gradle: '8.14'
+            experimental: true
+          - loader: fabric
+            module: fabric
+            mc: '1.21.8'
+            java: 21
+            yarn: '1.21.8+build.1'
+            fabric_loader: '0.16.14'
+            fabric_api: '0.133.0+1.21.8'
+            loom: '1.11-SNAPSHOT'
+            gradle: '8.14'
+            experimental: true
+
           # ────────────── Fabric — Mojang-mapped (26.1+ unobfuscated) ──────────────
           # MC 26.1+ ships unobfuscated. The :fabric-modern source set uses
           # Mojang names directly, the new non-remapping Loom plugin
