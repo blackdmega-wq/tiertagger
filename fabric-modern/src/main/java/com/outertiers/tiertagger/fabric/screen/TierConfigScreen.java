@@ -129,13 +129,23 @@ public class TierConfigScreen extends Screen {
             Minecraft mc = Minecraft.getInstance();
             if (mc != null) {
                 if (mc.player != null && mc.player.getGameProfile() != null) {
-                    String n = mc.player.getGameProfile().getName();
+                    String n = com.outertiers.tiertagger.fabric.compat.Profiles
+                            .name(mc.player.getGameProfile());
                     if (n != null && !n.isBlank()) return n;
                 }
-                if (mc.getUser() != null) {
-                    String n = mc.getUser().getName();
-                    if (n != null && !n.isBlank()) return n;
+                if (mc.player != null) {
+                    try {
+                        String n = mc.player.getName().getString();
+                        if (n != null && !n.isBlank()) return n;
+                    } catch (Throwable ignored) {}
                 }
+                try {
+                    Object user = Minecraft.class.getMethod("getUser").invoke(mc);
+                    if (user != null) {
+                        String n = (String) user.getClass().getMethod("getName").invoke(user);
+                        if (n != null && !n.isBlank()) return n;
+                    }
+                } catch (Throwable ignored) {}
             }
         } catch (Throwable ignored) {}
         return PREVIEW_NAME_FALLBACK;

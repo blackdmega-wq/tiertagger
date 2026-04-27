@@ -44,64 +44,19 @@ jobs:
             loom: '1.11-SNAPSHOT'
             gradle: '8.14'
 
-          # 1.21.10 and 1.21.8 builds — same legacy yarn pipeline as 1.21.11.
-          # Fabric API and yarn versions track Modrinth's "best match" for each
-          # MC version (last versions of fabric-api and yarn that target that
-          # specific MC release). experimental:true keeps the rest of the
-          # release pipeline running even if a single legacy build trips on
-          # an upstream mappings change.
-          - loader: fabric
-            module: fabric
-            mc: '1.21.10'
-            java: 21
-            yarn: '1.21.10+build.1'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.136.0+1.21.10'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-            experimental: true
-          - loader: fabric
-            module: fabric
-            mc: '1.21.8'
-            java: 21
-            yarn: '1.21.8+build.1'
-            fabric_loader: '0.16.14'
-            fabric_api: '0.133.0+1.21.8'
-            loom: '1.11-SNAPSHOT'
-            gradle: '8.14'
-            experimental: true
-
-          # ────────────── Fabric — Mojang-mapped (26.1+ unobfuscated) ──────────────
-          # MC 26.1+ ships unobfuscated. The :fabric-modern source set uses
-          # Mojang names directly, the new non-remapping Loom plugin
-          # `net.fabricmc.fabric-loom`, and Java 25.
-          - loader: fabric
-            module: fabric-modern
-            mc: '26.1'
-            java: 25
-            yarn: ''                # no yarn for 26.1+
-            fabric_loader: '0.19.2'
-            fabric_api: '0.147.0+26.1.2'
-            loom: '1.15-SNAPSHOT'
-            gradle: '9.4.0'
-          - loader: fabric
-            module: fabric-modern
-            mc: '26.1.1'
-            java: 25
-            yarn: ''
-            fabric_loader: '0.19.2'
-            fabric_api: '0.147.0+26.1.2'
-            loom: '1.15-SNAPSHOT'
-            gradle: '9.4.0'
-          - loader: fabric
-            module: fabric-modern
-            mc: '26.1.2'
-            java: 25
-            yarn: ''
-            fabric_loader: '0.19.2'
-            fabric_api: '0.147.0+26.1.2'
-            loom: '1.15-SNAPSHOT'
-            gradle: '9.4.0'
+          # NOTE: 1.21.10, 1.21.8, and 26.1/26.1.1/26.1.2 entries were
+          # removed because they don't currently produce JARs:
+          #   * 1.21.10/1.21.8 — fabric source uses 1.21.11+ APIs
+          #     (PlayerLikeEntity, new PlayerEntityRenderer signatures,
+          #     authlib record-style GameProfile accessors). Backporting
+          #     requires rewriting several mixins/renderers.
+          #   * 26.1.x — fabric-api 0.147.0+26.1.2 ships AccessWideners in
+          #     the intermediary namespace, but the non-remapping Loom
+          #     plugin used by :fabric-modern requires official-namespace
+          #     AWs ("Expected official namespace ... found: intermediary
+          #     in mod: fabric-biome-api-v1"). Needs a different fabric-api
+          #     build or an exclusion of fabric-biome-api-v1.
+          # Re-add these once those issues are resolved.
 
     steps:
       - uses: actions/checkout@v4
