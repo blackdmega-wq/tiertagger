@@ -103,6 +103,18 @@ public class TierConfigScreen extends Screen {
     private int currentTab = 0;
     /** Per-tab scroll positions so switching tabs preserves where you were. */
     private final int[] scrollByTab = new int[TAB_LABELS.length];
+    /**
+     * Per-tab flag: have we auto-scrolled this tab to the live preview yet?
+     * The Tiers Config tab (and the Advanced Settings sub-screen) drop the
+     * preview at the BOTTOM of a long scrollable column. The user kept
+     * missing it because their first view of the tab landed above the fold.
+     * Setting this to true on first entry triggers a one-shot
+     * {@code scrollY = maxScroll} jump so the preview is the first thing
+     * they see — they can still scroll back up to read the options. The
+     * flag resets every time the screen is constructed (next time they
+     * open settings, the auto-scroll happens again).
+     */
+    private final boolean[] autoScrolledForTab = new boolean[TAB_LABELS.length];
 
     private int scrollY   = 0;
     private int maxScroll = 0;
@@ -170,14 +182,36 @@ public class TierConfigScreen extends Screen {
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc != null && mc.player != null) {
-                Object skin = mc.player.getSkin();
-                if (skin != null) {
-                    return (net.minecraft.resources.ResourceLocation)
-                            skin.getClass().getMethod("texture").invoke(skin);
-                }
+                // Direct compile-time call so Loom remaps both `getSkin()`
+                // (yarn → intermediary) and `texture()` (record-component
+                // accessor) at build time. The previous reflective
+                // `getMethod("texture")` lookup ALWAYS returned null in
+                // production because at runtime the method is named with
+                // its intermediary name (e.g. comp_xxxx), not "texture" —
+                // which is exactly why the live preview never showed the
+                // user's actual skin and fell through to the silhouette.
+                return LocalSkinTextureHolder.get(mc.player);
             }
         } catch (Throwable ignored) {}
         return null;
+    }
+
+    /**
+     * Holder for the direct {@code player.getSkin().texture()} call so
+     * Loom can remap the yarn names at compile-time. Isolated in its own
+     * nested class so a future MC version that removes either method only
+     * causes this single call site to no-op (caught by the try/catch in
+     * {@link #localPlayerSkinTexture}) instead of breaking class loading
+     * elsewhere in the screen.
+     */
+    private static final class LocalSkinTextureHolder {
+        static net.minecraft.resources.ResourceLocation get(net.minecraft.client.player.AbstractClientPlayer p) {
+            try {
+                return p.getSkin().texture();
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
     }
 
     /** Tracked so {@link #ensurePreviewData()} rebuilds when the local
@@ -459,6 +493,96 @@ public class TierConfigScreen extends Screen {
         return true;
     }
 
+    // ── Draggable scrollbar (v1.21.11.52) ──────────────────────────────────
+    // The track + thumb are painted in render() (the existing scroll-indicator
+    // block at the bottom of render()). These three handlers turn the thumb
+    // into an interactive widget: click anywhere on the track to page-jump,
+    // click on the thumb to start dragging, and continue dragging until the
+    // mouse button is released. Track bounds are recomputed each render() and
+    // stored in scrollTrack[] so the math here always matches what the user
+    // is actually looking at — no flicker, no off-by-one, even after a tab
+    // switch or window resize.
+    /** {@code [trackX, trackTop, trackW, trackH]} populated each render(). */
+    private final int[] scrollTrack = new int[4];
+    /** True while the user is mid-drag on the scrollbar thumb. */
+    private boolean draggingScrollbar = false;
+    /** Y offset (px) inside the thumb where the drag started. */
+    private int    dragOffsetInThumb  = 0;
+
+    @Override
+    public boolean mouseClicked(double mx, double my, int button) {
+        if (button == 0 && maxScroll > 0) {
+            int tx = scrollTrack[0], ty = scrollTrack[1];
+            int tw = scrollTrack[2], th = scrollTrack[3];
+            if (tw > 0 && th > 0
+                && mx >= tx && mx < tx + tw
+                && my >= ty && my < ty + th) {
+                int thumbH = computeThumbHeight(th);
+                int thumbY = computeThumbY(th, thumbH);
+                if (my >= thumbY && my < thumbY + thumbH) {
+                    // Click landed on the thumb: start dragging.
+                    draggingScrollbar = true;
+                    dragOffsetInThumb = (int)(my - thumbY);
+                } else {
+                    // Click landed on empty track: jump-scroll so the thumb
+                    // centres under the cursor (matches every desktop OS's
+                    // scrollbar behaviour). Then immediately start dragging
+                    // so the user can refine the position without releasing.
+                    int newThumbY = (int)(my - thumbH / 2.0);
+                    setScrollFromThumbY(th, thumbH, newThumbY);
+                    draggingScrollbar = true;
+                    dragOffsetInThumb = thumbH / 2;
+                }
+                return true;
+            }
+        }
+        return super.mouseClicked(mx, my, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+        if (draggingScrollbar && button == 0 && maxScroll > 0) {
+            int th = scrollTrack[3];
+            int thumbH = computeThumbHeight(th);
+            int newThumbY = (int)(my - dragOffsetInThumb);
+            setScrollFromThumbY(th, thumbH, newThumbY);
+            return true;
+        }
+        return super.mouseDragged(mx, my, button, dx, dy);
+    }
+
+    @Override
+    public boolean mouseReleased(double mx, double my, int button) {
+        if (draggingScrollbar && button == 0) {
+            draggingScrollbar = false;
+            return true;
+        }
+        return super.mouseReleased(mx, my, button);
+    }
+
+    private int computeThumbHeight(int trackH) {
+        return Math.max(24, trackH * trackH / Math.max(1, trackH + maxScroll));
+    }
+
+    private int computeThumbY(int trackH, int thumbH) {
+        int trackTop = scrollTrack[1];
+        return trackTop + (int)((long)(trackH - thumbH) * scrollY / Math.max(1, maxScroll));
+    }
+
+    private void setScrollFromThumbY(int trackH, int thumbH, int newThumbY) {
+        int trackTop = scrollTrack[1];
+        int range = trackH - thumbH;
+        if (range <= 0) return;
+        int local = Math.max(0, Math.min(range, newThumbY - trackTop));
+        int newScroll = (int)((long) local * maxScroll / range);
+        if (newScroll != scrollY) {
+            scrollY = newScroll;
+            scrollByTab[currentTab] = scrollY;
+            this.clearChildren();
+            try { buildWidgets(); } catch (Throwable ignored) {}
+        }
+    }
+
     private void safeAdd(String label, Runnable build) {
         try { build.run(); }
         catch (Throwable t) {
@@ -566,33 +690,12 @@ public class TierConfigScreen extends Screen {
             safeAdd("done", () -> this.addDrawableChild(Button.builder(
                     Component.literal("Done"), b -> closeSafely())
                 .dimensions(colX(1), bottomY, BTN_W, BTN_H).build()));
-
-            // v1.21.11.48: explicit "Scroll to Live Preview" button on the
-            // Tiers Config tab. The user reported the preview skin was off-
-            // screen and they didn't know they had to mouse-wheel down to
-            // reveal it — this button jumps straight to the bottom (where
-            // the preview lives) with one click.
-            if (targetTab == 2) {
-                int scrollBtnSize = BTN_H;
-                int scrollBtnX    = colX(1) + BTN_W + 4;
-                int maxX = this.width - scrollBtnSize - 4;
-                if (scrollBtnX > maxX) scrollBtnX = maxX;
-                final int btnX = scrollBtnX;
-                safeAdd("scrollToPreview", () -> {
-                    Button b = Button.builder(
-                            Component.literal("\u25BC"),
-                            btn -> {
-                                scrollY = maxScroll;
-                                scrollByTab[currentTab] = scrollY;
-                                rebuildKeepingScroll();
-                            })
-                        .dimensions(btnX, bottomY, scrollBtnSize, scrollBtnSize)
-                        .build();
-                    addTipped(b, "Scroll down to the Live Preview\n" +
-                            "(shows your current Minecraft skin with the badge format applied).");
-                    this.addDrawableChild(b);
-                });
-            }
+            // v1.21.11.52: removed the "▼ Scroll to Live Preview" shortcut
+            // button on the Tiers Config tab. It's superseded by the new
+            // draggable scrollbar (right edge, click & drag the yellow
+            // thumb) and the auto-scroll-to-preview-on-first-open below
+            // — both of which the user explicitly asked for in the
+            // v1.21.11.51 feedback.
         }
 
         int contentH = (maxRowUsed + 2) * ROW_H;
@@ -601,10 +704,31 @@ public class TierConfigScreen extends Screen {
         if (scrollY > maxScroll) scrollY = maxScroll;
         scrollByTab[currentTab] = scrollY;
 
-        // Pinned ▲ / ▼ scroll arrow buttons (Tiers Config tab only). Added
-        // here — AFTER maxScroll is known — so they only appear when there
-        // is actually overflow to scroll through.
-        addScrollArrowButtons();
+        // v1.21.11.52: auto-scroll to the live preview the FIRST time the
+        // user lands on the Tiers Config tab. The preview lives at the
+        // bottom of a long scrollable column, and the previous "▼ Jump
+        // to Skin Preview" button (now removed) was the only way to
+        // discover it without manually scrolling. Auto-scrolling on
+        // first entry guarantees the user sees the skin immediately —
+        // the new draggable scrollbar (right edge) lets them scroll
+        // back UP to read every option.
+        if (currentTab == 2 && previewW > 0 && previewH > 0
+                && !autoScrolledForTab[currentTab] && maxScroll > 0) {
+            scrollY = maxScroll;
+            scrollByTab[currentTab] = scrollY;
+            autoScrolledForTab[currentTab] = true;
+            // Re-clip widgets so freshly-revealed content is interactive.
+            // Skip a full rebuild — the layout is already correct, only
+            // the visibility predicate changes with the new scrollY.
+        }
+
+        // v1.21.11.52: removed the pinned ▲ / ▼ arrow buttons. The new
+        // draggable scrollbar (rendered in render() and handled by
+        // mouseClicked / mouseDragged at the bottom of this class) makes
+        // them redundant — and the user reported the arrow buttons didn't
+        // visibly move the content because their @TAIL injection ran
+        // BEFORE clipScrollableWidgets could refresh the visibility of
+        // newly-revealed widgets, so a click felt like a no-op.
 
         // Hide & disable any scrollable widget whose y position has scrolled
         // outside the visible body area. Without this, scrolled-up widgets
@@ -1173,23 +1297,14 @@ public class TierConfigScreen extends Screen {
         // Outversal render (head, torso, arms, LEGS) fits inside the card
         // at a meaningful size. Scroll reservation widened to 13 rows so
         // the user can scroll all the way down to see the feet.
-        // ── "Jump to Skin Preview" shortcut button ──────────────────────
-        // The preview lives below the fold on most window sizes. Adding an
-        // explicit scroll-to button right above it (so the user sees it as
-        // soon as they reach this section) AND a pair of up/down arrow
-        // buttons (added in buildWidgets so they're always reachable) means
-        // they no longer have to figure out the mouse-wheel themselves.
-        rRef[0]++;
-        final int jumpY = rowY(rRef[0]);
-        safeAdd("jumpToPreview", () -> {
-            AbstractWidget w = Button.builder(
-                    Component.literal("\u25BC  Jump to Skin Preview"),
-                    b -> jumpToPreview())
-                .dimensions(rowX(), jumpY, rowW(), BTN_H)
-                .build();
-            addTipped(w, "Scroll down to the live nametag + skin preview.");
-        });
-        rRef[0]++;
+        // v1.21.11.52: removed the "▼  Jump to Skin Preview" button. The
+        // user reported that clicking it didn't actually move the page
+        // (it called rebuildKeepingScroll() which restored the OLD scroll
+        // position right after jumpToPreview() set the new one — a self-
+        // cancelling pair of operations). The replacement is the
+        // draggable scrollbar (right edge of the panel) plus the auto-
+        // scroll on first open so the preview is reachable without ever
+        // needing this shortcut.
         rRef[0]++; // breathing room before preview
 
         previewX = rowX();
@@ -1991,16 +2106,39 @@ public class TierConfigScreen extends Screen {
             //    pre-v1.21.11.39 hairline so users actually notice the
             //    Live Preview is below the fold and can be scrolled to.
             if (maxScroll > 0) {
-                int trackW = 6;
+                // v1.21.11.52: widened to 10 px so it's a comfortable
+                // drag target (was 6 px — too thin for most cursors).
+                int trackW = 10;
                 int trackX  = panelX + panelW - trackW - 2;
                 int trackTop = bodyTop;
                 int trackH  = bodyBottom - bodyTop;
-                fillRect(ctx, trackX, trackTop, trackX + trackW, trackTop + trackH, 0x60000000);
+                // Publish the live track bounds so the mouseClicked /
+                // mouseDragged handlers above can hit-test against
+                // exactly what the user sees on screen.
+                scrollTrack[0] = trackX;
+                scrollTrack[1] = trackTop;
+                scrollTrack[2] = trackW;
+                scrollTrack[3] = trackH;
+                fillRect(ctx, trackX, trackTop, trackX + trackW, trackTop + trackH, 0x80000000);
                 outlineRect(ctx, trackX, trackTop, trackW, trackH, 0x80FFFFFF);
-                int thumbH = Math.max(24, trackH * trackH / Math.max(1, trackH + maxScroll));
+                int thumbH = Math.max(28, trackH * trackH / Math.max(1, trackH + maxScroll));
                 int thumbY = trackTop + (int)((long)(trackH - thumbH) * scrollY / Math.max(1, maxScroll));
-                fillRect(ctx, trackX + 1, thumbY + 1, trackX + trackW - 1, thumbY + thumbH - 1, ACCENT);
+                // Subtle drop-shadow then the bright accent thumb so it
+                // reads clearly against the dark panel background.
+                fillRect(ctx, trackX + 2, thumbY + 2, trackX + trackW, thumbY + thumbH, 0x60000000);
+                fillRect(ctx, trackX + 1, thumbY + 1, trackX + trackW - 1, thumbY + thumbH - 1,
+                         draggingScrollbar ? lighten(ACCENT, 0.25f) : ACCENT);
                 outlineRect(ctx, trackX + 1, thumbY + 1, trackW - 2, thumbH - 2, 0xFFFFFFFF);
+                // Centred grip dots so the thumb reads as draggable.
+                int gripCx = trackX + trackW / 2;
+                int gripCy = thumbY + thumbH / 2;
+                for (int i = -1; i <= 1; i++) {
+                    fillRect(ctx, gripCx - 1, gripCy + i * 3 - 1,
+                                  gripCx + 1, gripCy + i * 3 + 1, 0x40000000);
+                }
+            } else {
+                // No overflow → no scrollbar this frame.
+                scrollTrack[0] = scrollTrack[1] = scrollTrack[2] = scrollTrack[3] = 0;
             }
 
             if (lastInitError != null) {
