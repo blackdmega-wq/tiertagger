@@ -122,12 +122,27 @@ public class TierConfigScreen extends Screen {
      * The skin itself is fetched by mc-heads.net via {@link SkinFetcher},
      * which keys off the username — so swapping the name swaps the skin.
      */
-    private static final String PREVIEW_NAME_FALLBACK = "Outversal";
+    private static final String PREVIEW_NAME_FALLBACK = "MHF_Steve";
 
     private static String previewName() {
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc != null) {
+                // (1) Direct compile-time call to mc.getUser(). This is the
+                // most reliable source of the local player's username — it
+                // is set when the launcher hands MC its session, so it's
+                // present even from the title screen / before any world
+                // is joined. The previous reflection-by-name path failed
+                // silently in production builds because the method name
+                // is rewritten to intermediary at runtime.
+                try {
+                    if (mc.getUser() != null) {
+                        String n = mc.getUser().getName();
+                        if (n != null && !n.isBlank()) return n;
+                    }
+                } catch (Throwable ignored) {}
+                // (2) In-world player profile (also gives the correct name
+                // when the user has joined a server with an alt account).
                 if (mc.player != null && mc.player.getGameProfile() != null) {
                     String n = com.outertiers.tiertagger.fabric.compat.Profiles
                             .name(mc.player.getGameProfile());
@@ -139,16 +154,30 @@ public class TierConfigScreen extends Screen {
                         if (n != null && !n.isBlank()) return n;
                     } catch (Throwable ignored) {}
                 }
-                try {
-                    Object user = Minecraft.class.getMethod("getUser").invoke(mc);
-                    if (user != null) {
-                        String n = (String) user.getClass().getMethod("getName").invoke(user);
-                        if (n != null && !n.isBlank()) return n;
-                    }
-                } catch (Throwable ignored) {}
             }
         } catch (Throwable ignored) {}
         return PREVIEW_NAME_FALLBACK;
+    }
+
+    /**
+     * Returns the local player's live in-game skin texture id when
+     * {@code mc.player} is present, or {@code null} otherwise. Used by
+     * {@link #drawPreviewBody} so the live preview shows the player's
+     * CURRENT skin instantly (no mc-heads.net round-trip), and continues
+     * to work even when offline.
+     */
+    private static net.minecraft.resources.ResourceLocation localPlayerSkinTexture() {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc != null && mc.player != null) {
+                Object skin = mc.player.getSkin();
+                if (skin != null) {
+                    return (net.minecraft.resources.ResourceLocation)
+                            skin.getClass().getMethod("texture").invoke(skin);
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
     }
 
     /** Tracked so {@link #ensurePreviewData()} rebuilds when the local
@@ -193,9 +222,16 @@ public class TierConfigScreen extends Screen {
             java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
 
     /** ResourceLocation for the bundled OuterTiers logo PNG used in the header. */
-    private static final ResourceLocation OT_LOGO = ResourceLocation.fromNamespaceAndPath("tiertagger", "textures/logo/outertiers.png");
+    private static final ResourceLocation OT_LOGO       = ResourceLocation.fromNamespaceAndPath("tiertagger", "textures/logo/outertiers.png");
+    /** Brand icons bundled with the mod for the header link buttons. */
+    private static final ResourceLocation MODRINTH_ICON = ResourceLocation.fromNamespaceAndPath("tiertagger", "textures/links/modrinth.png");
+    private static final ResourceLocation DISCORD_ICON  = ResourceLocation.fromNamespaceAndPath("tiertagger", "textures/links/discord.png");
+    /** Linktree button uses the Outversal Minecraft head as its icon (per the
+     *  user's request — they wanted the Outversal-head graphic to live on the
+     *  Linktree button instead of a generic Linktree mark). */
+    private static final ResourceLocation LINKTREE_ICON = ResourceLocation.fromNamespaceAndPath("tiertagger", "textures/links/outversal.png");
 
-    /** Brand colours for the three link buttons. */
+    /** Brand colours for the four link buttons. */
     private static final int DISCORD_BLURPLE = 0xFF5865F2;
     private static final int OT_BRAND        = 0xFF1A1F28;
     private static final int LINKTREE_GREEN  = 0xFF43E660;
@@ -331,10 +367,10 @@ public class TierConfigScreen extends Screen {
         // Right-to-left: Linktree, OuterTiers, Discord (so reading order is
         // Discord → OuterTiers → Linktree, left to right).
         Object[][] specs = new Object[][] {
-            { "https://discord.gg/6eAaPqg4up",     DISCORD_BLURPLE, "D", null },
-            { "https://outertiers.onrender.com/",  OT_BRAND,        "O", OT_LOGO },
-            { "https://linktr.ee/Outversal",       LINKTREE_GREEN,  "L", null },
-            { "https://modrinth.com/mod/tiertagger", MODRINTH_GREEN, "M", null },
+            { "https://discord.gg/6eAaPqg4up",       DISCORD_BLURPLE, "D", DISCORD_ICON  },
+            { "https://outertiers.onrender.com/",    OT_BRAND,        "O", OT_LOGO       },
+            { "https://linktr.ee/Outversal",         LINKTREE_GREEN,  "L", LINKTREE_ICON },
+            { "https://modrinth.com/mod/tiertagger", MODRINTH_GREEN,  "M", MODRINTH_ICON },
         };
 
         for (int i = specs.length - 1; i >= 0; i--) {
@@ -564,6 +600,11 @@ public class TierConfigScreen extends Screen {
         maxScroll = Math.max(0, contentH - viewH);
         if (scrollY > maxScroll) scrollY = maxScroll;
         scrollByTab[currentTab] = scrollY;
+
+        // Pinned ▲ / ▼ scroll arrow buttons (Tiers Config tab only). Added
+        // here — AFTER maxScroll is known — so they only appear when there
+        // is actually overflow to scroll through.
+        addScrollArrowButtons();
 
         // Hide & disable any scrollable widget whose y position has scrolled
         // outside the visible body area. Without this, scrolled-up widgets
@@ -1132,11 +1173,90 @@ public class TierConfigScreen extends Screen {
         // Outversal render (head, torso, arms, LEGS) fits inside the card
         // at a meaningful size. Scroll reservation widened to 13 rows so
         // the user can scroll all the way down to see the feet.
+        // ── "Jump to Skin Preview" shortcut button ──────────────────────
+        // The preview lives below the fold on most window sizes. Adding an
+        // explicit scroll-to button right above it (so the user sees it as
+        // soon as they reach this section) AND a pair of up/down arrow
+        // buttons (added in buildWidgets so they're always reachable) means
+        // they no longer have to figure out the mouse-wheel themselves.
+        rRef[0]++;
+        final int jumpY = rowY(rRef[0]);
+        safeAdd("jumpToPreview", () -> {
+            AbstractWidget w = Button.builder(
+                    Component.literal("\u25BC  Jump to Skin Preview"),
+                    b -> jumpToPreview())
+                .dimensions(rowX(), jumpY, rowW(), BTN_H)
+                .build();
+            addTipped(w, "Scroll down to the live nametag + skin preview.");
+        });
+        rRef[0]++;
+        rRef[0]++; // breathing room before preview
+
         previewX = rowX();
         previewY = rowY(rRef[0]);
         previewW = rowW();
         previewH = 280;
         rRef[0] += 13; // reserve scroll space for the taller preview
+    }
+
+    /** Scrolls the body so the live preview's TOP is visible just below the
+     *  body header (or as close as maxScroll allows). Wired to the
+     *  "Jump to Skin Preview" button and the down-arrow scroll button. */
+    private void jumpToPreview() {
+        if (previewW <= 0 || previewH <= 0) return;
+        // previewY already accounts for the current scrollY, so to bring
+        // the preview to bodyTop we need to advance scrollY by
+        // (previewY - bodyTop). Clamp to [0, maxScroll].
+        int target = scrollY + (previewY - bodyTop) - 4;
+        scrollY = Math.max(0, Math.min(maxScroll, target));
+        scrollByTab[currentTab] = scrollY;
+        rebuildKeepingScroll();
+    }
+
+    /** Adds the pinned ▲ / ▼ arrow buttons next to the scrollbar so users
+     *  who don't use a mouse wheel (or whose trackpad scroll feels off) can
+     *  click their way through the Tiers Config tab. Only attached when the
+     *  active tab is Tiers Config and there's actually overflow to scroll. */
+    private void addScrollArrowButtons() {
+        if (currentTab != 2) return;
+        if (maxScroll <= 0) return;
+
+        int totalW = BTN_W * 2 + BTN_GAP;
+        int panelW = Math.min(PANEL_W_MAX, this.width - 24);
+        panelW = Math.max(panelW, totalW + 24);
+        int panelX = (this.width - panelW) / 2;
+        int trackW = 6;
+        int trackX = panelX + panelW - trackW - 2;
+        int arrowSize = 16;
+        int arrowX = trackX - arrowSize - 4;
+
+        int upY   = bodyTop + 2;
+        int downY = bodyBottom - arrowSize - 2;
+
+        try {
+            Button up = Button.builder(Component.literal("\u25B2"), b -> scrollByPx(-120))
+                .dimensions(arrowX, upY, arrowSize, arrowSize).build();
+            this.addDrawableChild(up);
+            tip(up, "Scroll up");
+            pinnedWidgets.add(up);
+        } catch (Throwable ignored) {}
+        try {
+            Button down = Button.builder(Component.literal("\u25BC"), b -> scrollByPx(120))
+                .dimensions(arrowX, downY, arrowSize, arrowSize).build();
+            this.addDrawableChild(down);
+            tip(down, "Scroll down");
+            pinnedWidgets.add(down);
+        } catch (Throwable ignored) {}
+    }
+
+    /** Programmatic scroll used by the ▲ / ▼ arrow buttons. */
+    private void scrollByPx(int delta) {
+        int prev = scrollY;
+        scrollY = Math.max(0, Math.min(maxScroll, scrollY + delta));
+        if (scrollY != prev) {
+            scrollByTab[currentTab] = scrollY;
+            rebuildKeepingScroll();
+        }
     }
 
     /**
@@ -1497,6 +1617,18 @@ public class TierConfigScreen extends Screen {
                 return;
             } catch (Throwable ignored) {}
         }
+        // ── Local skin fallback (v1.21.11.50) ──────────────────────────────
+        // mc-heads.net hasn't responded yet (or the player is offline). If
+        // the local player exists, render a simplified head/body using the
+        // raw 64×64 skin texture pixels — guarantees the user sees THEIR
+        // own skin, not a fake placeholder, even with no network.
+        net.minecraft.resources.ResourceLocation localTex = localPlayerSkinTexture();
+        if (localTex != null) {
+            try {
+                drawLocalSkinFigure(ctx, localTex, x, y, boxW, boxH);
+                return;
+            } catch (Throwable ignored) {}
+        }
         // Loading placeholder — Steve-coloured head + torso + legs anchored
         // to the bottom so the layout matches the eventual real render.
         int cx = x + boxW / 2;
@@ -1518,6 +1650,52 @@ public class TierConfigScreen extends Screen {
         fillRect(ctx, cx + 6, torsoTop, cx + 9, torsoBot, 0xFFB78462);
         // Head
         fillRect(ctx, cx - 4, headTop,  cx + 4, headBot,  0xFFB78462);
+    }
+
+    /**
+     * Renders the local player's actual 64×64 skin texture as a stylised
+     * full-body figure (head front + hat overlay + torso + arms + legs)
+     * scaled to fit within the given box. UV coordinates are the standard
+     * Minecraft skin layout coordinates so this works for any skin.
+     *
+     * <p>Fit math: the natural figure is 16 px wide (incl. arms) by 32 px
+     * tall, ratio 1:2. We pick the largest integer pixel-multiplier that
+     * fits inside the slot so the result is crisp (never sub-pixel).
+     */
+    private void drawLocalSkinFigure(GuiGraphics ctx,
+                                     net.minecraft.resources.ResourceLocation tex,
+                                     int x, int y, int boxW, int boxH) {
+        int natW = 16, natH = 32;                // head row (8) + body+legs (24) — but we draw arms outside head row
+        // Maximum integer scale that fits both axes.
+        int s = Math.max(1, Math.min(boxW / natW, boxH / natH));
+        int figW = natW * s;
+        int figH = natH * s;
+        int ox = x + (boxW - figW) / 2;
+        int oy = y + (boxH - figH);              // anchor to bottom
+
+        // Head (8x8 face at UV 8,8 — drawn 8s wide, centred on body)
+        int headX = ox + 4 * s;
+        int headY = oy;
+        ctx.blit(tex, headX, headY, 8 * s, 8 * s, 8, 8, 8, 8, 64, 64);
+        // Hat overlay (UV 40,8)
+        ctx.blit(tex, headX, headY, 8 * s, 8 * s, 40, 8, 8, 8, 64, 64);
+
+        // Torso front (8x12 at UV 20,20)
+        int bodyX = ox + 4 * s;
+        int bodyY = oy + 8 * s;
+        ctx.blit(tex, bodyX, bodyY, 8 * s, 12 * s, 20, 20, 8, 12, 64, 64);
+
+        // Right arm (4x12 at UV 44,20) — to the player's right (our left)
+        ctx.blit(tex, ox, bodyY, 4 * s, 12 * s, 44, 20, 4, 12, 64, 64);
+        // Left arm (4x12 at UV 36,52) — falls back to right-arm UVs on
+        // legacy 32px-tall skins; modern 64px skins use the dedicated UV.
+        ctx.blit(tex, ox + 12 * s, bodyY, 4 * s, 12 * s, 36, 52, 4, 12, 64, 64);
+
+        // Right leg (4x12 at UV 4,20)
+        int legY = oy + 20 * s;
+        ctx.blit(tex, bodyX, legY, 4 * s, 12 * s, 4, 20, 4, 12, 64, 64);
+        // Left leg (4x12 at UV 20,52)
+        ctx.blit(tex, bodyX + 4 * s, legY, 4 * s, 12 * s, 20, 52, 4, 12, 64, 64);
     }
 
     private void rebuildKeepingScroll() {

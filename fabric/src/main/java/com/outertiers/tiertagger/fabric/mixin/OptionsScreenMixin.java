@@ -138,17 +138,55 @@ public abstract class OptionsScreenMixin extends Screen {
      * its visible text against any of the supplied substrings (case-insensitive).
      * Returns {@code null} if no candidate matches — safer than blowing up the
      * Options screen on locales / mods we didn't anticipate.
+     *
+     * <p>v1.21.11.50: now recurses into nested
+     * {@link net.minecraft.client.gui.ParentElement} containers AND scans
+     * the screen's private {@code drawables} list via reflection. The
+     * previous version walked only {@code this.children()} which, on some
+     * post-resize paths (e.g. minimise the window then press F11), missed
+     * the Credits / Done widgets — that's why the [TierTagger] button
+     * "teleported" to the bottom-left fallback after a fullscreen toggle.
      */
     private ButtonWidget findButtonByKey(String... needles) {
         if (needles == null || needles.length == 0) return null;
         List<String> needleList = new ArrayList<>();
         for (String n : needles) if (n != null && !n.isBlank()) needleList.add(n.toLowerCase(Locale.ROOT));
-        for (Element el : this.children()) {
-            if (!(el instanceof ButtonWidget btn)) continue;
+
+        java.util.List<ButtonWidget> all = new ArrayList<>();
+        java.util.IdentityHashMap<Object, Boolean> seen = new java.util.IdentityHashMap<>();
+
+        // (1) Recurse through this.children(); descend into ParentElements.
+        try { collectButtons(this.children(), all, seen, 0); } catch (Throwable ignored) {}
+
+        // (2) Scan the screen's private drawable / renderable lists via
+        //     reflection. Layout widgets added via addDrawable are present
+        //     here even when they're missing from children() during a resize.
+        try {
+            for (Class<?> c = this.getClass(); c != null; c = c.getSuperclass()) {
+                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                    if (!java.util.List.class.isAssignableFrom(f.getType())) continue;
+                    String fn = f.getName().toLowerCase(Locale.ROOT);
+                    if (!(fn.contains("drawable") || fn.contains("renderable"))) continue;
+                    f.setAccessible(true);
+                    Object val = f.get(this);
+                    if (val instanceof java.util.List<?> list) {
+                        for (Object o : list) {
+                            if (o instanceof ButtonWidget btn && !seen.containsKey(btn)) {
+                                seen.put(btn, Boolean.TRUE);
+                                all.add(btn);
+                            } else if (o instanceof net.minecraft.client.gui.ParentElement pe) {
+                                try { collectButtons(pe.children(), all, seen, 0); } catch (Throwable ignored) {}
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        for (ButtonWidget btn : all) {
             String label;
-            try {
-                label = btn.getMessage().getString();
-            } catch (Throwable t) { continue; }
+            try { label = btn.getMessage().getString(); }
+            catch (Throwable t) { continue; }
             if (label == null || label.isBlank()) continue;
             String lower = label.toLowerCase(Locale.ROOT);
             for (String needle : needleList) {
@@ -156,5 +194,20 @@ public abstract class OptionsScreenMixin extends Screen {
             }
         }
         return null;
+    }
+
+    private static void collectButtons(java.util.List<? extends Element> in,
+                                       java.util.List<ButtonWidget> out,
+                                       java.util.IdentityHashMap<Object, Boolean> seen,
+                                       int depth) {
+        if (in == null || depth > 6) return;
+        for (Element el : in) {
+            if (el == null || seen.containsKey(el)) continue;
+            seen.put(el, Boolean.TRUE);
+            if (el instanceof ButtonWidget btn) out.add(btn);
+            if (el instanceof net.minecraft.client.gui.ParentElement pe) {
+                try { collectButtons(pe.children(), out, seen, depth + 1); } catch (Throwable ignored) {}
+            }
+        }
     }
 }

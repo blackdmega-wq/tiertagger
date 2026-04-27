@@ -2,8 +2,13 @@ package com.outertiers.tiertagger.fabric;
 
 import com.outertiers.tiertagger.common.TierConfig;
 import com.outertiers.tiertagger.common.TierTaggerCore;
+import com.outertiers.tiertagger.common.UpdateChecker;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.text.Text;
 
 /**
  * Fabric client entrypoint. Each step is wrapped in its own try/catch so a
@@ -52,5 +57,37 @@ public class TierTaggerFabric implements ClientModInitializer {
         } catch (Throwable t) {
             TierTaggerCore.LOGGER.warn("[TierTagger] chat decorator register failed: {}", t.toString());
         }
+        try {
+            registerOutdatedVersionNotifier();
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.warn("[TierTagger] outdated-version notifier register failed: {}", t.toString());
+        }
+    }
+
+    /**
+     * Wires the {@link UpdateChecker} into the in-game chat: when the local
+     * player joins a world / server, we wait ~3 seconds (so the background
+     * Modrinth check has time to finish AND so we don't race with the
+     * server's own welcome messages) and then deliver a one-shot system
+     * message asking the user to update if they're on an outdated version.
+     */
+    private static void registerOutdatedVersionNotifier() {
+        final int[] countdown = { -1 };
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            countdown[0] = 60;
+        });
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (countdown[0] < 0) return;
+            countdown[0]--;
+            if (countdown[0] != 0) return;
+            try {
+                MinecraftClient mc = client;
+                if (mc == null || mc.player == null) return;
+                UpdateChecker.notifyPlayerIfOutdated(line ->
+                    mc.player.sendMessage(Text.literal(line), false));
+            } catch (Throwable t) {
+                TierTaggerCore.LOGGER.debug("[TierTagger] outdated-version chat send failed", t);
+            }
+        });
     }
 }

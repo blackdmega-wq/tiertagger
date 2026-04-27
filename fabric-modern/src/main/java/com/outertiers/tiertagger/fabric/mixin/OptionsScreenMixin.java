@@ -136,17 +136,56 @@ public abstract class OptionsScreenMixin extends Screen {
      * its visible text against any of the supplied substrings (case-insensitive).
      * Returns {@code null} if no candidate matches — safer than blowing up the
      * Options screen on locales / mods we didn't anticipate.
+     *
+     * <p>v1.21.11.50: This now recurses into nested
+     * {@link net.minecraft.client.gui.components.events.ContainerEventHandler}
+     * containers AND scans the screen's private {@code renderables} list via
+     * reflection. The previous version walked only {@code this.children()}
+     * which, on some HeaderAndFooterLayout post-resize paths (e.g. minimise
+     * the window then press F11), missed the Credits / Done widgets — that's
+     * why the [TierTagger] button "teleported" to the bottom-left fallback
+     * after a fullscreen toggle.
      */
     private Button findButtonByKey(String... needles) {
         if (needles == null || needles.length == 0) return null;
         List<String> needleList = new ArrayList<>();
         for (String n : needles) if (n != null && !n.isBlank()) needleList.add(n.toLowerCase(Locale.ROOT));
-        for (GuiEventListener el : this.children()) {
-            if (!(el instanceof Button btn)) continue;
+
+        java.util.List<Button> all = new ArrayList<>();
+        java.util.IdentityHashMap<Object, Boolean> seen = new java.util.IdentityHashMap<>();
+
+        // (1) Recurse through this.children(); descend into nested
+        //     ContainerEventHandlers (e.g. layout-managed groups).
+        try { collectButtons(this.children(), all, seen, 0); } catch (Throwable ignored) {}
+
+        // (2) Scan the screen's private `renderables` field via reflection.
+        //     Layout widgets added via addRenderableOnly are present here
+        //     even when they're missing from children() during a resize.
+        try {
+            for (Class<?> c = this.getClass(); c != null; c = c.getSuperclass()) {
+                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                    if (!java.util.List.class.isAssignableFrom(f.getType())) continue;
+                    if (!f.getName().toLowerCase(Locale.ROOT).contains("renderable")) continue;
+                    f.setAccessible(true);
+                    Object val = f.get(this);
+                    if (val instanceof java.util.List<?> list) {
+                        for (Object o : list) {
+                            if (o instanceof Button btn && !seen.containsKey(btn)) {
+                                seen.put(btn, Boolean.TRUE);
+                                all.add(btn);
+                            } else if (o instanceof net.minecraft.client.gui.components.events.ContainerEventHandler ceh) {
+                                try { collectButtons(ceh.children(), all, seen, 0); } catch (Throwable ignored) {}
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        for (Button btn : all) {
             String label;
-            try {
-                label = btn.getMessage().getString();
-            } catch (Throwable t) { continue; }
+            try { label = btn.getMessage().getString(); }
+            catch (Throwable t) { continue; }
             if (label == null || label.isBlank()) continue;
             String lower = label.toLowerCase(Locale.ROOT);
             for (String needle : needleList) {
@@ -154,5 +193,20 @@ public abstract class OptionsScreenMixin extends Screen {
             }
         }
         return null;
+    }
+
+    private static void collectButtons(java.util.List<? extends GuiEventListener> in,
+                                       java.util.List<Button> out,
+                                       java.util.IdentityHashMap<Object, Boolean> seen,
+                                       int depth) {
+        if (in == null || depth > 6) return;
+        for (GuiEventListener el : in) {
+            if (el == null || seen.containsKey(el)) continue;
+            seen.put(el, Boolean.TRUE);
+            if (el instanceof Button btn) out.add(btn);
+            if (el instanceof net.minecraft.client.gui.components.events.ContainerEventHandler ceh) {
+                try { collectButtons(ceh.children(), out, seen, depth + 1); } catch (Throwable ignored) {}
+            }
+        }
     }
 }

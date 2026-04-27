@@ -107,6 +107,46 @@ public final class UpdateChecker {
     }
 
     /**
+     * Per-process flag so the in-game "you're on an old version" chat
+     * message is only shown ONCE per launch (even if the player rejoins
+     * multiple worlds). Set by {@link #notifyPlayerIfOutdated(java.util.function.Consumer)}.
+     */
+    private static final java.util.concurrent.atomic.AtomicBoolean NOTIFIED =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
+     * Schedules a one-shot in-game chat notification asking the user to
+     * update, IF an outdated version was detected. The platform layer
+     * passes a {@code chatSink} that knows how to send a system message
+     * to the local player on the correct loader (Fabric / Forge / etc).
+     *
+     * <p>This is a no-op when the version check hasn't completed yet — it
+     * is safe (and recommended) to call this on every world join; the
+     * background check that started in {@link TierTaggerCore#init()} may
+     * still be in flight on the very first join, in which case the user
+     * just won't see the message that one time.
+     *
+     * <p>The message is plain {@code §<color>}-coded text so the platform
+     * layer can simply wrap it in a Component.literal — no JSON, no
+     * mappings concerns.
+     */
+    public static void notifyPlayerIfOutdated(java.util.function.Consumer<String> chatSink) {
+        if (chatSink == null) return;
+        if (!isOutdated()) return;
+        if (!NOTIFIED.compareAndSet(false, true)) return;
+        String latest  = LATEST_VERSION.get();
+        String current = TierTaggerCore.MOD_VERSION;
+        try {
+            chatSink.accept("\u00a7e[\u00a76TierTagger\u00a7e] \u00a7fYou are running v\u00a7e"
+                + current + "\u00a7f, but v\u00a7a" + latest + "\u00a7f is available!");
+            chatSink.accept("\u00a7e[\u00a76TierTagger\u00a7e] \u00a77Get the update at "
+                + "\u00a7bhttps://modrinth.com/mod/tiertagger");
+        } catch (Throwable t) {
+            TierTaggerCore.LOGGER.debug("[TierTagger] could not deliver outdated-version notice", t);
+        }
+    }
+
+    /**
      * Lex-compares two dot-separated numeric versions. Non-numeric segments
      * sort lexicographically. Returns &lt;0 if {@code a} is older than {@code b},
      * 0 if equal, &gt;0 if newer.
