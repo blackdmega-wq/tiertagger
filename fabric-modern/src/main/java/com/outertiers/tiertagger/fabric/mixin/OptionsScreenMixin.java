@@ -7,7 +7,6 @@ import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.OptionsScreen;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -22,19 +21,26 @@ import java.util.Locale;
  * Injects a "TierTagger" button into Minecraft's Options screen so the user
  * can open the mod settings directly from Options without needing Mod Menu.
  *
- * Placement: directly UNDER the vanilla "Credits & Attribution" button.
- * We scan the live widget tree at the end of {@code init()} to find the
- * Credits button by its localised text, compute the layout cell it
- * occupies, and:
- *   1. shift any widget visually below the Credits row (typically "Done")
- *      DOWN by one row so the new button has a clear slot,
- *   2. place the TierTagger button one row BELOW Credits with the same
- *      width / height — making it sit visually directly under the
- *      Credits & Attribution button, as the user requested.
+ * Placement strategy (v1.21.11.47 — F11/resize-safe rewrite):
+ *   We place the button RELATIVE to the Credits & Attribution button without
+ *   ever mutating the position of any vanilla widget. Earlier versions
+ *   shifted the Done button down by one row to make space, which interacted
+ *   badly with HeaderAndFooterLayout's footer-anchoring on window resize:
+ *   minimising the window then pressing F11 to fullscreen would re-init the
+ *   screen at the new size, the layout would re-anchor Done, and our shifted
+ *   reference would no longer match — visually the TierTagger button looked
+ *   like it had "teleported" to a random spot on the new layout.
  *
- * If we can't find the Credits anchor button (e.g. a future MC rework),
- * we silently fall back to the legacy bottom-left position so the mod
- * keeps working everywhere.
+ *   The new logic:
+ *     1. Find the Credits & Attribution button by its localised text.
+ *     2. Find the Done button (also by text) so we know where the footer
+ *        starts.
+ *     3. Pick a Y for the new button: ideally one row directly under
+ *        Credits, but if that would clash with Done (small / tiny window)
+ *        clamp it to just above Done so it never overlaps and never gets
+ *        clipped off-screen.
+ *   No vanilla widget is moved, so subsequent resizes (F11, window drag,
+ *   monitor swap) always produce the same correct placement.
  *
  * NOTE: This class extends Screen at compile time so that the `protected`
  * method addDrawableChild is reachable. At runtime Mixin merges the
@@ -67,18 +73,28 @@ public abstract class OptionsScreenMixin extends Screen {
                 int ch = credits.getHeight();
                 int rowH = ch + 4;
 
-                // Push anything visually BELOW the Credits row (typically
-                // "Done") down by one row so the new button can occupy
-                // the slot directly under Credits — that way TierTagger
-                // sits one row below Credits & Attribution, exactly where
-                // the user asked for it.
-                int rowYThreshold = credits.getY() + 1;
-                for (GuiEventListener el : new ArrayList<>(this.children())) {
-                    if (!(el instanceof AbstractWidget cw2)) continue;
-                    if (cw2 == credits) continue;
-                    if (cw2.getY() >= rowYThreshold) {
-                        cw2.setY(cw2.getY() + rowH);
-                    }
+                // Look up the Done button so we know where the footer starts
+                // and can avoid overlapping it. If we can't find it (modded
+                // / future MC), fall back to "just don't go off-screen".
+                Button done = findButtonByKey("done", "fertig", "ok", "schliessen");
+                int safeMaxY;
+                if (done != null && done != credits) {
+                    safeMaxY = done.getY() - rowH;
+                } else {
+                    safeMaxY = this.height - ch - 4;
+                }
+
+                // Ideal Y: one row directly under Credits.
+                int idealY = cy + rowH;
+                // Clamp so we never overlap Done / leave the screen.
+                int targetY = Math.min(idealY, safeMaxY);
+
+                // If even the clamped Y would put us above (or on top of)
+                // Credits — i.e. the window is so small there's literally
+                // no room — bail to the bottom-left fallback below so we
+                // don't draw on top of the Credits button itself.
+                if (targetY <= cy) {
+                    throw new IllegalStateException("no vertical room for TierTagger button under Credits");
                 }
 
                 this.addDrawableChild(
@@ -88,7 +104,7 @@ public abstract class OptionsScreenMixin extends Screen {
                             Minecraft mc = Minecraft.getInstance();
                             if (mc != null) mc.setScreen(new TierConfigScreen((Screen)(Object)this));
                         })
-                    .dimensions(cx, cy + rowH, cw, ch)
+                    .dimensions(cx, targetY, cw, ch)
                     .build()
                 );
                 return;

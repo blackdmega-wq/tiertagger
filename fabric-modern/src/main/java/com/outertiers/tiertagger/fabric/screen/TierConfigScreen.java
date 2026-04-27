@@ -161,6 +161,7 @@ public class TierConfigScreen extends Screen {
     private static final int DISCORD_BLURPLE = 0xFF5865F2;
     private static final int OT_BRAND        = 0xFF1A1F28;
     private static final int LINKTREE_GREEN  = 0xFF43E660;
+    private static final int MODRINTH_GREEN  = 0xFF1BD96A;
 
     public TierConfigScreen(Screen parent) {
         super(Component.literal("TierTagger \u2014 Settings"));
@@ -295,6 +296,7 @@ public class TierConfigScreen extends Screen {
             { "https://discord.gg/6eAaPqg4up",     DISCORD_BLURPLE, "D", null },
             { "https://outertiers.onrender.com/",  OT_BRAND,        "O", OT_LOGO },
             { "https://linktr.ee/Outversal",       LINKTREE_GREEN,  "L", null },
+            { "https://modrinth.com/mod/tiertagger", MODRINTH_GREEN, "M", null },
         };
 
         for (int i = specs.length - 1; i >= 0; i--) {
@@ -314,6 +316,7 @@ public class TierConfigScreen extends Screen {
                 this.addDrawableChild(btn);
                 String tipText = url.contains("discord")     ? "Join the Discord"
                                : url.contains("linktr")      ? "OuterTiers Linktree"
+                               : url.contains("modrinth")    ? "TierTagger on Modrinth"
                                : "Visit the OuterTiers website";
                 tip(btn, tipText + "\n" + url);
             } catch (Throwable t) {
