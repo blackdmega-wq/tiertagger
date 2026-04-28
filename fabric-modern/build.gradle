@@ -39,13 +39,38 @@ loom {
     noIntermediateMappings()
 }
 
+// (v1.21.11.58) Optional pre-stripped fabric-api jar override.
+// Loom 1.15's access-widener jar processor rejects the access widener
+// inside fabric-biome-api-v1 because that one bundled JIJ still tags its
+// AW header with the legacy "intermediary" namespace, which doesn't exist
+// in MC 26.1+ (game ships unobfuscated). The error looks like:
+//   Failed to process jar when running jar processor:
+//   fabric-loom:access-widener - Expected official namespace for access
+//   widener entry, found: intermediary in mod: fabric-biome-api-v1
+//
+// CI (.github/workflows/build-release.yml) downloads the umbrella
+// fabric-api jar, strips the offending biome JIJ entry from META-INF/jars,
+// and drops the cleaned jar at fabric-modern/libs/fabric-api-stripped.jar
+// BEFORE invoking gradle. When that file exists we prefer it over the
+// maven coordinate; locally (no stripped jar present) we fall back to
+// the umbrella jar — at the cost of build failure on MC 26.1+ until
+// upstream fabric-api fixes the AW namespace. fabric-biome-api-v1 is
+// not used anywhere in this mod (verified via grep on net.fabricmc
+// imports), so excising it is safe.
+def strippedFabricApi = file('libs/fabric-api-stripped.jar')
+
 dependencies {
     // Game is unobfuscated from 26.1+ — no `mappings`, no yarn, no intermediary.
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
 
     // No-remap plugin → plain `implementation` for mod deps.
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    if (strippedFabricApi.exists()) {
+        logger.lifecycle("[tiertagger] Using pre-stripped fabric-api jar: ${strippedFabricApi}")
+        implementation files(strippedFabricApi)
+    } else {
+        implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    }
 
     if (project.hasProperty('modmenu_version') && !project.modmenu_version.toString().isBlank()) {
         compileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"

@@ -712,14 +712,16 @@ public class TierConfigScreen extends Screen {
         // first entry guarantees the user sees the skin immediately —
         // the new draggable scrollbar (right edge) lets them scroll
         // back UP to read every option.
+        // (v1.21.11.58) Preview moved to TOP of the Tiers Config tab, so
+        // we now snap scroll to 0 (instead of maxScroll) on first entry —
+        // this guarantees the rendered skin + nametag are visible
+        // immediately, even if the user previously scrolled away in
+        // another session.
         if (currentTab == 2 && previewW > 0 && previewH > 0
-                && !autoScrolledForTab[currentTab] && maxScroll > 0) {
-            scrollY = maxScroll;
+                && !autoScrolledForTab[currentTab]) {
+            scrollY = 0;
             scrollByTab[currentTab] = scrollY;
             autoScrolledForTab[currentTab] = true;
-            // Re-clip widgets so freshly-revealed content is interactive.
-            // Skip a full rebuild — the layout is already correct, only
-            // the visibility predicate changes with the new scrollY.
         }
 
         // v1.21.11.52: removed the pinned ▲ / ▼ arrow buttons. The new
@@ -1088,6 +1090,20 @@ public class TierConfigScreen extends Screen {
         }
         final int[] rRef = { 0 };
 
+        // ── Live nametag preview (v1.21.11.58 — moved to TOP) ─────────────
+        // The preview now sits as the very first item on the Tiers Config
+        // tab so the rendered skin and floating nametag are immediately
+        // visible the moment the user opens the tab — no scrolling, no
+        // auto-scroll dance. All toggles below this block re-build through
+        // rebuildKeepingScroll(), so the preview still updates live as
+        // the user changes badge format / colour / icon settings.
+        previewX = rowX();
+        previewY = rowY(rRef[0]);
+        previewW = rowW();
+        previewH = 110;
+        rRef[0] += 7; // 7-row reservation matching previewH = 110px
+        rRef[0]++;    // breathing room before Row 1
+
         // ── Row 1: Disable Tiers (full width) ─────────────────────────────
         final int row1y = rowY(rRef[0]);
         safeAdd("disableTiers", () -> {
@@ -1291,37 +1307,9 @@ public class TierConfigScreen extends Screen {
         rRef[0]++;
         rRef[0]++; // breathing room before preview
 
-        // ── Live nametag preview (v1.21.11.45) ────────────────────────────
-        // Anchored below "Advanced Settings". Re-renders on every settings
-        // change because rebuildKeepingScroll() runs at the end of every
-        // toggle handler — so the badge format, brackets, icon position,
-        // service colours etc. all update in real time.
-        // v1.21.11.45: previewH bumped from 170 → 280 so the full-body
-        // Outversal render (head, torso, arms, LEGS) fits inside the card
-        // at a meaningful size. Scroll reservation widened to 13 rows so
-        // the user can scroll all the way down to see the feet.
-        // v1.21.11.52: removed the "▼  Jump to Skin Preview" button. The
-        // user reported that clicking it didn't actually move the page
-        // (it called rebuildKeepingScroll() which restored the OLD scroll
-        // position right after jumpToPreview() set the new one — a self-
-        // cancelling pair of operations). The replacement is the
-        // draggable scrollbar (right edge of the panel) plus the auto-
-        // scroll on first open so the preview is reachable without ever
-        // needing this shortcut.
-        rRef[0]++; // breathing room before preview
-
-        previewX = rowX();
-        previewY = rowY(rRef[0]);
-        previewW = rowW();
-        // (v1.21.11.56) previewH bumped back up so the FULL body — head,
-        // torso, arms AND legs — is visible inside the preview slot. The
-        // scroll headroom (rRef bump) was simultaneously increased so the
-        // entire preview rect stays scrollable above the bottom action
-        // row instead of being clipped under it. Previously the bottom of
-        // the preview fell below `bodyBottom` and the user only saw a
-        // floating head with no body beneath the live nametag.
-        previewH = 110;
-        rRef[0] += 7;
+        // (v1.21.11.58) The Live nametag preview was moved to the TOP of
+        // this tab so the rendered skin + nametag are visible immediately
+        // when the user enters the tab — no scrolling required.
     }
 
     /** Scrolls the body so the live preview's TOP is visible just below the
@@ -1421,6 +1409,18 @@ public class TierConfigScreen extends Screen {
             addTipped(w, "Return to the main Tiers Config screen.");
         });
         rRef[0]++;
+
+        // ── Live nametag preview (v1.21.11.58 — moved to TOP) ─────────────
+        // Same rationale as the main Tiers Config tab: keep the rendered
+        // skin + nametag pinned at the top so the user always sees the
+        // effect of every routing change immediately, no scrolling needed.
+        previewX = rowX();
+        previewY = rowY(rRef[0]);
+        previewW = rowW();
+        previewH = 110;
+        rRef[0] += 7;
+        rRef[0]++; // breathing room before the routing rows
+
 
         addSectionHeader(rRef[0], "\u2014 Badge Assignment (Left \u2260 Right) \u2014");
         rRef[0]++;
@@ -1522,20 +1522,9 @@ public class TierConfigScreen extends Screen {
             });
         }
 
-        // ── Live nametag preview (v1.21.11.45) ────────────────────────────
-        // Anchored below the SubTiers / services list inside the Advanced
-        // Settings sub-screen. Updates in real time when the user clicks
-        // [←] / [→] on any row because each handler calls
-        // rebuildKeepingScroll() which re-runs this builder.
-        // v1.21.11.45: matches the main tab — taller box + more scroll
-        // room so the full Outversal body is visible head-to-toe.
-        rRef[0]++; // breathing room
-        previewX = rowX();
-        previewY = rowY(rRef[0]);
-        previewW = rowW();
-        // (v1.21.11.56) Same full-body preview sizing as the main tab.
-        previewH = 110;
-        rRef[0] += 7;
+        // (v1.21.11.58) The Live nametag preview was moved to the TOP of
+        // this Advanced Settings sub-screen so the rendered skin + badge
+        // are always visible while the user toggles per-service routing.
     }
 
     /**

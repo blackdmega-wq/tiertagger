@@ -138,6 +138,40 @@ jobs:
           fi
           chmod +x ./gradlew
 
+      # (v1.21.11.58) Strip fabric-biome-api-v1 from the umbrella fabric-api
+      # JIJ entries before invoking gradle. Loom 1.15's access-widener jar
+      # processor rejects fabric-biome-api-v1 because that one bundled JIJ
+      # still tags its AW header with the legacy "intermediary" namespace,
+      # which doesn't exist in MC 26.1+ (game ships unobfuscated). Without
+      # this step the build dies with:
+      #   Failed to setup Minecraft, java.io.IOException: Failed to process
+      #   jar when running jar processor: fabric-loom:access-widener -
+      #   Expected official namespace for access widener entry, found:
+      #   intermediary in mod: fabric-biome-api-v1
+      # The stripped jar is dropped at fabric-modern/libs/fabric-api-stripped.jar
+      # and fabric-modern/build.gradle prefers it over the maven coordinate
+      # whenever it's present. fabric-biome-api-v1 is unused in this mod.
+      - name: Strip fabric-biome-api-v1 JIJ from fabric-api (MC 26.1+ workaround)
+        if: matrix.module == 'fabric-modern'
+        run: |
+          set -euo pipefail
+          mkdir -p fabric-modern/libs
+          URL="https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${{ matrix.fabric_api }}/fabric-api-${{ matrix.fabric_api }}.jar"
+          echo "Downloading fabric-api from $URL"
+          curl -fL "$URL" -o fabric-modern/libs/fabric-api-stripped.jar
+          echo "Original JIJ entries:"
+          unzip -l fabric-modern/libs/fabric-api-stripped.jar | grep -E 'META-INF/jars/fabric-biome' || true
+          # `zip -d` returns 12 (nothing to do) when no entry matches —
+          # tolerate that so future fabric-api releases that already ship
+          # without the offending module don't fail this step.
+          (cd fabric-modern/libs && zip -d fabric-api-stripped.jar 'META-INF/jars/fabric-biome-api-v1-*.jar') || rc=$?; rc=${rc:-0}
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 12 ]; then
+            echo "zip -d failed with unexpected exit code $rc"
+            exit "$rc"
+          fi
+          echo "Stripped JIJ entries (should be empty):"
+          unzip -l fabric-modern/libs/fabric-api-stripped.jar | grep -E 'META-INF/jars/fabric-biome' || echo "  (none — stripping succeeded)"
+
       - name: Build Fabric JAR
         id: build_fabric
         continue-on-error: ${{ matrix.experimental == true }}

@@ -305,30 +305,22 @@ public class TierCompareScreen extends Screen {
                 Text.literal(dA == null ? "loading\u2026" : "no tiers").withColor(rgb(FG_FAINT)),
                 leftTextX, y + 24, FG_FAINT);
         }
-        // Peak tier + OuterTiers rank for player A (v1.21.11.57).
-        Ranking peakA = peakOverall(dA);
-        TierService peakSvcA = peakOverallSvc(dA);
-        if (peakA != null) {
-            int pArgb = TierTaggerCore.argbFor(peakA.peakLabel());
-            MutableText pt = Text.literal("Peak ").withColor(rgb(FG_FAINT))
-                .append(Text.literal(peakA.peakLabel()).withColor(rgb(pArgb))
-                    .copy().formatted(Formatting.BOLD))
-                .append(Text.literal(peakSvcA == null ? "" : (" / " + peakSvcA.shortLabel))
-                    .withColor(rgb(FG_FAINT)));
-            ctx.drawTextWithShadow(this.textRenderer, pt, leftTextX, y + 38, FG_TEXT);
-        }
+        // OuterTiers rank for player A (v1.21.11.58 — peak moved into the
+        // per-mode rows below as "▲HT3" next to each gamemode's current
+        // tier, so the header stays compact and lined up with the
+        // opposite player's header.)
         ServiceData otSdA = dA == null ? null : dA.get(TierService.OUTERTIERS);
         if (otSdA != null && otSdA.overall > 0) {
             MutableText ot = Text.literal("OT ").withColor(rgb(FG_FAINT))
                 .append(Text.literal("#" + otSdA.overall)
                     .withColor(rgb(TierService.OUTERTIERS.accentArgb))
                     .copy().formatted(Formatting.BOLD));
-            ctx.drawTextWithShadow(this.textRenderer, ot, leftTextX, y + 50, FG_TEXT);
+            ctx.drawTextWithShadow(this.textRenderer, ot, leftTextX, y + 38, FG_TEXT);
         }
         // Per-player loaded count
         ctx.drawTextWithShadow(this.textRenderer,
             Text.literal(loadedCount(dA)).withColor(rgb(FG_FAINT)),
-            leftTextX, y + 62, FG_FAINT);
+            leftTextX, y + 50, FG_FAINT);
 
         // ── Right side text block (right-aligned, with extra gap from body) ──
         int rightTextRight = rightHeadX - RIGHT_NAME_GAP;
@@ -352,19 +344,10 @@ public class TierCompareScreen extends Screen {
             ctx.drawTextWithShadow(this.textRenderer,
                 Text.literal(s).withColor(rgb(FG_FAINT)), rightTextRight - sw, y + 24, FG_FAINT);
         }
-        // Peak tier + OuterTiers rank for player B (v1.21.11.57).
-        Ranking peakB = peakOverall(dB);
-        TierService peakSvcB = peakOverallSvc(dB);
-        if (peakB != null) {
-            int pArgb = TierTaggerCore.argbFor(peakB.peakLabel());
-            MutableText pt = Text.literal("Peak ").withColor(rgb(FG_FAINT))
-                .append(Text.literal(peakB.peakLabel()).withColor(rgb(pArgb))
-                    .copy().formatted(Formatting.BOLD))
-                .append(Text.literal(peakSvcB == null ? "" : (" / " + peakSvcB.shortLabel))
-                    .withColor(rgb(FG_FAINT)));
-            int wpt = this.textRenderer.getWidth(pt);
-            ctx.drawTextWithShadow(this.textRenderer, pt, rightTextRight - wpt, y + 38, FG_TEXT);
-        }
+        // OuterTiers rank for player B (v1.21.11.58 — peak moved into the
+        // per-mode rows below as "▲HT3" next to each gamemode's current
+        // tier, so the header stays compact and lined up with the
+        // opposite player's header.)
         ServiceData otSdB = dB == null ? null : dB.get(TierService.OUTERTIERS);
         if (otSdB != null && otSdB.overall > 0) {
             MutableText ot = Text.literal("OT ").withColor(rgb(FG_FAINT))
@@ -372,12 +355,12 @@ public class TierCompareScreen extends Screen {
                     .withColor(rgb(TierService.OUTERTIERS.accentArgb))
                     .copy().formatted(Formatting.BOLD));
             int wot = this.textRenderer.getWidth(ot);
-            ctx.drawTextWithShadow(this.textRenderer, ot, rightTextRight - wot, y + 50, FG_TEXT);
+            ctx.drawTextWithShadow(this.textRenderer, ot, rightTextRight - wot, y + 38, FG_TEXT);
         }
         String lc = loadedCount(dB);
         int lcw = this.textRenderer.getWidth(lc);
         ctx.drawTextWithShadow(this.textRenderer,
-            Text.literal(lc).withColor(rgb(FG_FAINT)), rightTextRight - lcw, y + 62, FG_FAINT);
+            Text.literal(lc).withColor(rgb(FG_FAINT)), rightTextRight - lcw, y + 50, FG_FAINT);
 
         // ── Centred OuterTiers logo (replaces the old "vs" pill) ──
         // The logo PNG is bundled at assets/tiertagger/textures/logo/outertiers.png
@@ -410,10 +393,21 @@ public class TierCompareScreen extends Screen {
         fillRect(ctx, logoX, logoY, logoX + logoBox, logoY + logoBox, 0x33000000);
         try {
             Identifier logo = Identifier.of("tiertagger", "textures/logo/outertiers.png");
-            int inset = 2;
+            int inset    = 2;
+            int drawSize = logoBox - inset * 2;
+            // v1.21.11.58 fix: the previous call passed texW/texH = 512 to
+            // {@link Compat#drawTexture}, which uses the 9-arg
+            // {@code DrawContext.drawTexture(Identifier, x, y, u, v, w, h, texW, texH)}
+            // overload. That overload samples a {@code w × h} pixel rect at
+            // {@code (u, v)} from a virtual {@code texW × texH} canvas, so
+            // (u=0, v=0, w=60, h=60, texW=512, texH=512) draws ONLY the
+            // top-left 60×60 pixels of the 512×512 source — almost entirely
+            // transparent on the OuterTiers logo, so the gold halo appeared
+            // empty. Mirroring drawSize into texW/texH (as every other site
+            // in this codebase does) maps the full texture into the slot.
             Compat.drawTexture(ctx, logo,
                 logoX + inset, logoY + inset, 0, 0,
-                logoBox - inset * 2, logoBox - inset * 2, 512, 512);
+                drawSize, drawSize, drawSize, drawSize);
         } catch (Throwable ignored) {
             // Fall back to the old "vs" pill if for some reason the logo
             // texture can't be drawn — keeps the UI usable.
