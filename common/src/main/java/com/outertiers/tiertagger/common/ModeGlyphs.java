@@ -21,6 +21,15 @@ public final class ModeGlyphs {
     public static final String FONT_NAMESPACE = "tiertagger";
     public static final String FONT_PATH      = "icons";
 
+    /**
+     * Identifier path of the OuterTiers-specific bitmap font (v1.21.11.57).
+     * Same Private-Use-Area codepoints as the shared {@link #FONT_PATH} font,
+     * but the underlying bitmap glyphs point at the official outertiers.com
+     * gamemode artwork (textures/icons/outertiers/*.png) so OT badges in the
+     * tab list and above nametags use the per-service art the user requested.
+     */
+    public static final String FONT_PATH_OUTERTIERS = "icons_outertiers";
+
     private static final Map<String, String> GLYPHS = new HashMap<>();
 
     static {

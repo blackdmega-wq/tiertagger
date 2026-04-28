@@ -25,6 +25,15 @@ public final class BadgeRenderer {
 
     private static final ResourceLocation ICON_FONT =
         ResourceLocation.fromNamespaceAndPath(ModeGlyphs.FONT_NAMESPACE, ModeGlyphs.FONT_PATH);
+    /**
+     * OuterTiers-specific bitmap font (v1.21.11.57). Mirrors {@link #ICON_FONT}
+     * but its glyphs point at textures/icons/outertiers/*.png so OuterTiers
+     * tab/nametag badges show the official OT website artwork instead of the
+     * generic shared icons. Selected by {@link #applyIconFont(Style, TierService)}
+     * when the badge belongs to {@link TierService#OUTERTIERS}.
+     */
+    private static final ResourceLocation ICON_FONT_OUTERTIERS =
+        ResourceLocation.fromNamespaceAndPath(ModeGlyphs.FONT_NAMESPACE, ModeGlyphs.FONT_PATH_OUTERTIERS);
 
     /**
      * Reflectively-resolved {@code Style.withFont} setter.
@@ -174,6 +183,8 @@ public final class BadgeRenderer {
     private static final class ModernFontSourceHolder {
         static final net.minecraft.network.chat.contents.StyleSpriteSource SOURCE =
                 new net.minecraft.network.chat.contents.StyleSpriteSource.Font(ICON_FONT);
+        static final net.minecraft.network.chat.contents.StyleSpriteSource SOURCE_OT =
+                new net.minecraft.network.chat.contents.StyleSpriteSource.Font(ICON_FONT_OUTERTIERS);
         static final Class<?> SOURCE_TYPE = net.minecraft.network.chat.contents.StyleSpriteSource.class;
     }
 
@@ -189,37 +200,57 @@ public final class BadgeRenderer {
      * versions that don't have this overload; callers catch {@link Throwable}.
      */
     private static final class FontApplyHolder {
-        static Style apply(Style base) {
-            return base.withFont(ModernFontSourceHolder.SOURCE);
+        static Style apply(Style base, boolean outerTiers) {
+            return base.withFont(outerTiers
+                    ? ModernFontSourceHolder.SOURCE_OT
+                    : ModernFontSourceHolder.SOURCE);
         }
     }
 
-    private static Style applyIconFont(Style base) {
+    /**
+     * v1.21.11.57: applies the icon font to {@code base}, picking the
+     * OuterTiers-specific font when {@code svc == OUTERTIERS} so OT badges
+     * use the official OT artwork bundled at textures/icons/outertiers/.
+     */
+    private static Style applyIconFont(Style base, TierService svc) {
+        boolean outerTiers = svc == TierService.OUTERTIERS;
+        ResourceLocation fontId = outerTiers ? ICON_FONT_OUTERTIERS : ICON_FONT;
+
         // PRIMARY: direct compile-time call (1.21.5+). Loom remaps
         // Style.withFont and StyleSpriteSource to intermediary at build time.
         // The previous reflection paths used string name "withFont" which
         // doesn't exist in production (only intermediary names do).
         try {
-            return FontApplyHolder.apply(base);
+            return FontApplyHolder.apply(base, outerTiers);
         } catch (Throwable ignored) {}
 
         // FALLBACK: reflection-based (development / older MC versions).
         try {
             if (WITH_FONT_WRAPPED != null && WRAPPED_FONT_INSTANCE != null) {
-                return (Style) WITH_FONT_WRAPPED.invoke(base, WRAPPED_FONT_INSTANCE);
+                if (!outerTiers) {
+                    return (Style) WITH_FONT_WRAPPED.invoke(base, WRAPPED_FONT_INSTANCE);
+                }
             }
             if (WITH_FONT_IDENTIFIER != null) {
-                return (Style) WITH_FONT_IDENTIFIER.invoke(base, ICON_FONT);
+                return (Style) WITH_FONT_IDENTIFIER.invoke(base, fontId);
             }
             if (WITH_FONT_OPTIONAL != null) {
-                return (Style) WITH_FONT_OPTIONAL.invoke(base, java.util.Optional.of(ICON_FONT));
+                return (Style) WITH_FONT_OPTIONAL.invoke(base, java.util.Optional.of(fontId));
+            }
+            if (WITH_FONT_WRAPPED != null && WRAPPED_FONT_INSTANCE != null) {
+                return (Style) WITH_FONT_WRAPPED.invoke(base, WRAPPED_FONT_INSTANCE);
             }
         } catch (Throwable ignored) {}
         return base;
     }
 
-    /** Build a single inline glyph styled with the icon font, or empty if missing/disabled. */
-    private static MutableComponent glyph(String mode) {
+    /**
+     * Build a single inline glyph styled with the icon font, or empty if
+     * missing/disabled. v1.21.11.57: takes the badge's owning {@link TierService}
+     * so OuterTiers badges render the OT-specific bitmap font (the official
+     * outertiers.com art) while every other service keeps the shared font.
+     */
+    private static MutableComponent glyph(TierService svc, String mode) {
         if (mode == null) return Component.empty();
         TierConfig cfg = TierTaggerCore.config();
         if (cfg != null && cfg.disableIcons) return Component.empty();
@@ -237,7 +268,7 @@ public final class BadgeRenderer {
             // never inherits bold from a parent text node — without this the
             // LEFT badge inherited bold from the bold svcLabel parent and the
             // gamemode icon visually appeared DOUBLED on the left badge.
-            Style s = applyIconFont(Style.EMPTY)
+            Style s = applyIconFont(Style.EMPTY, svc)
                     .withColor(0xFFFFFF)
                     .withBold(false)
                     .withItalic(false);
@@ -276,7 +307,7 @@ public final class BadgeRenderer {
             : 0xAAAAAA;
         Style tierStyle = Style.EMPTY.withColor(tierRgb).withBold(true);
 
-        MutableComponent icon = glyph(mode);
+        MutableComponent icon = glyph(svc, mode);
         boolean hasIcon = icon != Component.empty()
             && icon.getString() != null && !icon.getString().isEmpty();
 

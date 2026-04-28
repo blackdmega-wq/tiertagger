@@ -299,6 +299,46 @@ public class TierProfileScreen extends Screen {
             Text.literal(sub).withColor(rgb(subColor)),
             textX, textY + 14, opaque(subColor));
 
+        // ── Peak tier + OuterTiers rank (v1.21.11.57) ────────────────────
+        // Surface the player's all-time-best tier (across every service)
+        // and their OuterTiers leaderboard position so /tiertagger search
+        // shows the same headline numbers the website does.
+        if (opt.isPresent()) {
+            // Peak tier (strongest peak across every service / mode).
+            Ranking peakBest = null;
+            TierService peakSvc = null;
+            for (TierService s : TierService.values()) {
+                Ranking r = opt.get().get(s).peak();
+                if (r == null) continue;
+                int rs = (6 - r.peakLevel) * 2 - (r.peakHigh ? 0 : 1);
+                int bs = peakBest == null ? -1
+                       : (6 - peakBest.peakLevel) * 2 - (peakBest.peakHigh ? 0 : 1);
+                if (rs > bs) { peakBest = r; peakSvc = s; }
+            }
+            if (peakBest != null) {
+                int peakArgb = TierTaggerCore.argbFor(peakBest.peakLabel());
+                MutableText peakLine = Text.literal("Peak: ").withColor(rgb(FG_FAINT))
+                    .append(Text.literal(peakBest.peakLabel())
+                        .withColor(rgb(peakArgb)).copy().formatted(Formatting.BOLD));
+                if (peakSvc != null) {
+                    peakLine.append(Text.literal(" on " + peakSvc.shortLabel)
+                        .withColor(rgb(FG_FAINT)));
+                }
+                ctx.drawTextWithShadow(this.textRenderer, peakLine,
+                    textX, textY + 28, FG_TEXT);
+            }
+            // OuterTiers leaderboard rank (#822, #8292, …)
+            ServiceData otSd = opt.get().get(TierService.OUTERTIERS);
+            if (otSd != null && otSd.overall > 0) {
+                MutableText rankLine = Text.literal("OT rank: ").withColor(rgb(FG_FAINT))
+                    .append(Text.literal("#" + otSd.overall)
+                        .withColor(rgb(TierService.OUTERTIERS.accentArgb))
+                        .copy().formatted(Formatting.BOLD));
+                ctx.drawTextWithShadow(this.textRenderer, rankLine,
+                    textX, textY + 42, FG_TEXT);
+            }
+        }
+
         if (opt.isPresent()) {
             int ranked = 0, loaded = 0;
             for (TierService s : TierService.values()) {

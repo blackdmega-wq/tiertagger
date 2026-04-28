@@ -1190,8 +1190,8 @@ public class TierConfigScreen extends Screen {
         // row instead of being clipped under it. Previously the bottom of
         // the preview fell below `bodyBottom` and the user only saw a
         // floating head with no body beneath the live nametag.
-        previewH = 240;
-        rRef[0] += 12;
+        previewH = 110;
+        rRef[0] += 7;
     }
 
     // (v1.21.11.52) jumpToPreview(), addScrollArrowButtons(), scrollByPx()
@@ -1349,8 +1349,8 @@ public class TierConfigScreen extends Screen {
         previewY = rowY(rRef[0]);
         previewW = rowW();
         // (v1.21.11.56) Same full-body preview sizing as the main tab.
-        previewH = 240;
-        rRef[0] += 13;
+        previewH = 110;
+        rRef[0] += 7;
     }
 
     /**

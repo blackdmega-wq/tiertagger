@@ -285,6 +285,44 @@ public class TierProfileScreen extends Screen {
             Component.literal(sub).withColor(rgb(subColor)),
             textX, textY + 14, opaque(subColor));
 
+        // ── Peak tier + OuterTiers rank (v1.21.11.57) ────────────────────
+        // Surface the player's all-time-best tier (across every service)
+        // and their OuterTiers leaderboard position so /tiertagger search
+        // shows the same headline numbers the website does.
+        if (opt.isPresent()) {
+            Ranking peakBest = null;
+            TierService peakSvc = null;
+            for (TierService s : TierService.values()) {
+                Ranking r = opt.get().get(s).peak();
+                if (r == null) continue;
+                int rs = (6 - r.peakLevel) * 2 - (r.peakHigh ? 0 : 1);
+                int bs = peakBest == null ? -1
+                       : (6 - peakBest.peakLevel) * 2 - (peakBest.peakHigh ? 0 : 1);
+                if (rs > bs) { peakBest = r; peakSvc = s; }
+            }
+            if (peakBest != null) {
+                int peakArgb = TierTaggerCore.argbFor(peakBest.peakLabel());
+                MutableComponent peakLine = Component.literal("Peak: ").withColor(rgb(FG_FAINT))
+                    .append(Component.literal(peakBest.peakLabel())
+                        .withColor(rgb(peakArgb)).copy().withStyle(ChatFormatting.BOLD));
+                if (peakSvc != null) {
+                    peakLine.append(Component.literal(" on " + peakSvc.shortLabel)
+                        .withColor(rgb(FG_FAINT)));
+                }
+                ctx.drawString(this.textRenderer, peakLine,
+                    textX, textY + 28, FG_TEXT, true);
+            }
+            ServiceData otSd = opt.get().get(TierService.OUTERTIERS);
+            if (otSd != null && otSd.overall > 0) {
+                MutableComponent rankLine = Component.literal("OT rank: ").withColor(rgb(FG_FAINT))
+                    .append(Component.literal("#" + otSd.overall)
+                        .withColor(rgb(TierService.OUTERTIERS.accentArgb))
+                        .copy().withStyle(ChatFormatting.BOLD));
+                ctx.drawString(this.textRenderer, rankLine,
+                    textX, textY + 42, FG_TEXT, true);
+            }
+        }
+
         if (opt.isPresent()) {
             int ranked = 0, loaded = 0;
             for (TierService s : TierService.values()) {

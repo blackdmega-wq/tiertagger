@@ -51,6 +51,30 @@ public final class ServiceData {
         return r == null ? "" : r.label();
     }
 
+    /**
+     * Returns the strongest peak tier across every mode, or {@code null} if
+     * the player has no recorded peak on this service. Used by the search /
+     * compare screens to surface the player's all-time-best tier even when
+     * their current tier has dropped (v1.21.11.57).
+     */
+    public Ranking peak() {
+        Ranking best = null;
+        for (Ranking r : rankings.values()) {
+            if (r == null || r.peakLevel <= 0) continue;
+            if (best == null) { best = r; continue; }
+            int curScore  = (6 - best.peakLevel) * 2 - (best.peakHigh ? 0 : 1);
+            int thisScore = (6 - r.peakLevel)    * 2 - (r.peakHigh    ? 0 : 1);
+            if (thisScore > curScore) best = r;
+        }
+        return best;
+    }
+
+    /** Returns "HT2" / "LT3" for the strongest peak across modes, or "" if none. */
+    public String peakLabel() {
+        Ranking r = peak();
+        return r == null ? "" : r.peakLabel();
+    }
+
     /** Number of modes the player is actually ranked in. */
     public int rankedCount() {
         int n = 0;

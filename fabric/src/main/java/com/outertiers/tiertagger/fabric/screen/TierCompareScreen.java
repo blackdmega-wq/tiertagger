@@ -305,10 +305,30 @@ public class TierCompareScreen extends Screen {
                 Text.literal(dA == null ? "loading\u2026" : "no tiers").withColor(rgb(FG_FAINT)),
                 leftTextX, y + 24, FG_FAINT);
         }
+        // Peak tier + OuterTiers rank for player A (v1.21.11.57).
+        Ranking peakA = peakOverall(dA);
+        TierService peakSvcA = peakOverallSvc(dA);
+        if (peakA != null) {
+            int pArgb = TierTaggerCore.argbFor(peakA.peakLabel());
+            MutableText pt = Text.literal("Peak ").withColor(rgb(FG_FAINT))
+                .append(Text.literal(peakA.peakLabel()).withColor(rgb(pArgb))
+                    .copy().formatted(Formatting.BOLD))
+                .append(Text.literal(peakSvcA == null ? "" : (" / " + peakSvcA.shortLabel))
+                    .withColor(rgb(FG_FAINT)));
+            ctx.drawTextWithShadow(this.textRenderer, pt, leftTextX, y + 38, FG_TEXT);
+        }
+        ServiceData otSdA = dA == null ? null : dA.get(TierService.OUTERTIERS);
+        if (otSdA != null && otSdA.overall > 0) {
+            MutableText ot = Text.literal("OT ").withColor(rgb(FG_FAINT))
+                .append(Text.literal("#" + otSdA.overall)
+                    .withColor(rgb(TierService.OUTERTIERS.accentArgb))
+                    .copy().formatted(Formatting.BOLD));
+            ctx.drawTextWithShadow(this.textRenderer, ot, leftTextX, y + 50, FG_TEXT);
+        }
         // Per-player loaded count
         ctx.drawTextWithShadow(this.textRenderer,
             Text.literal(loadedCount(dA)).withColor(rgb(FG_FAINT)),
-            leftTextX, y + 38, FG_FAINT);
+            leftTextX, y + 62, FG_FAINT);
 
         // ── Right side text block (right-aligned, with extra gap from body) ──
         int rightTextRight = rightHeadX - RIGHT_NAME_GAP;
@@ -332,10 +352,32 @@ public class TierCompareScreen extends Screen {
             ctx.drawTextWithShadow(this.textRenderer,
                 Text.literal(s).withColor(rgb(FG_FAINT)), rightTextRight - sw, y + 24, FG_FAINT);
         }
+        // Peak tier + OuterTiers rank for player B (v1.21.11.57).
+        Ranking peakB = peakOverall(dB);
+        TierService peakSvcB = peakOverallSvc(dB);
+        if (peakB != null) {
+            int pArgb = TierTaggerCore.argbFor(peakB.peakLabel());
+            MutableText pt = Text.literal("Peak ").withColor(rgb(FG_FAINT))
+                .append(Text.literal(peakB.peakLabel()).withColor(rgb(pArgb))
+                    .copy().formatted(Formatting.BOLD))
+                .append(Text.literal(peakSvcB == null ? "" : (" / " + peakSvcB.shortLabel))
+                    .withColor(rgb(FG_FAINT)));
+            int wpt = this.textRenderer.getWidth(pt);
+            ctx.drawTextWithShadow(this.textRenderer, pt, rightTextRight - wpt, y + 38, FG_TEXT);
+        }
+        ServiceData otSdB = dB == null ? null : dB.get(TierService.OUTERTIERS);
+        if (otSdB != null && otSdB.overall > 0) {
+            MutableText ot = Text.literal("OT ").withColor(rgb(FG_FAINT))
+                .append(Text.literal("#" + otSdB.overall)
+                    .withColor(rgb(TierService.OUTERTIERS.accentArgb))
+                    .copy().formatted(Formatting.BOLD));
+            int wot = this.textRenderer.getWidth(ot);
+            ctx.drawTextWithShadow(this.textRenderer, ot, rightTextRight - wot, y + 50, FG_TEXT);
+        }
         String lc = loadedCount(dB);
         int lcw = this.textRenderer.getWidth(lc);
         ctx.drawTextWithShadow(this.textRenderer,
-            Text.literal(lc).withColor(rgb(FG_FAINT)), rightTextRight - lcw, y + 38, FG_FAINT);
+            Text.literal(lc).withColor(rgb(FG_FAINT)), rightTextRight - lcw, y + 62, FG_FAINT);
 
         // ── Centred OuterTiers logo (replaces the old "vs" pill) ──
         // The logo PNG is bundled at assets/tiertagger/textures/logo/outertiers.png
@@ -406,6 +448,36 @@ public class TierCompareScreen extends Screen {
             Ranking r = d.get(s).highest();
             if (r == null) continue;
             if (best == null || r.score() > best.score()) { best = r; bestSvc = s; }
+        }
+        return bestSvc;
+    }
+
+    /** v1.21.11.57: strongest peak across every service, or null. */
+    private static Ranking peakOverall(PlayerData d) {
+        if (d == null) return null;
+        Ranking best = null;
+        for (TierService s : TierService.values()) {
+            Ranking r = d.get(s).peak();
+            if (r == null) continue;
+            int rs = (6 - r.peakLevel) * 2 - (r.peakHigh ? 0 : 1);
+            int bs = best == null ? -1
+                   : (6 - best.peakLevel) * 2 - (best.peakHigh ? 0 : 1);
+            if (rs > bs) best = r;
+        }
+        return best;
+    }
+
+    private static TierService peakOverallSvc(PlayerData d) {
+        if (d == null) return null;
+        Ranking best = null;
+        TierService bestSvc = null;
+        for (TierService s : TierService.values()) {
+            Ranking r = d.get(s).peak();
+            if (r == null) continue;
+            int rs = (6 - r.peakLevel) * 2 - (r.peakHigh ? 0 : 1);
+            int bs = best == null ? -1
+                   : (6 - best.peakLevel) * 2 - (best.peakHigh ? 0 : 1);
+            if (rs > bs) { best = r; bestSvc = s; }
         }
         return bestSvc;
     }
