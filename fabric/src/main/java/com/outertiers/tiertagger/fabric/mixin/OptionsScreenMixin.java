@@ -133,6 +133,20 @@ public abstract class OptionsScreenMixin extends Screen {
         protected void drawIcon(DrawContext ctx, int mouseX, int mouseY, float delta) {
             try { anchorToControls(); } catch (Throwable ignored) {}
             int x = this.getX(), y = this.getY(), w = this.getWidth(), h = this.getHeight();
+            boolean hovered = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
+
+            // (v1.21.11.55) Vanilla-style framed box around the icon so the
+            // button reads as a native Options-screen control and not a
+            // floating sprite. Yellow accent border on hover for clear
+            // affordance feedback.
+            int bg     = hovered ? 0xFF606060 : 0xFF303030;
+            int border = hovered ? 0xFFFFE26B : 0xFFA0A0A0;
+            ctx.fill(x,         y,         x + w,     y + h,     bg);
+            ctx.fill(x,         y,         x + w,     y + 1,     border);
+            ctx.fill(x,         y + h - 1, x + w,     y + h,     border);
+            ctx.fill(x,         y,         x + 1,     y + h,     border);
+            ctx.fill(x + w - 1, y,         x + w,     y + h,     border);
+
             int icoPad = 2;
             int icoX = x + icoPad;
             int icoY = y + icoPad;

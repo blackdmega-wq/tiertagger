@@ -75,6 +75,16 @@ public class TierCompareScreen extends Screen {
     /** Strip alpha to keep Style.withColor(int) inside its required 0..0xFFFFFF range. */
     private static int rgb(int argb) { return argb & 0xFFFFFF; }
 
+    // ── Animation helpers (v1.21.11.55) ────────────────────────────────
+    private static float pulse01() {
+        long t = System.currentTimeMillis() % 2400L;
+        float f = (float) (t / 2400.0);
+        return 0.5f + 0.5f * (float) Math.sin(f * Math.PI * 2.0);
+    }
+    private static int withAlpha(int argb, int alpha) {
+        return ((alpha & 0xFF) << 24) | (argb & 0x00FFFFFF);
+    }
+
     private final Screen parent;
     private final String nameA;
     private final String nameB;
@@ -170,8 +180,21 @@ public class TierCompareScreen extends Screen {
             int panelTop = 18;
             int panelBottom = this.height - 36;
 
+            // (v1.21.11.55) Animated drop-shadow + breathing outline.
+            float pulse = pulse01();
+            int shadowA = (int)(40 + 40 * pulse);
+            for (int i = 4; i >= 1; i--) {
+                int a = Math.max(0, shadowA - i * 8);
+                fillRect(ctx, panelX - i, panelTop - i, panelX + panelW + i, panelTop, withAlpha(0x0090E1FF, a));
+                fillRect(ctx, panelX - i, panelBottom, panelX + panelW + i, panelBottom + i, withAlpha(0x0090E1FF, a));
+                fillRect(ctx, panelX - i, panelTop, panelX, panelBottom, withAlpha(0x0090E1FF, a));
+                fillRect(ctx, panelX + panelW, panelTop, panelX + panelW + i, panelBottom, withAlpha(0x0090E1FF, a));
+            }
             fillRect(ctx, panelX, panelTop, panelX + panelW, panelBottom, BG_PANEL);
             outlineRect(ctx, panelX, panelTop, panelW, panelBottom - panelTop, BG_PANEL_BORDER);
+            int borderA = (int)(120 + 120 * pulse);
+            outlineRect(ctx, panelX, panelTop, panelW, panelBottom - panelTop,
+                        withAlpha(0x0090E1FF, borderA));
 
             Optional<PlayerData> optA = TierTaggerCore.cache().peekData(nameA);
             Optional<PlayerData> optB = TierTaggerCore.cache().peekData(nameB);
@@ -230,18 +253,35 @@ public class TierCompareScreen extends Screen {
                               int x, int y, int w, int h) {
         fillRect(ctx, x, y, x + w, y + h, BG_HEADER);
 
-        // Square skin slots (v1.21.11.37) — the OuterTiers maintainer
-        // asked for both player skins to face each other inside a
-        // TRANSPARENT square box, with the right-hand skin horizontally
-        // mirrored so the two players visually look at each other. The
-        // skin keeps its natural ≈1:2.4 body aspect and is anchored to
-        // the BOTTOM of the box (feet on the floor) — drawHead() handles
-        // both the bottom-anchoring and the optional mirror.
+        // (v1.21.11.55) Animated diagonal sheen sweep across the header.
+        long tt = System.currentTimeMillis() % 5000L;
+        float sweep = tt / 5000f;
+        int sx = x + (int)(sweep * (w + 60)) - 60;
+        for (int i = 0; i < 24; i++) {
+            int a = Math.max(0, 18 - Math.abs(i - 12) * 2);
+            fillRect(ctx, sx + i, y, sx + i + 1, y + h, withAlpha(0x00FFFFFF, a));
+        }
+
+        // Square skin slots — both player skins face each other inside a
+        // TRANSPARENT box, right-hand skin horizontally mirrored.
         int bodyH      = h - 8;
         int bodyW      = bodyH;            // square box
         int leftHeadX  = x + 10;
         int rightHeadX = x + w - 10 - bodyW;
         int headY      = y + (h - bodyH) / 2;
+
+        // (v1.21.11.55) Pulsing halos behind both player skins —
+        // contrasting tints so each side reads as its own "team".
+        float pulse = pulse01();
+        int haloA = (int)(30 + 50 * pulse);
+        for (int i = 6; i >= 1; i--) {
+            int a = Math.max(0, haloA - i * 6);
+            fillRect(ctx, leftHeadX  - i, headY - i, leftHeadX  + bodyW + i, headY + bodyH + i,
+                     withAlpha(0x004FA8FF, a));
+            fillRect(ctx, rightHeadX - i, headY - i, rightHeadX + bodyW + i, headY + bodyH + i,
+                     withAlpha(0x00FF8C5A, a));
+        }
+
         drawHead(ctx, nameA, leftHeadX,  headY, bodyW, bodyH, false);
         drawHead(ctx, nameB, rightHeadX, headY, bodyW, bodyH, true);
 
@@ -303,6 +343,13 @@ public class TierCompareScreen extends Screen {
         int logoBox = Math.min(h - 16, 56);
         int logoX   = x + (w - logoBox) / 2;
         int logoY   = y + (h - logoBox) / 2;
+        // (v1.21.11.55) Pulsing yellow halo behind the centred logo.
+        int logoHaloA = (int)(40 + 60 * pulse);
+        for (int i = 8; i >= 1; i--) {
+            int a = Math.max(0, logoHaloA - i * 7);
+            fillRect(ctx, logoX - i, logoY - i, logoX + logoBox + i, logoY + logoBox + i,
+                     withAlpha(0x00FFE26B, a));
+        }
         try {
             ResourceLocation logo = ResourceLocation.fromNamespaceAndPath("tiertagger", "textures/logo/outertiers.png");
             Compat.drawTexture(ctx, logo, logoX, logoY, 0, 0, logoBox, logoBox, 512, 512);

@@ -67,6 +67,16 @@ public class TierProfileScreen extends Screen {
     /** Strip alpha to keep Style.withColor(int) inside its required 0..0xFFFFFF range. */
     private static int rgb(int argb) { return argb & 0xFFFFFF; }
 
+    // ── Animation helpers (v1.21.11.55) ────────────────────────────────
+    private static float pulse01() {
+        long t = System.currentTimeMillis() % 2400L;
+        float f = (float) (t / 2400.0);
+        return 0.5f + 0.5f * (float) Math.sin(f * Math.PI * 2.0);
+    }
+    private static int withAlpha(int argb, int alpha) {
+        return ((alpha & 0xFF) << 24) | (argb & 0x00FFFFFF);
+    }
+
     private final Screen parent;
     private final String username;
     /** Optional filter — when non-null, only this service's card is rendered.
@@ -150,8 +160,21 @@ public class TierProfileScreen extends Screen {
             int panelTop = 18;
             int panelBottom = this.height - 36;
 
+            // (v1.21.11.55) Animated drop-shadow + breathing border.
+            float pulse = pulse01();
+            int shadowA = (int)(40 + 40 * pulse);
+            for (int i = 4; i >= 1; i--) {
+                int a = Math.max(0, shadowA - i * 8);
+                fillRect(ctx, panelX - i, panelTop - i, panelX + panelW + i, panelTop, withAlpha(0x0090E1FF, a));
+                fillRect(ctx, panelX - i, panelBottom, panelX + panelW + i, panelBottom + i, withAlpha(0x0090E1FF, a));
+                fillRect(ctx, panelX - i, panelTop, panelX, panelBottom, withAlpha(0x0090E1FF, a));
+                fillRect(ctx, panelX + panelW, panelTop, panelX + panelW + i, panelBottom, withAlpha(0x0090E1FF, a));
+            }
             fillRect(ctx, panelX, panelTop, panelX + panelW, panelBottom, BG_PANEL);
             outlineRect(ctx, panelX, panelTop, panelW, panelBottom - panelTop, BG_PANEL_BORDER);
+            int borderA = (int)(120 + 120 * pulse);
+            outlineRect(ctx, panelX, panelTop, panelW, panelBottom - panelTop,
+                        withAlpha(0x0090E1FF, borderA));
 
             // Header sized to fit the FULL-body render returned by
             // mc-heads.net /body/ (~1:2.4 aspect). The user explicitly
@@ -206,14 +229,30 @@ public class TierProfileScreen extends Screen {
     private void renderHeader(GuiGraphics ctx, int x, int y, int w, int h) {
         fillRect(ctx, x, y, x + w, y + h, BG_HEADER);
 
-        // Square skin slot (v1.21.11.37) — the OuterTiers maintainer
-        // asked for the player skin to live inside a TRANSPARENT square
-        // box, anchored to the bottom (feet on the floor) so the
-        // overall card matches the new compare/search layout.
+        // (v1.21.11.55) Animated diagonal sheen sweep across the header.
+        long t = System.currentTimeMillis() % 5000L;
+        float sweep = t / 5000f;
+        int sx = x + (int)(sweep * (w + 60)) - 60;
+        for (int i = 0; i < 24; i++) {
+            int a = Math.max(0, 18 - Math.abs(i - 12) * 2);
+            fillRect(ctx, sx + i, y, sx + i + 1, y + h, withAlpha(0x00FFFFFF, a));
+        }
+
+        // Square skin slot — TRANSPARENT bottom-anchored box.
         int bodyH = h - 8;
         int bodyW = bodyH;             // square box
         int headX = x + 8;
         int headY = y + (h - bodyH) / 2;
+
+        // (v1.21.11.55) Pulsing glow halo behind the player skin.
+        float pulse = pulse01();
+        int haloA = (int)(30 + 50 * pulse);
+        for (int i = 6; i >= 1; i--) {
+            int a = Math.max(0, haloA - i * 6);
+            fillRect(ctx, headX - i, headY - i, headX + bodyW + i, headY + bodyH + i,
+                     withAlpha(0x0090E1FF, a));
+        }
+
         drawHead(ctx, username, headX, headY, bodyW, bodyH);
 
         int textX = headX + bodyW + 12;
@@ -331,11 +370,15 @@ public class TierProfileScreen extends Screen {
                                    int x, int y, int w, int h) {
         int accent = svc.accentArgb;
 
-        // Card background with a subtle accent glow on the left edge.
+        // (v1.21.11.55) Pulsing accent bloom on the left edge.
         fillRect(ctx, x, y, x + w, y + h, BG_CARD);
         outlineRect(ctx, x, y, w, h, 0xFF2A2F38);
+        float pulse = pulse01();
         fillRect(ctx, x, y, x + 3, y + h, accent);
-        fillRect(ctx, x + 3, y, x + 6, y + h, (accent & 0x00FFFFFF) | 0x33000000);
+        for (int i = 0; i < 12; i++) {
+            int a = Math.max(0, (int)((90 - i * 7) * (0.5f + 0.5f * pulse)));
+            fillRect(ctx, x + 3 + i, y, x + 4 + i, y + h, withAlpha(accent, a));
+        }
         fillRect(ctx, x + 3, y, x + w, y + 22, BG_CARD_BAR);
 
         // Title: "OT  OuterTiers"
@@ -384,8 +427,15 @@ public class TierProfileScreen extends Screen {
                 // center y+10.5, off by ½ px which rounds out cleanly).
                 // Old layout was 14px tall with text at y+7 → text drifted
                 // ~1.5 px above center, the bug the user spotted.
+                // (v1.21.11.55) Animated halo behind the best-tier pill.
+                int pillHaloA = (int)(80 + 80 * pulse);
+                for (int i = 4; i >= 1; i--) {
+                    int a = Math.max(0, pillHaloA - i * 18);
+                    fillRect(ctx, pillX - i, y + 3 - i, pillX + pillW + i, y + 18 + i,
+                             withAlpha(color, a));
+                }
                 fillRect(ctx, pillX, y + 3, pillX + pillW, y + 18, (color & 0x00FFFFFF) | 0x33000000);
-                outlineRect(ctx, pillX, y + 3, pillW, 15, color);
+                outlineRect(ctx, pillX, y + 3, pillW, 15, withAlpha(color, 200 + (int)(55 * pulse)));
                 ctx.drawCenteredTextWithShadow(this.textRenderer,
                     Component.literal(pill).withColor(rgb(color)).copy().formatted(ChatFormatting.BOLD),
                     pillX + pillW / 2, y + 7, opaque(color));

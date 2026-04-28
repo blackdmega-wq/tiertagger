@@ -116,7 +116,7 @@ public abstract class OptionsScreenMixin extends Screen {
             // Vanilla-style square frame so the button reads as a native
             // Options-screen control instead of a floating sprite.
             int bg     = hovered ? 0xFF606060 : 0xFF303030;
-            int border = hovered ? 0xFFFFFFFF : 0xFFA0A0A0;
+            int border = hovered ? 0xFFFFE26B : 0xFFA0A0A0; // (v1.21.11.55) yellow accent on hover
             ctx.fill(x,         y,         x + w,     y + h,     bg);
             ctx.fill(x,         y,         x + w,     y + 1,     border);
             ctx.fill(x,         y + h - 1, x + w,     y + h,     border);

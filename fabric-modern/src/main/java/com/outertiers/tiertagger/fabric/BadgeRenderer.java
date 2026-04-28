@@ -233,7 +233,14 @@ public final class BadgeRenderer {
             // (often ChatFormatting.GRAY for tab names), which multiplies into
             // the icon and makes it look washed-out / too dark — exactly the
             // bug the user reported.
-            Style s = applyIconFont(Style.EMPTY).withColor(0xFFFFFF);
+            // v1.21.11.55: explicitly disable bold/italic so the icon glyph
+            // never inherits bold from a parent text node — without this the
+            // LEFT badge inherited bold from the bold svcLabel parent and the
+            // gamemode icon visually appeared DOUBLED on the left badge.
+            Style s = applyIconFont(Style.EMPTY)
+                    .withColor(0xFFFFFF)
+                    .withBold(false)
+                    .withItalic(false);
             return Component.literal(g).setStyle(s);
         } catch (Throwable t) {
             return Component.empty();
@@ -273,43 +280,58 @@ public final class BadgeRenderer {
         boolean hasIcon = icon != Component.empty()
             && icon.getString() != null && !icon.getString().isEmpty();
 
-        // Icon position rule (v1.21.11.35):
-        //   • LEFT badge  → icon BEFORE the tier text  ("[ICON HT1]" / "ICON HT1")
-        //   • RIGHT badge → icon AFTER  the tier text  ("[HT1 ICON]" / "HT1 ICON")
-        // The right badge always sits to the RIGHT of the player name, so its
-        // gamemode icon must visually trail the tier so the icon ends up
-        // furthest from the name (mirroring how the left badge's icon sits
-        // furthest from the name on the opposite side). serviceLabelLeading
-        // is true for the LEFT badge and false for the RIGHT badge — see
-        // buildTabPrefix vs buildTabSuffix below.
-        boolean iconLeading = serviceLabelLeading;
-        MutableComponent core;
+        // v1.21.11.55: LEFT and RIGHT badges now share the EXACT same layout
+        // ("[LABEL ICON]") and per-segment styling so they render identically.
+        // Both badges are built off a neutral Component.empty() root so a
+        // styled parent (like the bold svcLabel) can never bleed bold/italic
+        // into its bracket+icon children. See the fabric-module copy for the
+        // detailed rationale (left-badge "icon doubled" + bold mismatch).
+        Style bracketStyle = Style.EMPTY
+                .withColor(0xAAAAAA)
+                .withBold(false)
+                .withItalic(false);
+        Style spaceStyle = Style.EMPTY
+                .withBold(false)
+                .withItalic(false);
+
+        MutableComponent core = Component.empty();
         if (TierFormat.useBrackets()) {
-            core = Component.literal("[").formatted(ChatFormatting.GRAY);
-            if (hasIcon && iconLeading) core.append(icon).append(Component.literal(" ").formatted(ChatFormatting.GRAY));
+            core.append(Component.literal("[").setStyle(bracketStyle));
             core.append(Component.literal(label).setStyle(tierStyle));
-            if (hasIcon && !iconLeading) core.append(Component.literal(" ").formatted(ChatFormatting.GRAY)).append(icon);
-            core.append(Component.literal("]").formatted(ChatFormatting.GRAY));
+            if (hasIcon) {
+                core.append(Component.literal(" ").setStyle(spaceStyle));
+                core.append(icon);
+            }
+            core.append(Component.literal("]").setStyle(bracketStyle));
         } else {
-            core = Component.literal("");
-            if (hasIcon && iconLeading) core.append(icon).append(Component.literal(" "));
             core.append(Component.literal(label).setStyle(tierStyle));
-            if (hasIcon && !iconLeading) core.append(Component.literal(" ")).append(icon);
+            if (hasIcon) {
+                core.append(Component.literal(" ").setStyle(spaceStyle));
+                core.append(icon);
+            }
         }
 
-        if (!TierFormat.showServiceLabel()) return core;
+        if (!TierFormat.showServiceLabel()) {
+            return Component.empty().append(core);
+        }
 
-        // CRITICAL: must mask with 0xFFFFFF — Style.withColor(int) in MC 1.21.5+
-        // throws IllegalArgumentException for any value outside 0..0xFFFFFF.
-        // v1.21.11.48: render the service short label in BOLD so it visually
-        // matches the bold tier text right next to it. Previously the
-        // service tag (e.g. "MCT", "OT") looked thin and washed out next to
-        // the chunky tier badge.
         MutableComponent svcLabel = Component.literal(svc.shortLabel)
-                .setStyle(Style.EMPTY.withColor(svc.accentArgb & 0xFFFFFF).withBold(true));
-        return serviceLabelLeading
-            ? svcLabel.append(Component.literal(" ")).append(core)
-            : core.append(Component.literal(" ")).append(svcLabel);
+                .setStyle(Style.EMPTY
+                        .withColor(svc.accentArgb & 0xFFFFFF)
+                        .withBold(true)
+                        .withItalic(false));
+
+        MutableComponent out = Component.empty();
+        if (serviceLabelLeading) {
+            out.append(svcLabel);
+            out.append(Component.literal(" ").setStyle(spaceStyle));
+            out.append(core);
+        } else {
+            out.append(core);
+            out.append(Component.literal(" ").setStyle(spaceStyle));
+            out.append(svcLabel);
+        }
+        return out;
     }
 
     // Backwards-compatible no-icon overload used by older callers.

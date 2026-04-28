@@ -605,7 +605,9 @@ public class TierConfigScreen extends Screen {
         // button without forcing a manual click. We never auto-scroll
         // again after the user has interacted with the tab so they're
         // never yanked away from a row they were trying to read.
-        if ((currentTab == 2 || currentTab == 0) && previewW > 0 && previewH > 0
+        // (v1.21.11.55) Settings tab no longer has a preview, so the
+        // auto-scroll is gated to tab 2 (Tiers Config) only.
+        if (currentTab == 2 && previewW > 0 && previewH > 0
                 && !autoScrolledForTab[currentTab] && maxScroll > 0) {
             scrollY = maxScroll;
             scrollByTab[currentTab] = scrollY;
@@ -891,18 +893,10 @@ public class TierConfigScreen extends Screen {
         });
         rRef[0]++;
 
-        // ── Live nametag preview (v1.21.11.52) ───────────────────────────
-        // The user asked to see their skin in the Settings tab too so
-        // every tweak above (Primary Service, Display Mode, Mode Filters)
-        // can be sanity-checked against the actual nametag without
-        // hopping over to the Tiers Config tab. Same preview block; the
-        // render() pass paints the skin + nametag here when currentTab==0.
-        rRef[0]++; // breathing room before preview
-        previewX = rowX();
-        previewY = rowY(rRef[0]);
-        previewW = rowW();
-        previewH = 280;
-        rRef[0] += 13; // reserve scroll space for the taller preview
+        // (v1.21.11.55) Live Preview block REMOVED from the Settings tab per
+        // user request — the preview now only lives on the Tiers Config tab
+        // where it visually accompanies the per-service routing controls.
+        // Settings stays focused on plain toggles / dropdowns.
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1189,8 +1183,8 @@ public class TierConfigScreen extends Screen {
         previewX = rowX();
         previewY = rowY(rRef[0]);
         previewW = rowW();
-        previewH = 280;
-        rRef[0] += 13; // reserve scroll space for the taller preview
+        previewH = 200;
+        rRef[0] += 9;  // reserve scroll space for the preview (v1.21.11.55 — shrunk so the skin fits in view)
     }
 
     // (v1.21.11.52) jumpToPreview(), addScrollArrowButtons(), scrollByPx()
@@ -1347,7 +1341,7 @@ public class TierConfigScreen extends Screen {
         previewX = rowX();
         previewY = rowY(rRef[0]);
         previewW = rowW();
-        previewH = 280;
+        previewH = 200;
         rRef[0] += 13;
     }
 

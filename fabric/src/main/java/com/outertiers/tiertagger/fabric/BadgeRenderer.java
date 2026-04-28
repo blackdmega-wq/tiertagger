@@ -231,9 +231,20 @@ public final class BadgeRenderer {
             // brightness in the tab list and above nametags. Without an
             // explicit colour the glyph inherits the surrounding chat style
             // (often Formatting.GRAY for tab names), which multiplies into
-            // the icon and makes it look washed-out / too dark — exactly the
-            // bug the user reported.
-            Style s = applyIconFont(Style.EMPTY).withColor(0xFFFFFF);
+            // the icon and makes it look washed-out / too dark.
+            //
+            // v1.21.11.55: explicitly set withBold(false) and withItalic(false)
+            // so the icon glyph never inherits bold/italic from its parent
+            // text node. Without this the LEFT badge — which is composed as
+            // svcLabel.append(core) where svcLabel is bold — would inherit
+            // bold into the bracket+icon sub-tree, making the icon glyph
+            // render WIDER (the bold renderer offsets each glyph by 1 px and
+            // composites two passes), so the gamemode icon visually appeared
+            // DOUBLED on the left badge but not on the right.
+            Style s = applyIconFont(Style.EMPTY)
+                    .withColor(0xFFFFFF)
+                    .withBold(false)
+                    .withItalic(false);
             return Text.literal(g).setStyle(s);
         } catch (Throwable t) {
             return Text.empty();
@@ -273,43 +284,71 @@ public final class BadgeRenderer {
         boolean hasIcon = icon != Text.empty()
             && icon.getString() != null && !icon.getString().isEmpty();
 
-        // Icon position rule (v1.21.11.35):
-        //   • LEFT badge  → icon BEFORE the tier text  ("[ICON HT1]" / "ICON HT1")
-        //   • RIGHT badge → icon AFTER  the tier text  ("[HT1 ICON]" / "HT1 ICON")
-        // The right badge always sits to the RIGHT of the player name, so its
-        // gamemode icon must visually trail the tier so the icon ends up
-        // furthest from the name (mirroring how the left badge's icon sits
-        // furthest from the name on the opposite side). serviceLabelLeading
-        // is true for the LEFT badge and false for the RIGHT badge — see
-        // buildTabPrefix vs buildTabSuffix below.
-        boolean iconLeading = serviceLabelLeading;
-        MutableText core;
+        // v1.21.11.55: LEFT and RIGHT badges now share the EXACT same layout
+        // ("[LABEL ICON]" with the icon AFTER the tier text on both sides)
+        // and the EXACT same per-segment styling. Previously the LEFT badge
+        // put the icon BEFORE the label and was composed by appending the
+        // bracket-tree as a CHILD of the bold svcLabel, which made the
+        // bracket+icon glyphs inherit bold from svcLabel and render visibly
+        // thicker than the right badge — the user's "left badge format is
+        // bold but right isn't" complaint. Both badges are now built off a
+        // neutral Text.empty() root so no styled parent can bleed bold/italic
+        // into its bracket/icon children. Per-segment styles are explicit on
+        // every literal so the LEFT and RIGHT badges are pixel-identical.
+        Style bracketStyle = Style.EMPTY
+                .withColor(0xAAAAAA)            // GRAY equivalent
+                .withBold(false)
+                .withItalic(false);
+        Style spaceStyle = Style.EMPTY
+                .withBold(false)
+                .withItalic(false);
+
+        MutableText core = Text.empty();
         if (TierFormat.useBrackets()) {
-            core = Text.literal("[").formatted(Formatting.GRAY);
-            if (hasIcon && iconLeading) core.append(icon).append(Text.literal(" ").formatted(Formatting.GRAY));
+            core.append(Text.literal("[").setStyle(bracketStyle));
             core.append(Text.literal(label).setStyle(tierStyle));
-            if (hasIcon && !iconLeading) core.append(Text.literal(" ").formatted(Formatting.GRAY)).append(icon);
-            core.append(Text.literal("]").formatted(Formatting.GRAY));
+            if (hasIcon) {
+                core.append(Text.literal(" ").setStyle(spaceStyle));
+                core.append(icon);
+            }
+            core.append(Text.literal("]").setStyle(bracketStyle));
         } else {
-            core = Text.literal("");
-            if (hasIcon && iconLeading) core.append(icon).append(Text.literal(" "));
             core.append(Text.literal(label).setStyle(tierStyle));
-            if (hasIcon && !iconLeading) core.append(Text.literal(" ")).append(icon);
+            if (hasIcon) {
+                core.append(Text.literal(" ").setStyle(spaceStyle));
+                core.append(icon);
+            }
         }
 
-        if (!TierFormat.showServiceLabel()) return core;
+        if (!TierFormat.showServiceLabel()) {
+            // Wrap in Text.empty() so the caller's parent style can't bleed
+            // bold into the brackets/icon of THIS badge subtree.
+            return Text.empty().append(core);
+        }
 
         // CRITICAL: must mask with 0xFFFFFF — Style.withColor(int) in MC 1.21.5+
         // throws IllegalArgumentException for any value outside 0..0xFFFFFF.
-        // v1.21.11.48: render the service short label in BOLD so it visually
-        // matches the bold tier text right next to it. Previously the
-        // service tag (e.g. "MCT", "OT") looked thin and washed out next to
-        // the chunky tier badge.
+        // The service short label keeps its bold styling so it matches the
+        // bold tier text right next to it, but it is now appended to a
+        // neutral Text.empty() root (NOT used as the parent of the core),
+        // so its bold styling doesn't leak into the bracket / icon children.
         MutableText svcLabel = Text.literal(svc.shortLabel)
-                .setStyle(Style.EMPTY.withColor(svc.accentArgb & 0xFFFFFF).withBold(true));
-        return serviceLabelLeading
-            ? svcLabel.append(Text.literal(" ")).append(core)
-            : core.append(Text.literal(" ")).append(svcLabel);
+                .setStyle(Style.EMPTY
+                        .withColor(svc.accentArgb & 0xFFFFFF)
+                        .withBold(true)
+                        .withItalic(false));
+
+        MutableText out = Text.empty();
+        if (serviceLabelLeading) {
+            out.append(svcLabel);
+            out.append(Text.literal(" ").setStyle(spaceStyle));
+            out.append(core);
+        } else {
+            out.append(core);
+            out.append(Text.literal(" ").setStyle(spaceStyle));
+            out.append(svcLabel);
+        }
+        return out;
     }
 
     // Backwards-compatible no-icon overload used by older callers.
