@@ -611,7 +611,10 @@ public class TierCompareScreen extends Screen {
         int rightEnd   = x + w;
         int colW       = (rightEnd - rightStart) / 3;
 
-        Text tA = tierComp(rA, (rA != null && rA.tierLevel > 0) ? TierTaggerCore.argbFor(rA.label()) : 0xFF808080);
+        // Build "current ▲peak" when the player has reached a stronger tier
+        // before. Mirrors TierProfileScreen.renderRowEx() so /tiertagger
+        // compare and /tiertagger profile show the same peak indicator.
+        MutableText tA = tierWithPeak(rA);
         int wA = this.textRenderer.getWidth(tA);
         int aCx = rightStart + colW / 2;
         int aColor = (rA != null && rA.tierLevel > 0) ? opaque(TierTaggerCore.argbFor(rA.label())) : 0xFF808080;
@@ -627,7 +630,7 @@ public class TierCompareScreen extends Screen {
         }
         ctx.drawCenteredTextWithShadow(this.textRenderer, wsym, rightStart + colW + colW / 2, y + 3, 0xFFFFFFFF);
 
-        Text tB = tierComp(rB, (rB != null && rB.tierLevel > 0) ? TierTaggerCore.argbFor(rB.label()) : 0xFF808080);
+        MutableText tB = tierWithPeak(rB);
         int wB = this.textRenderer.getWidth(tB);
         int bCx = rightStart + colW * 2 + colW / 2;
         int bColor = (rB != null && rB.tierLevel > 0) ? opaque(TierTaggerCore.argbFor(rB.label())) : 0xFF808080;
@@ -635,9 +638,27 @@ public class TierCompareScreen extends Screen {
         ctx.drawTextWithShadow(this.textRenderer, tB, bCx - wB / 2, y + 3, bColor);
     }
 
-    private static Text tierComp(Ranking r, int argb) {
+    private static MutableText tierComp(Ranking r, int argb) {
         if (r == null || r.tierLevel <= 0) return Text.literal("\u2014").formatted(Formatting.DARK_GRAY);
         return Text.literal(r.label()).withColor(argb & 0xFFFFFF).copy().formatted(Formatting.BOLD);
+    }
+
+    /**
+     * Render a per-mode tier as "{cur} ▲{peak}" when the player's peak
+     * tier is strictly stronger than their current tier (e.g. "LT3 ▲HT3").
+     * Falls back to just the current tier (or em-dash when unranked).
+     * Mirrors the peak indicator used by TierProfileScreen so the compare
+     * and search screens read identically.
+     */
+    private static MutableText tierWithPeak(Ranking r) {
+        int curArgb = (r != null && r.tierLevel > 0)
+            ? TierTaggerCore.argbFor(r.label()) : 0xFF808080;
+        MutableText out = tierComp(r, curArgb);
+        if (r == null || r.tierLevel <= 0 || !r.peakDiffers()) return out;
+        String peak = r.peakLabel();
+        int peakArgb = TierTaggerCore.argbFor(peak);
+        return out.append(Text.literal(" \u25B2").formatted(Formatting.DARK_GRAY))
+                  .append(Text.literal(peak).withColor(peakArgb & 0xFFFFFF));
     }
 
     /**

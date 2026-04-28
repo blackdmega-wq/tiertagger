@@ -87,7 +87,11 @@ jobs:
             mc: '26.1.1'
             java: 25
             fabric_loader: '0.19.0'
-            fabric_api: '0.145.0+26.1.1'
+            # 0.145.0+26.1.1 was never published; fabric-api jumps from
+            # 0.145.1+26.1 directly to 0.145.2+26.1.1. Use the latest
+            # 26.1.1 build that actually exists on Maven so the strip step
+            # can download the JIJ archive successfully.
+            fabric_api: '0.145.4+26.1.1'
             loom: '1.15-SNAPSHOT'
             gradle: '9.4.1'
             experimental: true

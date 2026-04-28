@@ -1101,8 +1101,13 @@ public class TierConfigScreen extends Screen {
         previewY = rowY(rRef[0]);
         previewW = rowW();
         previewH = 110;
-        rRef[0] += 7; // 7-row reservation matching previewH = 110px
-        rRef[0]++;    // breathing room before Row 1
+        // (v1.21.11.59) Tightened from 7+1 rows down to 5 rows. ROW_H = 24
+        // so 5 rows = 120 px, which just covers the 110 px preview body
+        // and leaves only ~10 px of clearance before "Disable Tiers".
+        // Previously the 8-row reservation left ~80 px of empty space
+        // between the preview and the first toggle, which the user
+        // explicitly called out as a too-large gap.
+        rRef[0] += 5;
 
         // ── Row 1: Disable Tiers (full width) ─────────────────────────────
         final int row1y = rowY(rRef[0]);
@@ -1418,8 +1423,10 @@ public class TierConfigScreen extends Screen {
         previewY = rowY(rRef[0]);
         previewW = rowW();
         previewH = 110;
-        rRef[0] += 7;
-        rRef[0]++; // breathing room before the routing rows
+        // (v1.21.11.59) Tightened from 7+1 rows down to 5 rows so the
+        // "Badge Assignment (Left ≠ Right)" header sits directly under the
+        // preview instead of behind ~80 px of empty space.
+        rRef[0] += 5;
 
 
         addSectionHeader(rRef[0], "\u2014 Badge Assignment (Left \u2260 Right) \u2014");
