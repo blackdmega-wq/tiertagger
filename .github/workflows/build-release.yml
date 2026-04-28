@@ -79,7 +79,7 @@ jobs:
             fabric_loader: '0.19.0'
             fabric_api: '0.143.0+26.1'
             loom: '1.15-SNAPSHOT'
-            gradle: '9.4'
+            gradle: '9.4.1'
             experimental: true
 
           - loader: fabric-modern
@@ -89,7 +89,7 @@ jobs:
             fabric_loader: '0.19.0'
             fabric_api: '0.145.0+26.1.1'
             loom: '1.15-SNAPSHOT'
-            gradle: '9.4'
+            gradle: '9.4.1'
             experimental: true
 
           - loader: fabric-modern
@@ -99,7 +99,7 @@ jobs:
             fabric_loader: '0.19.0'
             fabric_api: '0.147.0+26.1.2'
             loom: '1.15-SNAPSHOT'
-            gradle: '9.4'
+            gradle: '9.4.1'
             experimental: true
 
     steps:
