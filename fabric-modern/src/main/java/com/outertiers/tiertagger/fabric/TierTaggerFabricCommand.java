@@ -359,7 +359,6 @@ public class TierTaggerFabricCommand {
             {"/tiertagger clear <player>",   "Forget a single player"},
             {"/tiertagger reload",           "Reload config from disk"},
             {"/tiertagger reset",            "Reset config to defaults"},
-            {"/tiertagger doctor [player]",  "One-shot self-test: UUID + per-service HTTP/tier"},
         };
         for (String[] r : rows) src.sendFeedback(Component.literal("§e" + r[0] + " §8— §7" + r[1]));
         src.sendFeedback(Component.literal("§7Services: §emctiers §8/ §eoutertiers §8/ §epvptiers §8/ §esubtiers"));
