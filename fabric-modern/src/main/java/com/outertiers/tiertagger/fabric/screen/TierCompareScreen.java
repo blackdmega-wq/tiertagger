@@ -254,12 +254,17 @@ public class TierCompareScreen extends Screen {
         fillRect(ctx, x, y, x + w, y + h, BG_HEADER);
 
         // (v1.21.11.55) Animated diagonal sheen sweep across the header.
+        // (v1.21.11.60) Slice CLIPPED to header rectangle so the wave starts
+        // at the GUI's left edge and ends at its right edge.
         long tt = System.currentTimeMillis() % 5000L;
         float sweep = tt / 5000f;
-        int sx = x + (int)(sweep * (w + 60)) - 60;
-        for (int i = 0; i < 24; i++) {
-            int a = Math.max(0, 18 - Math.abs(i - 12) * 2);
-            fillRect(ctx, sx + i, y, sx + i + 1, y + h, withAlpha(0x00FFFFFF, a));
+        final int sliceW = 24;
+        int sx = x + (int)(sweep * Math.max(0, w - sliceW));
+        for (int i = 0; i < sliceW; i++) {
+            int px = sx + i;
+            if (px < x || px >= x + w) continue;
+            int a = Math.max(0, 18 - Math.abs(i - sliceW / 2) * 2);
+            fillRect(ctx, px, y, px + 1, y + h, withAlpha(0x00FFFFFF, a));
         }
 
         // Square skin slots — both player skins face each other inside a
@@ -692,9 +697,20 @@ public class TierCompareScreen extends Screen {
     }
 
     private static String regionPair(ServiceData a, ServiceData b) {
-        String ra = (a == null || a.region == null || a.region.isBlank()) ? "\u2014" : a.region;
-        String rb = (b == null || b.region == null || b.region.isBlank()) ? "\u2014" : b.region;
-        return ra + "  vs  " + rb;
+        return regionAndRank(a) + "  vs  " + regionAndRank(b);
+    }
+
+    /**
+     * "REG #N" / "REG" / "#N" / "—" — surfaces the global rank next to the
+     * region in compare cards, matching the profile/search layout.
+     */
+    private static String regionAndRank(ServiceData sd) {
+        String reg = (sd == null || sd.region == null || sd.region.isBlank()) ? "" : sd.region;
+        int overall = sd == null ? 0 : sd.overall;
+        if (reg.isEmpty() && overall <= 0) return "\u2014";
+        if (reg.isEmpty()) return "#" + overall;
+        if (overall <= 0)  return reg;
+        return reg + " #" + overall;
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────

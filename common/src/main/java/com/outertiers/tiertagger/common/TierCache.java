@@ -413,7 +413,10 @@ public class TierCache {
             JsonObject root = JsonParser.parseString(body).getAsJsonObject();
             String region = optStr(root, "region");
             int points    = optInt(root, "points", 0);
-            int overall   = optInt(root, "overall", 0);
+            // Accept "overall" plus the common synonyms upstream services
+            // use for the global leaderboard rank — keeps the #N tag in the
+            // search/compare UI populated when a service drifts naming.
+            int overall   = optIntAlias(root, 0, "overall", "rank", "globalRank", "global_rank", "position", "place");
             java.util.LinkedHashMap<String, Ranking> rankings = new java.util.LinkedHashMap<>();
             JsonElement rEl = root.get("rankings");
             if (rEl != null && rEl.isJsonObject()) {
@@ -454,7 +457,10 @@ public class TierCache {
 
             String region = optStr(player, "region");
             int points    = optInt(player, "points", 0);
-            int overall   = optInt(player, "overall", 0);
+            // Same alias fallback as parseStandard — OuterTiers occasionally
+            // ships the global rank under "rank" or "globalRank" depending on
+            // which payload version the API returns.
+            int overall   = optIntAlias(player, 0, "overall", "rank", "globalRank", "global_rank", "position", "place");
 
             JsonObject raw  = optObj(player, "rawTiers");
             JsonObject tArr = optObj(player, "tiers");
@@ -566,6 +572,31 @@ public class TierCache {
         JsonElement v = o.get(k);
         if (v == null || v.isJsonNull()) return dflt;
         try { return v.getAsInt(); } catch (Exception ignored) { return dflt; }
+    }
+
+    /**
+     * Walk through several possible key names (case-insensitive) and return
+     * the first integer that is present and non-null. Used so that an upstream
+     * service that calls the global-leaderboard rank "rank" / "globalRank" /
+     * "position" instead of the canonical "overall" still gets surfaced as
+     * `sd.overall` in the UI. Returns {@code dflt} when nothing matches.
+     */
+    private static int optIntAlias(JsonObject o, int dflt, String... keys) {
+        if (o == null || keys == null) return dflt;
+        for (String k : keys) {
+            int v = optInt(o, k, Integer.MIN_VALUE);
+            if (v != Integer.MIN_VALUE) return v;
+        }
+        // Case-insensitive second pass — handles e.g. "Overall", "GlobalRank".
+        for (Map.Entry<String, JsonElement> e : o.entrySet()) {
+            for (String k : keys) {
+                if (e.getKey().equalsIgnoreCase(k)
+                        && e.getValue() != null && !e.getValue().isJsonNull()) {
+                    try { return e.getValue().getAsInt(); } catch (Exception ignored) {}
+                }
+            }
+        }
+        return dflt;
     }
 
     private static long optLong(JsonObject o, String k, long dflt) {

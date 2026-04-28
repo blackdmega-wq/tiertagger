@@ -241,12 +241,19 @@ public class TierProfileScreen extends Screen {
         // the profile card feels premium instead of flat. The sheen is a
         // narrow vertical bright slice whose X position ramps left → right
         // on a 5 s loop. Drawn before the skin so the skin overlays it.
+        // (v1.21.11.60) Slice CLIPPED to header rectangle so the wave starts
+        // at the GUI's left edge and ends at its right edge — previously it
+        // ramped from x-60 to x+w which left a gap on both sides where the
+        // wave was off-screen.
         long t = System.currentTimeMillis() % 5000L;
         float sweep = t / 5000f;
-        int sx = x + (int)(sweep * (w + 60)) - 60;
-        for (int i = 0; i < 24; i++) {
-            int a = Math.max(0, 18 - Math.abs(i - 12) * 2);
-            fillRect(ctx, sx + i, y, sx + i + 1, y + h, withAlpha(0x00FFFFFF, a));
+        final int sliceW = 24;
+        int sx = x + (int)(sweep * Math.max(0, w - sliceW));
+        for (int i = 0; i < sliceW; i++) {
+            int px = sx + i;
+            if (px < x || px >= x + w) continue;
+            int a = Math.max(0, 18 - Math.abs(i - sliceW / 2) * 2);
+            fillRect(ctx, px, y, px + 1, y + h, withAlpha(0x00FFFFFF, a));
         }
 
         // Square skin slot (v1.21.11.37) — the OuterTiers maintainer
