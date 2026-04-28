@@ -88,6 +88,22 @@ public final class ModeIcons {
         putService("pvptiers", "smp",     "pvptiers/smp");
         putService("pvptiers", "axe",     "pvptiers/axe");
         putService("pvptiers", "mace",    "pvptiers/mace");
+
+        // ── OuterTiers per-service overrides (v1.21.11.56) ──────────────────
+        // Use the official outertiers.com gamemode art (lifted from
+        // OuterTiers/public/tier_icons/, re-encoded to 8-bit RGBA, 64×64).
+        // OuterTiers' "Vanilla" mode is Crystal-PvP — the website renamed
+        // it to "Crystal" — so vanilla.png here is the crystal artwork.
+        putService("outertiers", "ogvanilla", "outertiers/ogvanilla");
+        putService("outertiers", "vanilla",   "outertiers/vanilla");
+        putService("outertiers", "uhc",       "outertiers/uhc");
+        putService("outertiers", "pot",       "outertiers/pot");
+        putService("outertiers", "nethop",    "outertiers/nethop");
+        putService("outertiers", "smp",       "outertiers/smp");
+        putService("outertiers", "sword",     "outertiers/sword");
+        putService("outertiers", "axe",       "outertiers/axe");
+        putService("outertiers", "mace",      "outertiers/mace");
+        putService("outertiers", "speed",     "outertiers/speed");
     }
 
     private ModeIcons() {}

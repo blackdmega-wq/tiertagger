@@ -1183,8 +1183,15 @@ public class TierConfigScreen extends Screen {
         previewX = rowX();
         previewY = rowY(rRef[0]);
         previewW = rowW();
-        previewH = 200;
-        rRef[0] += 9;  // reserve scroll space for the preview (v1.21.11.55 — shrunk so the skin fits in view)
+        // (v1.21.11.56) previewH bumped back up so the FULL body — head,
+        // torso, arms AND legs — is visible inside the preview slot. The
+        // scroll headroom (rRef bump) was simultaneously increased so the
+        // entire preview rect stays scrollable above the bottom action
+        // row instead of being clipped under it. Previously the bottom of
+        // the preview fell below `bodyBottom` and the user only saw a
+        // floating head with no body beneath the live nametag.
+        previewH = 240;
+        rRef[0] += 12;
     }
 
     // (v1.21.11.52) jumpToPreview(), addScrollArrowButtons(), scrollByPx()
@@ -1341,7 +1348,8 @@ public class TierConfigScreen extends Screen {
         previewX = rowX();
         previewY = rowY(rRef[0]);
         previewW = rowW();
-        previewH = 200;
+        // (v1.21.11.56) Same full-body preview sizing as the main tab.
+        previewH = 240;
         rRef[0] += 13;
     }
 

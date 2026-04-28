@@ -340,19 +340,43 @@ public class TierCompareScreen extends Screen {
         // The logo PNG is bundled at assets/tiertagger/textures/logo/outertiers.png
         // (512×512 source). We fit it inside a square slot scaled to the
         // header so it stays crisp on small windows and big windows alike.
-        int logoBox = Math.min(h - 16, 56);
+        // (v1.21.11.56) The slot is anchored to BOTH axes (mathematical
+        // centre of the header rect) so the logo always sits perfectly
+        // in the middle — previously the loop was geometrically centred
+        // but the halo bled over the logo, making the icon look offset.
+        int logoBox = Math.min(h - 12, 64);
         int logoX   = x + (w - logoBox) / 2;
         int logoY   = y + (h - logoBox) / 2;
-        // (v1.21.11.55) Pulsing yellow halo behind the centred logo.
-        int logoHaloA = (int)(40 + 60 * pulse);
+        // (v1.21.11.56) The halo is rendered as concentric BORDER rings
+        // (top + bottom + left + right edges only) — never as filled
+        // rectangles — so the golden glow stays OUTSIDE the logo slot.
+        // The previous filled-rect halo painted ON TOP of the logo area;
+        // since the logo PNG is mostly transparent (the artwork only
+        // occupies the centre of its 512×512 canvas), the user saw an
+        // empty golden square with no icon at all. Border-only halo
+        // keeps the logo art unobscured and the glow visibly outside.
+        int logoHaloA = (int)(60 + 80 * pulse);
         for (int i = 8; i >= 1; i--) {
             int a = Math.max(0, logoHaloA - i * 7);
-            fillRect(ctx, logoX - i, logoY - i, logoX + logoBox + i, logoY + logoBox + i,
-                     withAlpha(0x00FFE26B, a));
+            int col = withAlpha(0x00FFE26B, a);
+            // Top and bottom edges (1 px tall each).
+            fillRect(ctx, logoX - i, logoY - i,         logoX + logoBox + i, logoY - i + 1,             col);
+            fillRect(ctx, logoX - i, logoY + logoBox + i - 1, logoX + logoBox + i, logoY + logoBox + i, col);
+            // Left and right edges (1 px wide each, between top/bottom).
+            fillRect(ctx, logoX - i,             logoY - i + 1, logoX - i + 1,             logoY + logoBox + i - 1, col);
+            fillRect(ctx, logoX + logoBox + i - 1, logoY - i + 1, logoX + logoBox + i,     logoY + logoBox + i - 1, col);
         }
+        // Subtle dark backdrop fades behind the logo so dark icon details
+        // stay readable on bright header gradients (≈10% opaque charcoal).
+        fillRect(ctx, logoX, logoY, logoX + logoBox, logoY + logoBox, 0x33000000);
         try {
             ResourceLocation logo = ResourceLocation.fromNamespaceAndPath("tiertagger", "textures/logo/outertiers.png");
-            Compat.drawTexture(ctx, logo, logoX, logoY, 0, 0, logoBox, logoBox, 512, 512);
+            // Apply a small inset so the artwork breathes inside the halo
+            // ring instead of touching the very edge of the box.
+            int inset = 2;
+            Compat.drawTexture(ctx, logo,
+                logoX + inset, logoY + inset, 0, 0,
+                logoBox - inset * 2, logoBox - inset * 2, 512, 512);
         } catch (Throwable ignored) {
             // Fall back to the old "vs" pill if for some reason the logo
             // texture can't be drawn — keeps the UI usable.
